@@ -22,81 +22,23 @@ import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../ser
 import { getFriendsLocations } from '../services/friendsApi';
 import { updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
+import { getMymoMapStyle, MAP_THEME_UI, type MapTheme } from '../utils/mapStyles';
+import MapAtmosphere from '../components/MapAtmosphere';
+import MapLocateButton from '../components/MapLocateButton';
+import MapSearchDropdown from '../components/MapSearchDropdown';
+import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
+import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
+import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
 
 // ─── Mapbox GL JS (web-only) ──────────────────────────────────────────────────
 import mapboxgl from 'mapbox-gl';
 
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiYm9uZHpwcm9ubzEiLCJhIjoiY21yMXExczYwMHMwejJwcHJ1b3NzY216bSJ9.YrjzCaT5z32W_kCTOwQOGw';
-mapboxgl.accessToken = MAPBOX_TOKEN;
+mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
 const DEFAULT_ZOOM = 17;
-
-// ─── Custom MYMO Purple style for Mapbox ─────────────────────────────────────
-const MYMO_STYLE: mapboxgl.Style = {
-  version: 8,
-  name: 'MYMO Purple',
-  glyphs: 'mapbox://fonts/mapbox/{fontstack}/{range}',
-  sprite: 'mapbox://sprites/mapbox/streets-v11',
-  sources: {
-    composite: {
-      type: 'vector',
-      url: 'mapbox://mapbox.mapbox-streets-v8,mapbox.mapbox-terrain-v2',
-    },
-  },
-  layers: [
-    { id: 'background',      type: 'background', paint: { 'background-color': '#F6F2FF' } },
-    { id: 'landuse',         type: 'fill',   source: 'composite', 'source-layer': 'landuse',
-      paint: { 'fill-color': '#EDE8FF', 'fill-opacity': 0.9 } },
-    { id: 'landcover',       type: 'fill',   source: 'composite', 'source-layer': 'landcover',
-      paint: { 'fill-color': '#D8CCFF', 'fill-opacity': 0.7 } },
-    { id: 'national-park',   type: 'fill',   source: 'composite', 'source-layer': 'landuse',
-      filter: ['==', ['get', 'class'], 'national_park'],
-      paint: { 'fill-color': '#C8BBFF', 'fill-opacity': 0.8 } },
-    { id: 'water',           type: 'fill',   source: 'composite', 'source-layer': 'water',
-      paint: { 'fill-color': '#B8A9FF', 'fill-opacity': 0.85 } },
-    { id: 'water-stroke',    type: 'line',   source: 'composite', 'source-layer': 'water',
-      paint: { 'line-color': '#9C87FF', 'line-width': 1.5, 'line-opacity': 0.6 } },
-    { id: 'building',        type: 'fill',   source: 'composite', 'source-layer': 'building',
-      paint: { 'fill-color': '#DDD4FF', 'fill-opacity': 0.75 } },
-    { id: 'building-outline',type: 'line',   source: 'composite', 'source-layer': 'building',
-      paint: { 'line-color': '#C4B5FF', 'line-width': 0.5 } },
-    { id: 'road-case',       type: 'line',   source: 'composite', 'source-layer': 'road',
-      filter: ['==', ['geometry-type'], 'LineString'],
-      paint: { 'line-color': '#C8BCFF',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 16, 6] as any,
-        'line-opacity': 0.5 } },
-    { id: 'road',            type: 'line',   source: 'composite', 'source-layer': 'road',
-      filter: ['==', ['geometry-type'], 'LineString'],
-      paint: { 'line-color': '#EEE9FF',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.8, 16, 5] as any } },
-    { id: 'road-major',      type: 'line',   source: 'composite', 'source-layer': 'road',
-      filter: ['in', ['get', 'class'], ['literal', ['primary','secondary','tertiary','trunk']]],
-      paint: { 'line-color': '#FFFFFF',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 8] as any } },
-    { id: 'road-highway',    type: 'line',   source: 'composite', 'source-layer': 'road',
-      filter: ['in', ['get', 'class'], ['literal', ['motorway','motorway_link']]],
-      paint: { 'line-color': '#EDE8FF',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2, 16, 10] as any } },
-    { id: 'road-label',      type: 'symbol', source: 'composite', 'source-layer': 'road',
-      layout: {
-        'text-field': ['get', 'name'] as any,
-        'text-font': ['DIN Pro Regular', 'Arial Unicode MS Regular'],
-        'text-size': 10,
-        'symbol-placement': 'line',
-      },
-      paint: { 'text-color': '#7C5BFF', 'text-halo-color': '#FFFFFF', 'text-halo-width': 2 } },
-    { id: 'place-label',     type: 'symbol', source: 'composite', 'source-layer': 'place_label',
-      layout: {
-        'text-field': ['get', 'name'] as any,
-        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 8, 10, 14, 16] as any,
-      },
-      paint: { 'text-color': '#3A2470', 'text-halo-color': '#F6F2FF', 'text-halo-width': 2 } },
-  ],
-};
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface MapScreenProps {
@@ -275,6 +217,34 @@ function createPostMarkerEl(post: NearbyPost, onTap: () => void): HTMLDivElement
   return el;
 }
 
+function createSearchMarkerEl(): HTMLDivElement {
+  const el = document.createElement('div');
+  el.style.cssText = 'display:flex; flex-direction:column; align-items:center; z-index:7;';
+
+  const bubble = document.createElement('div');
+  bubble.style.cssText = `
+    width:40px; height:40px; border-radius:50%;
+    background:linear-gradient(135deg, #9C7CFF, #7C5BFF);
+    border:2.5px solid #fff;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 4px 16px rgba(124,91,255,0.5);
+    font-size:18px;
+  `;
+  bubble.textContent = '📍';
+
+  const tip = document.createElement('div');
+  tip.style.cssText = `
+    width:0; height:0; margin-top:-1px;
+    border-left:7px solid transparent;
+    border-right:7px solid transparent;
+    border-top:9px solid #7C5BFF;
+  `;
+
+  el.appendChild(bubble);
+  el.appendChild(tip);
+  return el;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function MapScreen({
@@ -284,26 +254,48 @@ export default function MapScreen({
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
   const [cssLoaded, setCssLoaded] = useState(false);
-  const [mapTheme, setMapTheme] = useState<'purple' | 'yellow'>('purple');
+  const [mapTheme, setMapTheme] = useState<MapTheme>('purple');
+  const themeUi = MAP_THEME_UI[mapTheme];
+  const mapFilters = [
+    { id: 'all', label: t('map.filterAll') },
+    { id: 'friends', label: t('map.filterFriends') },
+    { id: 'public', label: t('map.filterPublic') },
+    { id: 'events', label: t('map.filterEvents') },
+    { id: 'vibe', label: t('map.filterVibe') },
+  ];
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
+  const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const postMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const placeMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const hasFittedPostsRef = useRef(false);
+  const skipInitialThemeRef = useRef(true);
   const MAP_CONTAINER_ID = 'mymo-mapbox-container';
 
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
     : DEFAULT_CENTER;
+
+  const searchProximity = userCoords
+    ? { lng: userCoords.lng, lat: userCoords.lat }
+    : { lng: DEFAULT_CENTER[0], lat: DEFAULT_CENTER[1] };
+  const {
+    results: geocodeResults,
+    loading: geocodeLoading,
+    focused: searchFocused,
+    setFocused: setSearchFocused,
+    showDropdown: showSearchDropdown,
+  } = useMapGeocodeSearch(searchText, { proximity: searchProximity });
 
   // ── User location (browser geolocation) ────────────────────────────────────
   useEffect(() => {
@@ -420,56 +412,6 @@ export default function MapScreen({
         (p.city || '').toLowerCase().includes(searchLower))
     : nearbyPlaces;
 
-  // ── Apply theme colors to map layers ───────────────────────────────────────
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-
-    const applyColors = () => {
-      const isPurple = mapTheme === 'purple';
-      const colors = isPurple ? {
-        background: '#F5F0FF',
-        water: '#C3B5FF',
-        landuse: '#E8DFFF',
-        building: '#DDD4FF',
-        parks: '#E2D8FF',
-      } : {
-        background: '#FAF6E6', // Sunny light yellow
-        water: '#BDE3FF',      // Beautiful light blue water
-        landuse: '#F5EDA3',    // Light yellow-green parks
-        building: '#FAF0CD',   // Light yellow buildings
-        parks: '#E9E0A6',      // Sunny green-yellow parks
-      };
-
-      const layerPaintProperties: { [layerId: string]: [string, string] } = {
-        'background': ['background-color', colors.background],
-        'water': ['fill-color', colors.water],
-        'landuse': ['fill-color', colors.landuse],
-        'building': ['fill-color', colors.building],
-        'national-park': ['fill-color', colors.parks],
-        'park-outline': ['line-color', colors.parks],
-        'landuse-park': ['fill-color', colors.parks],
-        'building-outline': ['line-color', colors.building],
-      };
-
-      try {
-        Object.entries(layerPaintProperties).forEach(([layerId, [prop, value]]) => {
-          if (map.getLayer(layerId)) {
-            map.setPaintProperty(layerId, prop, value);
-          }
-        });
-      } catch (err) {
-        console.warn('Error applying style paint properties:', err);
-      }
-    };
-
-    if (map.isStyleLoaded()) {
-      applyColors();
-    } else {
-      map.on('style.load', applyColors);
-    }
-  }, [mapTheme, cssLoaded]);
-
   // ── Inject mapbox-gl CSS once and wait for it to load ──────────────────────
   useEffect(() => {
     const existing = document.getElementById('mapbox-gl-css');
@@ -494,7 +436,7 @@ export default function MapScreen({
 
     const map = new mapboxgl.Map({
       container,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: getMymoMapStyle('purple') as mapboxgl.Style,
       center: mapCenter,
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
@@ -538,11 +480,30 @@ export default function MapScreen({
       postMarkersRef.current = [];
       placeMarkersRef.current.forEach(m => m.remove());
       placeMarkersRef.current = [];
+      searchMarkerRef.current?.remove();
+      searchMarkerRef.current = null;
       userMarkerRef.current = null;
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cssLoaded]);
+
+  // ── Switch between purple and yellow MYMO styles ───────────────────────────
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return;
+    if (skipInitialThemeRef.current) {
+      skipInitialThemeRef.current = false;
+      return;
+    }
+    const map = mapRef.current;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    map.setStyle(getMymoMapStyle(mapTheme) as mapboxgl.Style);
+    map.once('style.load', () => {
+      map.jumpTo({ center, zoom });
+      map.resize();
+    });
+  }, [mapTheme, mapReady]);
 
   // ── Sync post markers ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -618,6 +579,22 @@ export default function MapScreen({
     });
   }, [friendPins, mapReady, onFriendTap]);
 
+  // ── Sync search result marker ────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    searchMarkerRef.current?.remove();
+    searchMarkerRef.current = null;
+
+    if (!searchPin) return;
+
+    const el = createSearchMarkerEl();
+    searchMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([searchPin.lng, searchPin.lat])
+      .addTo(map);
+  }, [searchPin, mapReady]);
+
   // ── Move user pin when coords update ───────────────────────────────────────
   useEffect(() => {
     if (!userMarkerRef.current || !userCoords) return;
@@ -657,10 +634,33 @@ export default function MapScreen({
   const zoomIn  = useCallback(() => mapRef.current?.zoomIn(), []);
   const zoomOut = useCallback(() => mapRef.current?.zoomOut(), []);
 
+  const handleSelectGeocode = useCallback((result: MapGeocodeResult) => {
+    setSearchText(result.placeName);
+    setSearchFocused(false);
+    setSearchPin(result);
+    mapRef.current?.flyTo({
+      center: [result.lng, result.lat],
+      zoom: 17,
+      duration: 800,
+    });
+  }, []);
+
+  const handleSearchSubmit = useCallback(() => {
+    if (geocodeResults.length > 0) {
+      handleSelectGeocode(geocodeResults[0]);
+    }
+  }, [geocodeResults, handleSelectGeocode]);
+
+  useEffect(() => {
+    if (!searchText.trim()) setSearchPin(null);
+  }, [searchText]);
+
   return (
     <View style={styles.container}>
       {/* ── Real Mapbox GL map container ── */}
       <View nativeID={MAP_CONTAINER_ID} style={styles.map} />
+
+      <MapAtmosphere theme={mapTheme} />
 
       {/* ── Incognito ghost overlay ── */}
       {locationGranted && incognito && (
@@ -681,37 +681,93 @@ export default function MapScreen({
         pointerEvents={Platform.OS === 'web' ? undefined : 'box-none'}
       >
         <View
-          style={[styles.searchRow, Platform.OS === 'web' ? { pointerEvents: 'auto' as const } : undefined]}
+          style={[styles.searchBlock, Platform.OS === 'web' ? { pointerEvents: 'auto' as const } : undefined]}
           pointerEvents={Platform.OS === 'web' ? undefined : 'auto'}
         >
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={16} color={Colors.primary} />
-            <TextInput
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholder={t('map.search')}
-              placeholderTextColor={Colors.textMuted}
-              style={styles.searchInput}
-            />
+          <View style={styles.searchRow}>
+            <View style={[styles.searchBox, { backgroundColor: themeUi.searchBg }]}>
+              <Ionicons name="search-outline" size={16} color={mapTheme === 'purple' ? Colors.primary : '#C89620'} />
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setTimeout(() => setSearchFocused(false), 300)}
+                onSubmitEditing={handleSearchSubmit}
+                returnKeyType="search"
+                placeholder={t('map.search')}
+                placeholderTextColor={Colors.textMuted}
+                style={styles.searchInput}
+              />
+              {searchText.length > 0 ? (
+                <TouchableOpacity onPress={() => { setSearchText(''); setSearchPin(null); }}>
+                  <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                </TouchableOpacity>
+              ) : (
+                <Ionicons name="mic-outline" size={16} color={Colors.textMuted} />
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                const nextTheme = mapTheme === 'purple' ? 'yellow' : 'purple';
+                setMapTheme(nextTheme);
+                Toast.show({
+                  type: 'success',
+                  text1: nextTheme === 'purple' ? 'Bản đồ Tím Pastel 💜' : 'Bản đồ Nắng ấm ☀️',
+                });
+              }}
+              style={styles.mapBtn}
+              activeOpacity={0.88}
+            >
+              <LinearGradient colors={[...themeUi.accent]} style={styles.mapBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                <Ionicons name="options-outline" size={18} color={Colors.white} />
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={() => {
-              const nextTheme = mapTheme === 'purple' ? 'yellow' : 'purple';
-              setMapTheme(nextTheme);
-              Toast.show({
-                type: 'success',
-                text1: nextTheme === 'purple' ? 'Bản đồ Tím Pastel 💜' : 'Bản đồ Nắng ấm ☀️',
-              });
-            }}
-            style={styles.mapBtn}
-          >
-            <Ionicons
-              name={mapTheme === 'purple' ? 'color-palette-outline' : 'color-palette'}
-              size={18}
-              color={Colors.primary}
-            />
-          </TouchableOpacity>
+
+          <MapSearchDropdown
+            visible={showSearchDropdown}
+            loading={geocodeLoading}
+            results={geocodeResults}
+            onSelect={handleSelectGeocode}
+            onClose={() => setSearchFocused(false)}
+          />
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {mapFilters.map((chip, index) => {
+            const active = index === 0;
+            return active ? (
+              <LinearGradient
+                key={chip.id}
+                colors={[...themeUi.chipActive]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.filterChipActive}
+              >
+                <Text style={styles.filterChipActiveText}>
+                  {chip.label}{index === 0 ? ' ✨' : ''}
+                </Text>
+              </LinearGradient>
+            ) : (
+              <View
+                key={chip.id}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: themeUi.chipInactiveBg,
+                    borderColor: themeUi.chipInactiveBorder,
+                  },
+                ]}
+              >
+                <Text style={styles.filterChipText}>{chip.label}</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
 
         {(!locationGranted || incognito) && (
           <View style={styles.invisibleBanner}>
@@ -731,9 +787,21 @@ export default function MapScreen({
         <TouchableOpacity onPress={zoomOut}  style={styles.zoomBtn}>
           <Ionicons name="remove"         size={20} color={Colors.primary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={recenter} style={styles.zoomBtn}>
-          <Ionicons name="locate-outline" size={20} color={Colors.primary} />
-        </TouchableOpacity>
+        <MapLocateButton
+          onPress={recenter}
+          accent={themeUi.accent}
+          glowColor={themeUi.locateGlow}
+        />
+      </View>
+
+      <View style={styles.weatherWrap} pointerEvents="none">
+        <View style={[styles.weatherCard, { backgroundColor: themeUi.searchBg }]}>
+          <Ionicons name="partly-sunny-outline" size={16} color={mapTheme === 'purple' ? Colors.primary : '#D4A020'} />
+          <Text style={styles.weatherTemp}>28°</Text>
+        </View>
+        <View style={[styles.weatherSub, { backgroundColor: themeUi.chipInactiveBg, borderColor: themeUi.chipInactiveBorder }]}>
+          <Text style={styles.weatherSubText}>{t('map.weatherNice')}</Text>
+        </View>
       </View>
 
       {/* ── Bottom friend chips ── */}
@@ -798,7 +866,7 @@ export default function MapScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primaryTint,
+    backgroundColor: '#FAF8FF',
     overflow: 'hidden',
     ...Platform.select({
       web: {
@@ -843,7 +911,38 @@ const styles = StyleSheet.create({
     right: 0,
     paddingTop: 52,
     paddingHorizontal: 16,
+    gap: 10,
+    zIndex: 2,
+  },
+  filterRow: {
     gap: 8,
+    paddingRight: 8,
+  },
+  filterChipActive: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    ...Shadows.glow,
+  },
+  filterChipActiveText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textMid,
+  },
+  searchBlock: {
+    gap: 0,
+    zIndex: 20,
   },
   searchRow: {
     flexDirection: 'row',
@@ -854,10 +953,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
     ...Shadows.soft,
   },
   searchInput: {
@@ -869,15 +969,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
     overflow: 'hidden',
-    ...Shadows.soft,
+    ...Shadows.float,
   },
-  mapBtnActive: {},
   mapBtnGrad: {
-    ...StyleSheet.absoluteFill,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -912,6 +1008,7 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 160,
     gap: 8,
+    zIndex: 2,
   },
   zoomBtn: {
     width: 48,
@@ -922,11 +1019,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Shadows.float,
   },
+  locateBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'transparent',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  locateGrad: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+  },
+  weatherWrap: {
+    position: 'absolute',
+    left: 16,
+    bottom: 158,
+    gap: 8,
+    zIndex: 2,
+  },
+  weatherCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.65)',
+    ...Shadows.soft,
+  },
+  weatherTemp: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textDark,
+  },
+  weatherSub: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  weatherSubText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMid,
+  },
   chipWrap: {
     position: 'absolute',
     bottom: 110,
     left: 0,
     right: 0,
+    zIndex: 2,
   },
   chips: {
     paddingHorizontal: 16,
