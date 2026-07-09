@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Platform,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Platform, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { getFriends, getFriendRequests, getFriendSuggestions } from '../services
 import { getNearbyPlaces, type PlaceSummary } from '../services/placeApi';
 import FriendMomentsSection from '../components/FriendMomentsSection';
 import NotificationDropdown from '../components/NotificationDropdown';
+import HomeAtmosphere from '../components/HomeAtmosphere';
 
 interface HomeScreenProps {
   isActive?: boolean;
@@ -27,12 +28,12 @@ interface HomeScreenProps {
 }
 
 const VIBES = [
-  { id: 'chill', label: 'Chill', icon: 'leaf-outline' as const, bg: '#FFE4F0', color: '#FF6B9D' },
-  { id: 'study', label: 'Study', icon: 'book-outline' as const, bg: '#E4F8EE', color: '#22C55E' },
-  { id: 'date', label: 'Date', icon: 'heart' as const, bg: '#FFE8EC', color: '#EF4444' },
-  { id: 'party', label: 'Party', icon: 'musical-notes-outline' as const, bg: '#F0E8FF', color: '#7C5BFF' },
-  { id: 'workout', label: 'Workout', icon: 'barbell-outline' as const, bg: '#E4F0FF', color: '#3B82F6' },
-];
+  { id: 'chill', label: 'Chill', icon: 'leaf-outline' as const, grad: ['#FFD6EC', '#FFB8D9'] as const, color: '#D9468F', emoji: '🌸' },
+  { id: 'study', label: 'Study', icon: 'book-outline' as const, grad: ['#C8F5DC', '#9AE6B8'] as const, color: '#16A34A', emoji: '📚' },
+  { id: 'date', label: 'Date', icon: 'heart' as const, grad: ['#FFD4DC', '#FF9EB0'] as const, color: '#E11D48', emoji: '💕' },
+  { id: 'party', label: 'Party', icon: 'musical-notes-outline' as const, grad: ['#E8D4FF', '#C9A8FF'] as const, color: '#7C3AED', emoji: '🎉' },
+  { id: 'workout', label: 'Workout', icon: 'barbell-outline' as const, grad: ['#C8E4FF', '#93C8FD'] as const, color: '#2563EB', emoji: '💪' },
+] as const;
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop';
 const FALLBACK_PLACE = 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=400&fit=crop';
@@ -42,6 +43,24 @@ function getGreetingKey(): string {
   if (hour < 12) return 'home.greeting.morning';
   if (hour < 18) return 'home.greeting.afternoon';
   return 'home.greeting.evening';
+}
+
+function PulsingDot({ color }: { color: string }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const useNativeDriver = Platform.OS !== 'web';
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.35, duration: 700, useNativeDriver }),
+        Animated.timing(scale, { toValue: 1, duration: 700, useNativeDriver }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [scale]);
+  return (
+    <Animated.View style={[styles.pulseDot, { backgroundColor: color, transform: [{ scale }] }]} />
+  );
 }
 
 export default function HomeScreen({
@@ -58,6 +77,7 @@ export default function HomeScreen({
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [selectedVibe, setSelectedVibe] = useState<string>('chill');
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [friendNames, setFriendNames] = useState<Record<string, { name: string; avatar?: string | null }>>({});
@@ -133,136 +153,233 @@ export default function HomeScreen({
 
   return (
     <View style={styles.root}>
+      <HomeAtmosphere />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
+        style={styles.scrollView}
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12, paddingBottom: 120 }]}
       >
+        {/* Header */}
         <View style={styles.header}>
-          <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+          <View style={styles.logoWrap}>
+            <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.logoSparkle}>✨</Text>
+          </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={() => setNotifOpen(open => !open)}
               activeOpacity={0.85}
-              style={[styles.notifBtn, notifOpen && styles.notifBtnActive]}
+              style={styles.notifBtnOuter}
             >
-              <Ionicons
-                name={notifOpen ? 'notifications' : 'notifications-outline'}
-                size={22}
-                color={notifOpen ? Colors.primary : Colors.textDark}
-              />
-              {unreadNotifCount > 0 && (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>
-                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                  </Text>
-                </View>
-              )}
+              <LinearGradient
+                colors={notifOpen ? ['#E8D4FF', '#D4B8FF'] : ['#FFFFFF', '#FAF6FF']}
+                style={[styles.notifBtn, notifOpen && styles.notifBtnActive]}
+              >
+                <Ionicons
+                  name={notifOpen ? 'notifications' : 'notifications-outline'}
+                  size={22}
+                  color={notifOpen ? Colors.primary : Colors.textDark}
+                />
+                {unreadNotifCount > 0 && (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>
+                      {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                    </Text>
+                  </View>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
+
             <TouchableOpacity onPress={onGoProfile} activeOpacity={0.85}>
-              <Image
-                source={{ uri: avatarUrl || FALLBACK_AVATAR }}
-                style={styles.avatar}
-              />
+              <LinearGradient colors={['#C9A8FF', '#FF9EC8', '#9C7CFF']} style={styles.avatarRing}>
+                <Image
+                  source={{ uri: avatarUrl || FALLBACK_AVATAR }}
+                  style={styles.avatar}
+                />
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* Hero */}
         <View style={styles.hero}>
-          <Text style={styles.greeting}>{greeting} ✨</Text>
-          <Text style={styles.greetingSub}>{t('home.vibeQuestion')}</Text>
+          <View style={styles.greetingRow}>
+            <Text style={styles.greeting}>{greeting}</Text>
+            <Text style={styles.greetingEmoji}>✨</Text>
+          </View>
+          <View style={styles.vibeQuestionWrap}>
+            <PulsingDot color="#C9A8FF" />
+            <Text style={styles.greetingSub}>{t('home.vibeQuestion')}</Text>
+            <Text style={styles.vibeQuestionEmoji}>💫</Text>
+          </View>
         </View>
 
+        {/* Vibe chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.vibeRow}
         >
-          {VIBES.map(vibe => (
-            <TouchableOpacity
-              key={vibe.id}
-              onPress={onGoMap}
-              activeOpacity={0.85}
-              style={[styles.vibeChip, { backgroundColor: vibe.bg }]}
-            >
-              <Ionicons name={vibe.icon} size={14} color={vibe.color} />
-              <Text style={[styles.vibeText, { color: vibe.color }]}>{vibe.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {VIBES.map(vibe => {
+            const active = selectedVibe === vibe.id;
+            return (
+              <TouchableOpacity
+                key={vibe.id}
+                onPress={() => {
+                  setSelectedVibe(vibe.id);
+                  onGoMap();
+                }}
+                activeOpacity={0.88}
+              >
+                {active ? (
+                  <LinearGradient
+                    colors={[...vibe.grad]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.vibeChip, styles.vibeChipActive]}
+                  >
+                    <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
+                    <Ionicons name={vibe.icon} size={14} color={vibe.color} />
+                    <Text style={[styles.vibeText, { color: vibe.color }]}>{vibe.label}</Text>
+                    <Text style={styles.vibeSparkle}>✦</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.vibeChip, styles.vibeChipInactive]}>
+                    <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
+                    <Ionicons name={vibe.icon} size={14} color={vibe.color} />
+                    <Text style={[styles.vibeText, { color: vibe.color }]}>{vibe.label}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
+        {/* AI suggestion card */}
         <LinearGradient
-          colors={['#F4EEFF', '#ECE4FF', '#E2D8FF']}
+          colors={['#F0E8FF', '#E8DEFF', '#FFE8F4', '#E4F0FF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.aiCard}
+          style={styles.aiCardOuter}
         >
+          <View style={styles.aiCardShine} />
+          <View style={styles.aiBadge}>
+            <LinearGradient colors={['#C9A8FF', '#9C7CFF']} style={styles.aiBadgeGrad}>
+              <Text style={styles.aiBadgeText}>AI ✨</Text>
+            </LinearGradient>
+          </View>
+
           <View style={styles.aiCardTop}>
             <View style={styles.aiCardCopy}>
               <Text style={styles.aiTitle}>{t('home.aiSuggest')}</Text>
               <Text style={styles.aiSub}>{t('home.aiSuggestSub')}</Text>
             </View>
-            <Image
-              source={{ uri: nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
-              style={styles.aiThumb}
-            />
+            <View style={styles.aiThumbWrap}>
+              <LinearGradient colors={['#FFFFFF', '#F0E8FF']} style={styles.aiThumbRing}>
+                <Image
+                  source={{ uri: nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
+                  style={styles.aiThumb}
+                />
+              </LinearGradient>
+              <Text style={styles.aiThumbSparkle}>✦</Text>
+            </View>
           </View>
 
           <View style={styles.placeCard}>
-            <Text style={styles.placeName}>
-              {nearbyPlace?.name || t('home.exploreMap')}
-            </Text>
+            <View style={styles.placeCardHeader}>
+              <Ionicons name="location" size={14} color={Colors.primary} />
+              <Text style={styles.placeName} numberOfLines={1}>
+                {nearbyPlace?.name || t('home.exploreMap')}
+              </Text>
+            </View>
             <Text style={styles.placeMeta}>
               {nearbyPlace
                 ? t('home.nearbyPlace')
                 : t('home.enableLocationHint')}
             </Text>
-            <TouchableOpacity onPress={onGoMap} activeOpacity={0.88} style={styles.mapBtnWrap}>
-              <LinearGradient colors={Gradients.primary} style={styles.mapBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+            <TouchableOpacity onPress={onGoMap} activeOpacity={0.88}>
+              <LinearGradient
+                colors={['#B896FF', '#7C5BFF', '#9C7CFF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.mapBtn}
+              >
+                <Ionicons name="map-outline" size={14} color={Colors.white} />
                 <Text style={styles.mapBtnText}>{t('home.viewOnMap')}</Text>
+                <Text style={styles.mapBtnSparkle}>→</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
         </LinearGradient>
 
+        {/* Stories */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t('home.storiesNearYou')}</Text>
-          <TouchableOpacity onPress={onGoFriends}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionEmoji}>📸</Text>
+            <Text style={styles.sectionTitle}>{t('home.storiesNearYou')}</Text>
+            <Text style={styles.sectionSparkle}>✨</Text>
+          </View>
+          <TouchableOpacity onPress={onGoFriends} style={styles.seeAllBtn}>
             <Text style={styles.seeAll}>{t('common.seeAll')}</Text>
+            <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
           </TouchableOpacity>
         </View>
 
-        <FriendMomentsSection friendNames={friendNames} hideTitle />
+        <View style={styles.storiesWrap}>
+          <FriendMomentsSection friendNames={friendNames} hideTitle />
+        </View>
 
-        <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>{t('home.anonymousSignals')}</Text>
+        {/* Signals */}
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionEmoji}>🔮</Text>
+          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>{t('home.anonymousSignals')}</Text>
+          <Text style={styles.sectionSparkle}>♡</Text>
+        </View>
 
         {pendingRequests > 0 && (
-          <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9} style={[styles.signalCard, styles.signalPink]}>
-            <View style={styles.signalIconWrap}>
-              <Ionicons name="heart" size={18} color="#FF6B9D" />
-            </View>
-            <View style={styles.signalCopy}>
-              <Text style={styles.signalTitle}>{t('home.someoneWantsVibe')}</Text>
-              <Text style={styles.signalLink}>{t('home.exploreNow')} →</Text>
-            </View>
-            <View style={styles.signalBadge}>
-              <Text style={styles.signalBadgeText}>{pendingRequests}</Text>
-            </View>
+          <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
+            <LinearGradient
+              colors={['#FFF0F8', '#FFE4F0', '#FFF5FA']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.signalCard, styles.signalPink]}
+            >
+              <LinearGradient colors={['#FFD6EC', '#FFB8D9']} style={styles.signalIconWrap}>
+                <Ionicons name="heart" size={20} color="#E11D48" />
+              </LinearGradient>
+              <View style={styles.signalCopy}>
+                <Text style={styles.signalTitle}>{t('home.someoneWantsVibe')}</Text>
+                <Text style={styles.signalLink}>{t('home.exploreNow')} ✨</Text>
+              </View>
+              <LinearGradient colors={['#FFFFFF', '#FFE8F0']} style={styles.signalBadge}>
+                <Text style={styles.signalBadgeText}>{pendingRequests}</Text>
+              </LinearGradient>
+            </LinearGradient>
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9} style={[styles.signalCard, styles.signalPurple]}>
-          <View style={[styles.signalIconWrap, styles.signalIconPurple]}>
-            <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" />
-          </View>
-          <View style={styles.signalCopy}>
-            <Text style={styles.signalTitle}>{t('home.vibeMatch')}</Text>
-            <Text style={styles.signalSub}>
-              {suggestionCount > 0
-                ? t('home.vibeMatchCount').replace('{count}', String(suggestionCount))
-                : t('home.vibeMatchEmpty')}
-            </Text>
-            <Text style={styles.signalLink}>{t('home.explore')} →</Text>
-          </View>
+        <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
+          <LinearGradient
+            colors={['#F5EEFF', '#EDE4FF', '#F8F0FF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.signalCard, styles.signalPurple]}
+          >
+            <LinearGradient colors={['#E8DEFF', '#D4C4FF']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
+              <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" />
+            </LinearGradient>
+            <View style={styles.signalCopy}>
+              <Text style={styles.signalTitle}>{t('home.vibeMatch')} ✦</Text>
+              <Text style={styles.signalSub}>
+                {suggestionCount > 0
+                  ? t('home.vibeMatchCount').replace('{count}', String(suggestionCount))
+                  : t('home.vibeMatchEmpty')}
+              </Text>
+              <Text style={styles.signalLink}>{t('home.explore')} →</Text>
+            </View>
+            <Text style={styles.signalCardSparkle}>💜</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
 
@@ -281,8 +398,11 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAFAFC',
+    backgroundColor: '#F8F0FF',
     position: 'relative',
+  },
+  scrollView: {
+    zIndex: 1,
   },
   scroll: {
     paddingHorizontal: 20,
@@ -293,32 +413,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 22,
   },
+  logoWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  logo: {
+    width: 108,
+    height: 36,
+  },
+  logoSparkle: {
+    fontSize: 14,
+    marginTop: -8,
+  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
+  notifBtnOuter: {
+    borderRadius: 18,
+    ...Shadows.glow,
+  },
   notifBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 16,
-    backgroundColor: Colors.white,
+    width: 46,
+    height: 46,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    ...Shadows.soft,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
   },
   notifBtnActive: {
-    backgroundColor: Colors.primaryTint,
+    borderColor: 'rgba(200, 168, 255, 0.5)',
   },
   notifBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 4,
+    right: 4,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#EF4444',
+    backgroundColor: '#10B981',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -331,21 +468,29 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 12,
   },
-  logo: {
-    width: 108,
-    height: 36,
+  avatarRing: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    padding: 2.5,
+    ...Shadows.glow,
   },
   avatar: {
-    width: 40,
-    height: 40,
+    width: '100%',
+    height: '100%',
     borderRadius: 20,
     borderWidth: 2,
     borderColor: Colors.white,
     backgroundColor: Colors.primarySoft,
-    ...Shadows.soft,
   },
   hero: {
     marginBottom: 18,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   greeting: {
     fontSize: 28,
@@ -353,40 +498,114 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
     lineHeight: 34,
     letterSpacing: -0.5,
+    flexShrink: 1,
+  },
+  greetingEmoji: {
+    fontSize: 22,
+    marginTop: 4,
+  },
+  vibeQuestionWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   greetingSub: {
-    marginTop: 8,
     fontSize: 15,
-    color: Colors.textMuted,
-    fontWeight: '500',
+    color: Colors.textMid,
+    fontWeight: '600',
+    flex: 1,
+  },
+  vibeQuestionEmoji: {
+    fontSize: 16,
   },
   vibeRow: {
     gap: 10,
-    paddingBottom: 20,
+    paddingBottom: 22,
   },
   vibeChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 999,
+  },
+  vibeChipActive: {
+    ...Shadows.glow,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  vibeChipInactive: {
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(232, 216, 255, 0.6)',
+    ...Shadows.soft,
+  },
+  vibeEmoji: {
+    fontSize: 13,
   },
   vibeText: {
     fontSize: 13,
+    fontWeight: '800',
+  },
+  vibeSparkle: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.9)',
     fontWeight: '700',
   },
-  aiCard: {
-    borderRadius: 24,
+  aiCardOuter: {
+    borderRadius: 26,
     padding: 16,
     marginBottom: 24,
-    ...Shadows.soft,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.7)',
+    overflow: 'hidden',
+    ...Shadows.float,
+  },
+  aiCardShine: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+    ...Platform.select({
+      web: { filter: 'blur(20px)' as any },
+      default: { opacity: 0.6 },
+    }),
+  },
+  aiBadge: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+    ...Shadows.glow,
+  },
+  aiBadgeGrad: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  aiBadgeText: {
+    color: Colors.white,
+    fontSize: 11,
+    fontWeight: '800',
   },
   aiCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
     marginBottom: 14,
+    paddingRight: 52,
   },
   aiCardCopy: {
     flex: 1,
@@ -402,46 +621,84 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '500',
   },
+  aiThumbWrap: {
+    position: 'relative',
+  },
+  aiThumbRing: {
+    padding: 3,
+    borderRadius: 20,
+  },
   aiThumb: {
-    width: 88,
-    height: 88,
-    borderRadius: 18,
+    width: 82,
+    height: 82,
+    borderRadius: 17,
     backgroundColor: Colors.white,
   },
+  aiThumbSparkle: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    fontSize: 14,
+    color: '#C9A8FF',
+  },
   placeCard: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 20,
     padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+    ...Shadows.soft,
+  },
+  placeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
   placeName: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '800',
     color: Colors.textDark,
-    marginBottom: 4,
   },
   placeMeta: {
     fontSize: 13,
     color: Colors.textMuted,
     marginBottom: 12,
   },
-  mapBtnWrap: {
-    alignSelf: 'flex-start',
-  },
   mapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderRadius: 999,
+    ...Shadows.glow,
   },
   mapBtnText: {
     color: Colors.white,
     fontSize: 13,
     fontWeight: '800',
   },
+  mapBtnSparkle: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionEmoji: {
+    fontSize: 16,
   },
   sectionTitle: {
     fontSize: 18,
@@ -452,39 +709,59 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 12,
   },
+  sectionSparkle: {
+    fontSize: 12,
+    color: Colors.primaryLight,
+  },
+  seeAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 216, 255, 0.5)',
+  },
   seeAll: {
     fontSize: 13,
     fontWeight: '700',
     color: Colors.primary,
   },
+  storiesWrap: {
+    marginBottom: 8,
+    marginHorizontal: -4,
+  },
   signalCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 14,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    ...Shadows.soft,
   },
   signalPink: {
-    backgroundColor: '#FFF0F5',
+    borderColor: 'rgba(255, 200, 220, 0.5)',
   },
   signalPurple: {
-    backgroundColor: '#F3EEFF',
+    borderColor: 'rgba(200, 168, 255, 0.4)',
   },
   signalIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: Colors.white,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Shadows.soft,
   },
-  signalIconPurple: {
-    backgroundColor: '#EDE6FF',
-  },
+  signalIconPurple: {},
   signalLogo: {
-    width: 28,
-    height: 12,
+    width: 30,
+    height: 13,
   },
   signalCopy: {
     flex: 1,
@@ -506,26 +783,21 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   signalBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.white,
+    minWidth: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      web: { boxShadow: '0 2px 8px rgba(255, 107, 157, 0.2)' },
-      default: {
-        shadowColor: '#FF6B9D',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 3,
-      },
-    }),
+    paddingHorizontal: 8,
+    ...Shadows.soft,
   },
   signalBadgeText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#FF6B9D',
+    color: '#E11D48',
+  },
+  signalCardSparkle: {
+    fontSize: 20,
+    marginRight: 4,
   },
 });

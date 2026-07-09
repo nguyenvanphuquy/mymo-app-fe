@@ -151,10 +151,12 @@ const styles = StyleSheet.create({
   card: {
     width: 112,
     height: 198,
-    borderRadius: 14,
+    borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: Colors.primaryTint,
-    ...Shadows.soft,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+    ...Shadows.glow,
   },
   thumb: {
     ...StyleSheet.absoluteFillObject,
@@ -182,7 +184,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     borderWidth: 2.5,
-    borderColor: '#3B82F6',
+    borderColor: '#C9A8FF',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFF',
