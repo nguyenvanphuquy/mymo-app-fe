@@ -21,11 +21,12 @@ import { filterActivePosts } from '../utils/postExpiration';
 
 interface FriendMomentsSectionProps {
   friendNames: Record<string, { name: string; avatar?: string | null }>;
+  hideTitle?: boolean;
 }
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
-export default function FriendMomentsSection({ friendNames }: FriendMomentsSectionProps) {
+export default function FriendMomentsSection({ friendNames, hideTitle = false }: FriendMomentsSectionProps) {
   const { t } = useI18n();
   const [groups, setGroups] = useState<UserMomentGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<UserMomentGroup | null>(null);
@@ -63,10 +64,12 @@ export default function FriendMomentsSection({ friendNames }: FriendMomentsSecti
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.titleRow}>
-        <Ionicons name="images-outline" size={16} color={Colors.primary} />
-        <Text style={styles.title}>{t('friends.moments')}</Text>
-      </View>
+      {!hideTitle && (
+        <View style={styles.titleRow}>
+          <Ionicons name="images-outline" size={16} color={Colors.primary} />
+          <Text style={styles.title}>{t('friends.moments')}</Text>
+        </View>
+      )}
 
       <ScrollView
         horizontal

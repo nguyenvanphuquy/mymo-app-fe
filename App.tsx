@@ -13,6 +13,7 @@ import { Colors, Gradients, Shadows } from './src/constants/colors';
 import type { Friend } from './src/constants/data';
 
 import AuthScreen from './src/screens/AuthScreen';
+import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
@@ -26,7 +27,7 @@ import { LocationPermSheet, EnableLocationModal } from './src/components/Locatio
 import type { PostView } from './src/services/postApi';
 
 type Screen = 'auth' | 'app';
-type Tab = 'map' | 'friends' | 'notifications' | 'profile';
+type Tab = 'home' | 'map' | 'friends' | 'notifications' | 'profile';
 
 type ChatSession = {
   conversationId: string;
@@ -79,7 +80,7 @@ function AppInner() {
     })();
   }, []);
   const [screen, setScreen] = useState<Screen>('auth');
-  const [tab, setTab] = useState<Tab>('map');
+  const [tab, setTab] = useState<Tab>('home');
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [incognito, setIncognito] = useState(false);
   const [permissionAsked, setPermissionAsked] = useState(false);
@@ -187,6 +188,17 @@ function AppInner() {
     <View style={styles.root}>
       {/* Main content */}
       <View style={styles.content}>
+        {tab === 'home' && (
+          <HomeScreen
+            isActive={tab === 'home'}
+            locationGranted={!!locationGranted}
+            unreadNotifCount={unreadNotifCount}
+            onGoMap={() => setTab('map')}
+            onGoFriends={() => setTab('friends')}
+            onGoProfile={() => setTab('profile')}
+            onGoNotifications={() => setTab('notifications')}
+          />
+        )}
         {tab === 'map' && (
           <MapScreen
             locationGranted={!!locationGranted}
@@ -240,7 +252,7 @@ function AppInner() {
             }}
             onLogout={() => {
               setScreen('auth');
-              setTab('map');
+              setTab('home');
               setLocationGranted(null);
               setPermissionAsked(false);
               setIncognito(false);
@@ -255,7 +267,6 @@ function AppInner() {
         tab={tab}
         setTab={setTab}
         onCamera={() => setCameraOpen(true)}
-        unreadNotifCount={unreadNotifCount}
       />
 
       {/* Modals & Sheets */}
@@ -300,31 +311,36 @@ function AppInner() {
 /* =================== BOTTOM NAV =================== */
 
 function BottomNav({
-  tab, setTab, onCamera, unreadNotifCount = 0,
+  tab, setTab, onCamera,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
   onCamera: () => void;
-  unreadNotifCount?: number;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
 
   const navItems = [
-    { id: 'map' as Tab,           icon: 'map-outline',                iconActive: 'map',                   label: t('nav.map') },
-    { id: 'friends' as Tab,       icon: 'people-outline',              iconActive: 'people',                label: t('nav.friends') },
-    { id: 'notifications' as Tab, icon: 'notifications-outline',       iconActive: 'notifications',         label: t('nav.inbox') },
-    { id: 'profile' as Tab,       icon: 'person-circle-outline',       iconActive: 'person-circle',         label: t('nav.me') },
+    { id: 'home' as Tab, icon: 'home-outline', iconActive: 'home', label: t('nav.home') },
+    { id: 'map' as Tab, icon: 'map-outline', iconActive: 'map', label: t('nav.map') },
+    { id: 'friends' as Tab, icon: 'people-outline', iconActive: 'people', label: t('nav.friends') },
+    { id: 'profile' as Tab, icon: 'person-circle-outline', iconActive: 'person-circle', label: t('nav.me') },
   ];
 
   return (
     <View style={[styles.navWrap, { paddingBottom: insets.bottom + 8 }]}>
       <View style={styles.nav}>
-        {/* Left items */}
-        <NavItem item={navItems[0]} active={tab === navItems[0].id} onPress={() => setTab(navItems[0].id)} />
-        <NavItem item={navItems[1]} active={tab === navItems[1].id} onPress={() => setTab(navItems[1].id)} />
+        <NavItem
+          item={navItems[0]}
+          active={tab === navItems[0].id}
+          onPress={() => setTab(navItems[0].id)}
+        />
+        <NavItem
+          item={navItems[1]}
+          active={tab === navItems[1].id}
+          onPress={() => setTab(navItems[1].id)}
+        />
 
-        {/* Camera FAB */}
         <TouchableOpacity onPress={onCamera} style={styles.cameraBtn} activeOpacity={0.88}>
           <LinearGradient colors={Gradients.primary} style={styles.cameraBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <Ionicons name="camera" size={26} color={Colors.white} />
@@ -334,26 +350,27 @@ function BottomNav({
           </View>
         </TouchableOpacity>
 
-        {/* Right items */}
         <NavItem
           item={navItems[2]}
           active={tab === navItems[2].id}
           onPress={() => setTab(navItems[2].id)}
-          badgeCount={unreadNotifCount}
         />
-        <NavItem item={navItems[3]} active={tab === navItems[3].id} onPress={() => setTab(navItems[3].id)} />
+        <NavItem
+          item={navItems[3]}
+          active={tab === navItems[3].id}
+          onPress={() => setTab(navItems[3].id)}
+        />
       </View>
     </View>
   );
 }
 
 function NavItem({
-  item, active, onPress, badgeCount = 0,
+  item, active, onPress,
 }: {
   item: { id: Tab; icon: string; iconActive: string; label: string };
   active: boolean;
   onPress: () => void;
-  badgeCount?: number;
 }) {
   const scale = React.useRef(new Animated.Value(1)).current;
 
@@ -374,11 +391,6 @@ function NavItem({
             size={22}
             color={active ? Colors.primary : Colors.textMuted}
           />
-          {badgeCount > 0 && (
-            <View style={styles.navBadge}>
-              <Text style={styles.navBadgeText}>{badgeCount > 9 ? '9+' : badgeCount}</Text>
-            </View>
-          )}
         </View>
         <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
       </TouchableOpacity>
@@ -441,25 +453,6 @@ const styles = StyleSheet.create({
   },
   navIconWrapActive: {
     backgroundColor: Colors.primaryTint,
-  },
-  navBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  navBadgeText: {
-    color: Colors.white,
-    fontSize: 8,
-    fontWeight: '800',
   },
   navLabel: {
     fontSize: 9,
