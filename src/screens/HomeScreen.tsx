@@ -12,6 +12,7 @@ import { getUserProfile } from '../services/userApi';
 import { getFriends, getFriendRequests, getFriendSuggestions } from '../services/friendsApi';
 import { getNearbyPlaces, type PlaceSummary } from '../services/placeApi';
 import FriendMomentsSection from '../components/FriendMomentsSection';
+import NotificationDropdown from '../components/NotificationDropdown';
 
 interface HomeScreenProps {
   isActive?: boolean;
@@ -20,7 +21,9 @@ interface HomeScreenProps {
   onGoMap: () => void;
   onGoFriends: () => void;
   onGoProfile: () => void;
-  onGoNotifications: () => void;
+  onUnreadCountChange?: (count: number) => void;
+  onOpenPost?: (postId: string) => void;
+  onOpenChat?: (conversationId: string, title: string, avatarUrl?: string | null) => void;
 }
 
 const VIBES = [
@@ -48,10 +51,13 @@ export default function HomeScreen({
   onGoMap,
   onGoFriends,
   onGoProfile,
-  onGoNotifications,
+  onUnreadCountChange,
+  onOpenPost,
+  onOpenChat,
 }: HomeScreenProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const [notifOpen, setNotifOpen] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [friendNames, setFriendNames] = useState<Record<string, { name: string; avatar?: string | null }>>({});
@@ -135,11 +141,15 @@ export default function HomeScreen({
           <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
           <View style={styles.headerActions}>
             <TouchableOpacity
-              onPress={onGoNotifications}
+              onPress={() => setNotifOpen(open => !open)}
               activeOpacity={0.85}
-              style={styles.notifBtn}
+              style={[styles.notifBtn, notifOpen && styles.notifBtnActive]}
             >
-              <Ionicons name="notifications-outline" size={22} color={Colors.textDark} />
+              <Ionicons
+                name={notifOpen ? 'notifications' : 'notifications-outline'}
+                size={22}
+                color={notifOpen ? Colors.primary : Colors.textDark}
+              />
               {unreadNotifCount > 0 && (
                 <View style={styles.notifBadge}>
                   <Text style={styles.notifBadgeText}>
@@ -255,6 +265,15 @@ export default function HomeScreen({
           </View>
         </TouchableOpacity>
       </ScrollView>
+
+      <NotificationDropdown
+        visible={notifOpen}
+        onClose={() => setNotifOpen(false)}
+        onUnreadCountChange={onUnreadCountChange}
+        onOpenPost={onOpenPost}
+        onOpenChat={onOpenChat}
+        topOffset={insets.top + 64}
+      />
     </View>
   );
 }
@@ -263,6 +282,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#FAFAFC',
+    position: 'relative',
   },
   scroll: {
     paddingHorizontal: 20,
@@ -287,6 +307,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     ...Shadows.soft,
+  },
+  notifBtnActive: {
+    backgroundColor: Colors.primaryTint,
   },
   notifBadge: {
     position: 'absolute',

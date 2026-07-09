@@ -16,7 +16,6 @@ import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
-import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import CameraSheet from './src/components/CameraSheet';
 import ChatScreen from './src/components/ChatScreen';
@@ -27,7 +26,7 @@ import { LocationPermSheet, EnableLocationModal } from './src/components/Locatio
 import type { PostView } from './src/services/postApi';
 
 type Screen = 'auth' | 'app';
-type Tab = 'home' | 'map' | 'friends' | 'notifications' | 'profile';
+type Tab = 'home' | 'map' | 'friends' | 'profile';
 
 type ChatSession = {
   conversationId: string;
@@ -196,7 +195,19 @@ function AppInner() {
             onGoMap={() => setTab('map')}
             onGoFriends={() => setTab('friends')}
             onGoProfile={() => setTab('profile')}
-            onGoNotifications={() => setTab('notifications')}
+            onUnreadCountChange={setUnreadNotifCount}
+            onOpenPost={(postId) => {
+              setNotifPost({
+                postId,
+                displayName: '',
+                caption: '',
+                likeCount: 0,
+                commentCount: 0,
+              });
+            }}
+            onOpenChat={(conversationId, title, avatarUrl) => {
+              handleOpenChat({ conversationId, title, avatarUrl });
+            }}
           />
         )}
         {tab === 'map' && (
@@ -216,24 +227,6 @@ function AppInner() {
             onFriendTap={setSelectedFriend}
             onOpenChat={handleOpenChat}
             onAdd={() => setAddFriendOpen(true)}
-          />
-        )}
-        {tab === 'notifications' && (
-          <NotificationsScreen
-            isActive={tab === 'notifications'}
-            onUnreadCountChange={setUnreadNotifCount}
-            onOpenPost={(postId) => {
-              setNotifPost({
-                postId,
-                displayName: '',
-                caption: '',
-                likeCount: 0,
-                commentCount: 0,
-              });
-            }}
-            onOpenChat={(conversationId, title, avatarUrl) => {
-              handleOpenChat({ conversationId, title, avatarUrl });
-            }}
           />
         )}
         {tab === 'profile' && (
