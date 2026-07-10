@@ -67,6 +67,12 @@ export default function MapScreen({
     { id: 'vibe', label: t('map.filterVibe') },
   ];
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const userCoordsRef = useRef(userCoords);
+  userCoordsRef.current = userCoords;
+  // ~110m grid — avoid refetch storms on every GPS tick
+  const coordsBucket = userCoords
+    ? `${userCoords.lat.toFixed(3)},${userCoords.lng.toFixed(3)}`
+    : 'none';
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
@@ -150,15 +156,15 @@ export default function MapScreen({
 
   // ── Fetch friend locations ───────────────────────────────────────────────
   const fetchFriendLocations = useCallback(async () => {
-    const lat = userCoords?.lat;
-    const lng = userCoords?.lng;
+    const lat = userCoordsRef.current?.lat;
+    const lng = userCoordsRef.current?.lng;
     try {
       const locations = await getFriendsLocations();
       setFriendPins(locations.map(loc => friendLocationToMapPin(loc, lat, lng)));
     } catch {
       setFriendPins([]);
     }
-  }, [userCoords]);
+  }, []);
 
   useEffect(() => {
     if (!isActive) return;
@@ -175,26 +181,26 @@ export default function MapScreen({
 
   // ── Fetch nearby posts ───────────────────────────────────────────────────
   const fetchNearbyPosts = useCallback(async () => {
-    const lat = userCoords?.lat ?? DEFAULT_CENTER[1];
-    const lng = userCoords?.lng ?? DEFAULT_CENTER[0];
+    const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
+    const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
       const posts = await getNearbyPosts(lat, lng, 5, 1, 20);
       setNearbyPosts(filterActivePosts(posts));
     } catch {
       setNearbyPosts([]);
     }
-  }, [userCoords]);
+  }, []);
 
   const fetchNearbyPlaces = useCallback(async () => {
-    const lat = userCoords?.lat ?? DEFAULT_CENTER[1];
-    const lng = userCoords?.lng ?? DEFAULT_CENTER[0];
+    const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
+    const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
       const places = await getNearbyPlaces(lat, lng, 5);
       setNearbyPlaces(places);
     } catch {
       setNearbyPlaces([]);
     }
-  }, [userCoords]);
+  }, []);
 
   useEffect(() => {
     if (!isActive) return;
@@ -205,7 +211,7 @@ export default function MapScreen({
       fetchNearbyPlaces();
     });
     return () => sub.remove();
-  }, [isActive, fetchNearbyPosts, fetchNearbyPlaces]);
+  }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
 
   const searchLower = searchText.trim().toLowerCase();
   const filteredPosts = searchLower
@@ -277,7 +283,6 @@ export default function MapScreen({
     <View style={styles.container}>
       {/* ── Real Mapbox Map ── */}
       <MapView
-        key={mapTheme}
         style={styles.map}
         styleJSON={mapStyle}
         logoEnabled={false}

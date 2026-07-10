@@ -22,6 +22,7 @@ import ChatScreen from './src/components/ChatScreen';
 import type { OpenChatParams } from './src/components/ConversationsSection';
 import AddFriendSheet from './src/components/AddFriendSheet';
 import PostSheet from './src/components/PostSheet';
+import MymoBot from './src/components/MymoBot';
 import { LocationPermSheet, EnableLocationModal } from './src/components/LocationPermSheet';
 import type { PostView } from './src/services/postApi';
 
@@ -105,7 +106,7 @@ function AppInner() {
     };
 
     loadUnread();
-    const timer = setInterval(loadUnread, 20000);
+    const timer = setInterval(loadUnread, 45000);
     const sub = DeviceEventEmitter.addListener('friend:requested', loadUnread);
     const sub2 = DeviceEventEmitter.addListener('friend:accepted', loadUnread);
     return () => {
@@ -266,6 +267,8 @@ function AppInner() {
         setTab={setTab}
         onCamera={() => setCameraOpen(true)}
       />
+
+      <MymoBot visible={!cameraOpen} />
 
       {/* Modals & Sheets */}
       {(!permissionAsked || locationGranted === null) && screen === 'app' && (

@@ -6,8 +6,7 @@ import SparkleField from './SparkleField';
 const ORBS = [
   { top: '4%', right: '-8%', size: 160, color: 'rgba(200, 170, 255, 0.35)' },
   { top: '28%', left: '-12%', size: 140, color: 'rgba(255, 200, 230, 0.28)' },
-  { top: '52%', right: '2%', size: 100, color: 'rgba(180, 220, 255, 0.22)' },
-  { top: '72%', left: '8%', size: 120, color: 'rgba(255, 230, 180, 0.2)' },
+  { top: '62%', right: '4%', size: 110, color: 'rgba(180, 220, 255, 0.2)' },
 ] as const;
 
 export default function HomeAtmosphere() {
@@ -93,9 +92,8 @@ export default function HomeAtmosphere() {
         />
       </Animated.View>
 
-      <SparkleField count={28} size={8} color="#E0C8FF" accentColor="#FFFFFF" intense />
-      <SparkleField count={14} size={13} color="#FFD8F0" accentColor="#FFFFFF" intense />
-      <SparkleField count={8} size={16} color="#B8E8FF" accentColor="#FFFFFF" intense />
+      <SparkleField count={Platform.OS === 'web' ? 8 : 12} size={8} color="#E0C8FF" accentColor="#FFFFFF" />
+      <SparkleField count={Platform.OS === 'web' ? 4 : 6} size={12} color="#FFD8F0" accentColor="#FFFFFF" />
     </View>
   );
 }
@@ -112,7 +110,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     opacity: 0.7,
     ...Platform.select({
-      web: { filter: 'blur(40px)' as any },
+      // Soft opacity only on web — CSS blur is expensive to composite
+      web: {},
       default: {},
     }),
   },

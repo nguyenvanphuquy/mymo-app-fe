@@ -1,8 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { View, StyleSheet, Animated, Platform } from 'react-native';
 import { Colors } from '../constants/colors';
 
-const GLYPHS = ['✦', '✨', '⋆', '·', '♡'] as const;
+const GLYPHS = ['✦', '✨', '⋆', '·'] as const;
 
 interface SparkleFieldProps {
   count?: number;
@@ -12,22 +12,26 @@ interface SparkleFieldProps {
   intense?: boolean;
 }
 
-export default function SparkleField({
+function SparkleField({
   count = 10,
   size = 10,
   color = Colors.primaryLight,
   accentColor,
   intense = false,
 }: SparkleFieldProps) {
-  const stars = Array.from({ length: count }, (_, i) => {
-    const x = (i * 47 + 11) % 96;
-    const y = (i * 31 + 7) % 94;
-    const d = (i % 6) * 320;
-    const s = size + ((i * 5) % (intense ? 10 : 6));
-    const glyph = GLYPHS[i % GLYPHS.length];
-    const tone = i % 3 === 0 ? (accentColor || '#FFFFFF') : color;
-    return { x, y, d, s, glyph, tone };
-  });
+  const stars = useMemo(
+    () =>
+      Array.from({ length: count }, (_, i) => {
+        const x = (i * 47 + 11) % 96;
+        const y = (i * 31 + 7) % 94;
+        const d = (i % 6) * 320;
+        const s = size + ((i * 5) % (intense ? 8 : 5));
+        const glyph = GLYPHS[i % GLYPHS.length];
+        const tone = i % 3 === 0 ? (accentColor || '#FFFFFF') : color;
+        return { x, y, d, s, glyph, tone };
+      }),
+    [count, size, color, accentColor, intense],
+  );
 
   return (
     <View
@@ -53,7 +57,7 @@ export default function SparkleField({
   );
 }
 
-function SparkleItem({
+const SparkleItem = memo(function SparkleItem({
   x, y, delay, size, color, glyph, intense,
 }: {
   x: number;
@@ -64,35 +68,36 @@ function SparkleItem({
   glyph: string;
   intense: boolean;
 }) {
-  const opacity = useRef(new Animated.Value(0.15)).current;
-  const scale = useRef(new Animated.Value(0.85)).current;
+  const opacity = useRef(new Animated.Value(0.2)).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
 
-  React.useEffect(() => {
+  useEffect(() => {
     const useNativeDriver = Platform.OS !== 'web';
+    // Slower, cheaper loops — less JS work per second
     const anim = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
           Animated.timing(opacity, {
-            toValue: intense ? 1 : 0.85,
-            duration: intense ? 650 : 900,
+            toValue: intense ? 0.9 : 0.7,
+            duration: intense ? 900 : 1400,
             useNativeDriver,
           }),
           Animated.timing(scale, {
-            toValue: intense ? 1.25 : 1.1,
-            duration: intense ? 650 : 900,
+            toValue: intense ? 1.15 : 1.06,
+            duration: intense ? 900 : 1400,
             useNativeDriver,
           }),
         ]),
         Animated.parallel([
           Animated.timing(opacity, {
-            toValue: 0.12,
-            duration: intense ? 750 : 1000,
+            toValue: 0.15,
+            duration: intense ? 1100 : 1600,
             useNativeDriver,
           }),
           Animated.timing(scale, {
-            toValue: 0.75,
-            duration: intense ? 750 : 1000,
+            toValue: 0.85,
+            duration: intense ? 1100 : 1600,
             useNativeDriver,
           }),
         ]),
@@ -112,12 +117,11 @@ function SparkleItem({
         opacity,
         color,
         transform: [{ scale }],
-        textShadowColor: color,
-        textShadowRadius: intense ? 8 : 4,
-        textShadowOffset: { width: 0, height: 0 },
       }}
     >
       {glyph}
     </Animated.Text>
   );
-}
+});
+
+export default memo(SparkleField);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, Image,
+  ScrollView, KeyboardAvoidingView, Platform,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import SparkleField from '../components/SparkleField';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
+import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
 import { loginUser, registerUser, saveAuthSession } from '../services/authApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
@@ -91,6 +92,14 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
     }
   };
 
+  const handleSocialPress = (provider: 'Google' | 'Apple' | 'Facebook') => {
+    Toast.show({
+      type: 'info',
+      text1: t('auth.socialUnavailable').replace('{provider}', provider),
+      text2: t('auth.socialUnavailableDesc'),
+    });
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.kav}
@@ -103,7 +112,7 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          <SparkleField count={16} />
+          <SparkleField count={Platform.OS === 'web' ? 6 : 10} />
 
           {/* Blob decorations */}
           <View style={styles.blob1} />
@@ -111,11 +120,7 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
 
           {/* Top bar */}
           <View style={styles.topBar}>
-            <Image
-              source={require('../../assets/logo.png')}
-              style={styles.projectLogo}
-              resizeMode="contain"
-            />
+            <MymoLogo width={135} />
             <TouchableOpacity
               onPress={() => setLang(lang === 'vi' ? 'en' : 'vi')}
               style={styles.langBtn}
@@ -314,11 +319,26 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
             <View style={styles.divLine} />
           </View>
 
-          {/* Social */}
+          {/* Social — not wired to auth yet; must not bypass login */}
           <View style={styles.social}>
-            <SocialBtn onPress={onContinue} icon="logo-google" label="Google" color="#DB4437" />
-            <SocialBtn onPress={onContinue} icon="logo-apple" label="Apple" color="#000" />
-            <SocialBtn onPress={onContinue} icon="logo-facebook" label="Facebook" color="#1877F2" />
+            <SocialBtn
+              icon="logo-google"
+              label="Google"
+              color="#DB4437"
+              onPress={() => handleSocialPress('Google')}
+            />
+            <SocialBtn
+              icon="logo-apple"
+              label="Apple"
+              color="#000"
+              onPress={() => handleSocialPress('Apple')}
+            />
+            <SocialBtn
+              icon="logo-facebook"
+              label="Facebook"
+              color="#1877F2"
+              onPress={() => handleSocialPress('Facebook')}
+            />
           </View>
 
           <Text style={styles.terms}>
@@ -333,9 +353,18 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
   );
 }
 
-function SocialBtn({ onPress, icon, label, color }: { onPress: () => void; icon: any; label: string; color: string }) {
+function SocialBtn({
+  onPress,
+  icon,
+  color,
+}: {
+  onPress: () => void;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  color: string;
+}) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.socialBtn} activeOpacity={0.85}>
+    <TouchableOpacity onPress={onPress} style={[styles.socialBtn, styles.socialBtnLocked]} activeOpacity={0.85}>
       <Ionicons name={icon} size={20} color={color} />
     </TouchableOpacity>
   );
@@ -389,10 +418,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 48,
-  },
-  projectLogo: {
-    width: 135,
-    height: 48,
   },
   langBtn: {
     flexDirection: 'row',
@@ -574,6 +599,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.primarySoft,
     ...Shadows.soft,
+  },
+  socialBtnLocked: {
+    opacity: 0.55,
   },
   terms: {
     fontSize: 11,

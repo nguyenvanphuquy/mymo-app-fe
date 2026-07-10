@@ -77,18 +77,16 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
       </Animated.View>
 
       <SparkleField
-        count={22}
+        count={Platform.OS === 'web' ? 6 : 10}
         size={7}
         color={ui.sparkle}
         accentColor={ui.sparkleAccent}
-        intense
       />
       <SparkleField
-        count={10}
-        size={12}
+        count={Platform.OS === 'web' ? 3 : 5}
+        size={11}
         color={ui.sparkleAccent}
         accentColor="#FFFFFF"
-        intense
       />
     </View>
   );
@@ -106,7 +104,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     opacity: 0.38,
     ...Platform.select({
-      web: { filter: 'blur(28px)' as any },
+      web: {},
       default: {},
     }),
   },

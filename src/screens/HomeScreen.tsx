@@ -14,6 +14,7 @@ import { getNearbyPlaces, type PlaceSummary } from '../services/placeApi';
 import FriendMomentsSection from '../components/FriendMomentsSection';
 import NotificationDropdown from '../components/NotificationDropdown';
 import HomeAtmosphere from '../components/HomeAtmosphere';
+import MymoLogo from '../components/MymoLogo';
 
 interface HomeScreenProps {
   isActive?: boolean;
@@ -163,7 +164,7 @@ export default function HomeScreen({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoWrap}>
-            <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+            <MymoLogo width={108} />
             <Text style={styles.logoSparkle}>✨</Text>
           </View>
           <View style={styles.headerActions}>
@@ -417,10 +418,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  logo: {
-    width: 108,
-    height: 36,
   },
   logoSparkle: {
     fontSize: 14,
