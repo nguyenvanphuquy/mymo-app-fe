@@ -175,6 +175,22 @@ export interface PostDetail {
   media: PostDetailMedia[];
 }
 
+function parseCoord(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function hasPostCoordinates(post: {
+  latitude?: number | null;
+  longitude?: number | null;
+}): boolean {
+  return post.latitude != null
+    && post.longitude != null
+    && Number.isFinite(post.latitude)
+    && Number.isFinite(post.longitude);
+}
+
 function normalizeFeedMediaItem(raw: Record<string, unknown>): PostMedia {
   return {
     mediaId: String(raw.mediaId ?? raw.MediaId ?? ''),
@@ -193,6 +209,16 @@ export function normalizeFeedPost(raw: unknown): FeedPost | null {
 
   const mediaRaw = (item.media ?? item.Media ?? []) as Record<string, unknown>[];
   const visibility = String(item.visibility ?? item.Visibility ?? 'Public');
+  const placeRaw = item.place ?? item.Place;
+
+  let latitude = parseCoord(item.latitude ?? item.Latitude);
+  let longitude = parseCoord(item.longitude ?? item.Longitude);
+
+  if (latitude == null && placeRaw && typeof placeRaw === 'object') {
+    const place = placeRaw as Record<string, unknown>;
+    latitude = parseCoord(place.latitude ?? place.Latitude);
+    longitude = parseCoord(place.longitude ?? place.Longitude);
+  }
 
   return {
     postId,
@@ -200,12 +226,8 @@ export function normalizeFeedPost(raw: unknown): FeedPost | null {
     caption: (item.caption ?? item.Caption ?? null) as string | null,
     visibility,
     anonymousAlias: (item.anonymousAlias ?? item.AnonymousAlias ?? null) as string | null,
-    latitude: item.latitude != null || item.Latitude != null
-      ? Number(item.latitude ?? item.Latitude)
-      : null,
-    longitude: item.longitude != null || item.Longitude != null
-      ? Number(item.longitude ?? item.Longitude)
-      : null,
+    latitude,
+    longitude,
     createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
     likeCount: Number(item.likeCount ?? item.LikeCount ?? 0),
     commentCount: Number(item.commentCount ?? item.CommentCount ?? 0),
@@ -386,7 +408,7 @@ export function feedPostToNearbyPost(
   displayName: string,
   avatarUrl?: string | null,
 ): NearbyPost | null {
-  if (post.latitude == null || post.longitude == null) return null;
+  if (!hasPostCoordinates(post)) return null;
 
   const isAnonymous = post.visibility === 'Anonymous';
   const alias = post.anonymousAlias || displayName;

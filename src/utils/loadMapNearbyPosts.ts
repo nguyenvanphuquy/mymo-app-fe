@@ -4,6 +4,7 @@ import {
   feedPostToNearbyPost,
   getMyPosts,
   getNearbyPosts,
+  hasPostCoordinates,
   type FeedPost,
   type NearbyPost,
 } from '../services/postApi';
@@ -18,8 +19,9 @@ function mergeOwnPosts(
   const merged = [...nearby];
   const seen = new Set(merged.map(post => post.postId));
 
-  for (const post of filterActivePosts(myPosts)) {
-    if (seen.has(post.postId)) continue;
+  // Match profile: show all own posts that have map coordinates (not only 24h filter).
+  for (const post of myPosts) {
+    if (seen.has(post.postId) || !hasPostCoordinates(post)) continue;
 
     const mapPost = feedPostToNearbyPost(post, myDisplayName, myAvatarUrl);
     if (!mapPost) continue;

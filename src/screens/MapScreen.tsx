@@ -415,8 +415,8 @@ export default function MapScreen({
           </MarkerView>
         ))}
 
-        {/* Nearby post pins — only when zoomed in */}
-        {showDetailPins && spreadMapPosts.map(({ post, latitude, longitude }) => (
+        {/* Nearby post pins */}
+        {spreadMapPosts.map(({ post, latitude, longitude }) => (
           <MarkerView
             key={`post-${post.postId}`}
             coordinate={[longitude, latitude]}

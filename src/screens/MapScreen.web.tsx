@@ -564,8 +564,6 @@ export default function MapScreen({
     postMarkersRef.current.forEach(m => m.remove());
     postMarkersRef.current = [];
 
-    if (!showDetailPins) return;
-
     spreadMapPosts.forEach(({ post, latitude, longitude }) => {
       const el = createPostMarkerEl(post, () => {
         setSelectedPlace(null);
@@ -579,7 +577,7 @@ export default function MapScreen({
         .addTo(map);
       postMarkersRef.current.push(marker);
     });
-  }, [spreadMapPosts, mapReady, myUserId, showDetailPins]);
+  }, [spreadMapPosts, mapReady, myUserId]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
