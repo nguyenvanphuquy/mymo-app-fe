@@ -24,7 +24,26 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@rnmapbox/maps"
+      "@rnmapbox/maps",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Cho phép MYMO truy cập camera để chụp và chia sẻ khoảnh khắc.",
+          "microphonePermission": "Cho phép MYMO truy cập micro khi quay video.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "MYMO chỉ cần vị trí khi bạn đang dùng app để hiện trên bản đồ và gắn vị trí bài đăng.",
+          "locationWhenInUsePermission": "MYMO dùng vị trí khi bạn đang mở app — bản đồ bạn bè và đăng khoảnh khắc. Không theo dõi nền.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ]
     ]
   }
 }

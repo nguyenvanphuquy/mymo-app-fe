@@ -1,11 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  StatusBar, Platform, Image, DeviceEventEmitter, ActivityIndicator, ScrollView,
+  StatusBar, Image, DeviceEventEmitter, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
@@ -22,11 +21,14 @@ interface CameraSheetProps {
   onRequestLocation: () => void;
 }
 
+type FacingMode = 'user' | 'environment';
+
 export default function CameraSheet({ locationGranted, onClose, onRequestLocation }: CameraSheetProps) {
   const { t } = useI18n();
-  const cameraRef = useRef<CameraView>(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [facing, setFacing] = useState<CameraType>(Platform.OS === 'web' ? 'front' : 'back');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [facing, setFacing] = useState<FacingMode>('user');
+  const [permissionState, setPermissionState] = useState<'loading' | 'granted' | 'denied'>('loading');
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captured, setCaptured] = useState(false);
@@ -38,25 +40,116 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
   const [visibility, setVisibility] = useState<'Public' | 'Friends'>('Public');
   const [beautyFilter, setBeautyFilter] = useState<BeautyFilterId>('soft');
   const [showBeautyPanel, setShowBeautyPanel] = useState(false);
+  const beautyFilterRef = useRef<BeautyFilterId>('soft');
+  beautyFilterRef.current = beautyFilter;
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceIndex, setDeviceIndex] = useState(0);
   const slideAnim = useRef(new Animated.Value(800)).current;
-
-  const useNativeDriver = Platform.OS !== 'web';
+  const videoHostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
       toValue: 0,
-      useNativeDriver,
+      useNativeDriver: false,
       tension: 50,
       friction: 10,
     }).start();
-  }, [slideAnim, useNativeDriver]);
+  }, [slideAnim]);
+
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const attachVideo = useCallback((stream: MediaStream, mirror: boolean, filterCss: string) => {
+    const host = videoHostRef.current;
+    if (!host) return;
+
+    let video = videoRef.current;
+    if (!video) {
+      video = document.createElement('video');
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      host.appendChild(video);
+      videoRef.current = video;
+    }
+
+    video.style.cssText = `width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:${mirror ? 'scaleX(-1)' : 'none'};filter:${filterCss};`;
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      video?.play().then(() => {
+        setCameraReady(true);
+        setPermissionState('granted');
+      }).catch(() => {
+        setCameraReady(true);
+        setPermissionState('granted');
+      });
+    };
+  }, []);
+
+  const startCamera = useCallback(async (nextFacing: FacingMode, preferredDeviceId?: string) => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setPermissionState('denied');
+      return;
+    }
+
+    setPermissionState('loading');
+    setCameraReady(false);
+    stopStream();
+
+    try {
+      const constraints: MediaStreamConstraints = {
+        audio: false,
+        video: preferredDeviceId
+          ? { deviceId: { exact: preferredDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      attachVideo(stream, nextFacing === 'user', getBeautyFilter(beautyFilterRef.current).cssFilter);
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      setVideoDevices(cams);
+    } catch {
+      try {
+        const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        streamRef.current = fallback;
+        attachVideo(fallback, nextFacing === 'user', getBeautyFilter(beautyFilterRef.current).cssFilter);
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
+      } catch {
+        setPermissionState('denied');
+        setCameraReady(false);
+      }
+    }
+  }, [attachVideo, stopStream]);
 
   useEffect(() => {
-    if (!permission) return;
-    if (!permission.granted && permission.canAskAgain) {
-      requestPermission();
+    const video = videoRef.current;
+    if (!video) return;
+    const mirror = facing === 'user';
+    video.style.filter = getBeautyFilter(beautyFilter).cssFilter;
+    video.style.transform = mirror ? 'scaleX(-1)' : 'none';
+  }, [beautyFilter, facing]);
+
+  useEffect(() => {
+    if (captured) {
+      stopStream();
+      return;
     }
-  }, [permission, requestPermission]);
+
+    const preferredId = videoDevices.length > 1 ? videoDevices[deviceIndex]?.deviceId : undefined;
+    startCamera(facing, preferredId);
+
+    return () => stopStream();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facing, deviceIndex, captured]);
 
   useEffect(() => {
     if (!locationGranted) {
@@ -90,9 +183,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
           position.coords.latitude,
           position.coords.longitude,
         );
-        const closest = pickClosestPlace(places);
-
-        if (isMounted) setNearestPlace(closest);
+        if (isMounted) setNearestPlace(pickClosestPlace(places));
       } catch (error) {
         if (isMounted) {
           Toast.show({
@@ -107,44 +198,71 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
     };
 
     resolvePlace();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [locationGranted, t]);
 
   const close = () => {
+    stopStream();
     Animated.timing(slideAnim, {
       toValue: 800,
       duration: 300,
-      useNativeDriver,
+      useNativeDriver: false,
     }).start(onClose);
   };
 
   const flipCamera = useCallback(() => {
-    setFacing(current => (current === 'back' ? 'front' : 'back'));
-    setCameraReady(false);
-    Toast.show({
-      type: 'info',
-      text1: t('cam.flip'),
-      text2: facing === 'back' ? t('cam.frontCamera') : t('cam.backCamera'),
+    if (videoDevices.length > 1) {
+      const nextIndex = (deviceIndex + 1) % videoDevices.length;
+      const nextDevice = videoDevices[nextIndex];
+      const label = (nextDevice.label || '').toLowerCase();
+      const nextFacing: FacingMode =
+        label.includes('front') || label.includes('user') || label.includes('facetime')
+          ? 'user'
+          : 'environment';
+      setDeviceIndex(nextIndex);
+      setFacing(nextFacing);
+      Toast.show({
+        type: 'info',
+        text1: t('cam.flip'),
+        text2: nextDevice.label || (nextFacing === 'user' ? t('cam.frontCamera') : t('cam.backCamera')),
+      });
+      return;
+    }
+
+    setFacing(current => {
+      const next = current === 'user' ? 'environment' : 'user';
+      Toast.show({
+        type: 'info',
+        text1: t('cam.flip'),
+        text2: next === 'user' ? t('cam.frontCamera') : t('cam.backCamera'),
+      });
+      return next;
     });
-  }, [facing, t]);
+  }, [deviceIndex, t, videoDevices]);
 
   const takePhoto = async () => {
-    if (!cameraRef.current || !cameraReady || capturing) return;
+    const video = videoRef.current;
+    if (!video || !cameraReady || capturing) return;
 
     try {
       setCapturing(true);
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        skipProcessing: Platform.OS === 'android',
-      });
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas unavailable');
 
-      if (photo?.uri) {
-        setSelectedImageUri(photo.uri);
-        setCaptured(true);
+      if (facing === 'user') {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
       }
+      ctx.filter = getBeautyFilter(beautyFilter).cssFilter;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.filter = 'none';
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setSelectedImageUri(dataUrl);
+      setCaptured(true);
     } catch (error) {
       Toast.show({
         type: 'error',
@@ -171,24 +289,17 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
     if (!selectedImageUri) {
       Toast.show({
         type: 'error',
-        text1: t('cam.noImage') || 'Chưa chụp ảnh',
-        text2: t('cam.chooseImageFirst') || 'Chụp ảnh trước khi đăng.',
+        text1: t('cam.noImage'),
+        text2: t('cam.chooseImageFirst'),
       });
       return;
     }
 
     try {
       setPosting(true);
-
-      const fileName = selectedImageUri.split('/').pop() || 'photo.jpg';
-      const fileType = fileName.includes('.') ? `image/${fileName.split('.').pop()}` : 'image/jpeg';
-      const formData = await buildImageFormData(selectedImageUri, fileName, fileType);
-
+      const formData = await buildImageFormData(selectedImageUri, 'photo.jpg', 'image/jpeg');
       const uploadResult = await uploadMedia(formData);
-      if (!uploadResult || !uploadResult.id) {
-        throw new Error('Media upload returned invalid id');
-      }
-      const mediaId = uploadResult.id;
+      if (!uploadResult?.id) throw new Error('Media upload returned invalid id');
 
       let latitude = currentLocation?.latitude ?? nearestPlace?.latitude;
       let longitude = currentLocation?.longitude ?? nearestPlace?.longitude;
@@ -206,7 +317,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
             setCurrentLocation({ latitude, longitude });
           }
         } catch {
-          // ignore; validate below
+          // ignore
         }
       }
 
@@ -214,13 +325,9 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
         caption: t('cam.defaultCaption') || 'Shared from MYMO',
         postType: 'Image',
         visibility,
-        mediaIds: [mediaId],
+        mediaIds: [uploadResult.id],
       };
-
-      if (placeId) {
-        payload.placeId = placeId;
-      }
-
+      if (placeId) payload.placeId = placeId;
       if (latitude !== undefined && longitude !== undefined) {
         payload.latitude = latitude;
         payload.longitude = longitude;
@@ -238,7 +345,6 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
 
       await createPost(payload);
       DeviceEventEmitter.emit('post:created');
-
       Toast.show({ type: 'success', text1: t('cam.posted'), text2: t('cam.postedDesc') });
       setPosting(false);
       close();
@@ -251,9 +357,6 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
   const locationLabel = resolvingPlace
     ? (t('cam.locating') || 'Đang định vị...')
     : nearestPlace?.name || t('cam.live') || 'Vị trí trực tiếp đang bật';
-
-  const permissionLoading = !permission;
-  const permissionDenied = permission && !permission.granted;
 
   return (
     <Modal transparent={false} animationType="none" statusBarTranslucent>
@@ -274,19 +377,23 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
         </View>
 
         <View style={styles.viewfinder}>
-          {permissionLoading && (
+          {permissionState === 'loading' && !captured && (
             <View style={styles.permissionBox}>
               <ActivityIndicator color={Colors.primaryLight} size="large" />
               <Text style={styles.permissionText}>{t('cam.requestingPermission')}</Text>
             </View>
           )}
 
-          {permissionDenied && (
+          {permissionState === 'denied' && !captured && (
             <View style={styles.permissionBox}>
               <Ionicons name="camera-outline" size={40} color={Colors.primaryLight} />
               <Text style={styles.permissionTitle}>{t('cam.cameraPermission')}</Text>
               <Text style={styles.permissionText}>{t('cam.cameraPermissionDesc')}</Text>
-              <TouchableOpacity onPress={requestPermission} activeOpacity={0.88} style={styles.permissionBtn}>
+              <TouchableOpacity
+                onPress={() => startCamera(facing)}
+                activeOpacity={0.88}
+                style={styles.permissionBtn}
+              >
                 <LinearGradient colors={Gradients.primary} style={styles.permissionBtnGrad}>
                   <Text style={styles.permissionBtnText}>{t('cam.allowCamera')}</Text>
                 </LinearGradient>
@@ -294,36 +401,32 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
             </View>
           )}
 
-          {permission?.granted && !captured && (
+          {!captured && permissionState !== 'denied' && (
             <>
-              <CameraView
-                ref={cameraRef}
-                style={StyleSheet.absoluteFill}
-                facing={facing}
-                mirror={facing === 'front'}
-                onCameraReady={() => setCameraReady(true)}
+              <div
+                ref={videoHostRef}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  overflow: 'hidden',
+                  background: '#2A1758',
+                }}
               />
-              {beautyFilter !== 'none' && (
-                <View
-                  pointerEvents="none"
-                  style={[styles.beautyOverlay, { backgroundColor: getBeautyFilter(beautyFilter).overlay }]}
-                />
-              )}
               <View style={[styles.corner, styles.cornerTL]} />
               <View style={[styles.corner, styles.cornerTR]} />
               <View style={[styles.corner, styles.cornerBL]} />
               <View style={[styles.corner, styles.cornerBR]} />
               <View style={styles.facingBadge}>
                 <Ionicons
-                  name={facing === 'front' ? 'person-outline' : 'phone-portrait-outline'}
+                  name={facing === 'user' ? 'person-outline' : 'laptop-outline'}
                   size={12}
                   color={Colors.white}
                 />
                 <Text style={styles.facingBadgeText}>
-                  {facing === 'front' ? t('cam.frontCamera') : t('cam.backCamera')}
+                  {facing === 'user' ? t('cam.frontCamera') : t('cam.backCamera')}
                 </Text>
               </View>
-              {!cameraReady && (
+              {!cameraReady && permissionState === 'granted' && (
                 <View style={styles.readyOverlay}>
                   <ActivityIndicator color={Colors.white} />
                 </View>
@@ -341,7 +444,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
             </>
           )}
 
-          {locationGranted && !captured && permission?.granted && (
+          {locationGranted && !captured && permissionState === 'granted' && (
             <View style={styles.geoTag}>
               <Ionicons name="location" size={13} color={Colors.primaryLight} />
               <Text style={styles.geoTagText}>
@@ -394,9 +497,9 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={takePhoto}
-                  style={[styles.shutterOuter, (!cameraReady || capturing || permissionDenied) && styles.shutterDisabled]}
+                  style={[styles.shutterOuter, (!cameraReady || capturing || permissionState === 'denied') && styles.shutterDisabled]}
                   activeOpacity={0.85}
-                  disabled={!cameraReady || capturing || !!permissionDenied}
+                  disabled={!cameraReady || capturing || permissionState === 'denied'}
                 >
                   {capturing ? (
                     <ActivityIndicator color={Colors.primary} size="large" />
@@ -404,7 +507,11 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
                     <LinearGradient colors={Gradients.primary} style={styles.shutterInner} />
                   )}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={flipCamera} style={styles.controlBtn} disabled={permissionDenied}>
+                <TouchableOpacity
+                  onPress={flipCamera}
+                  style={styles.controlBtn}
+                  disabled={permissionState === 'denied'}
+                >
                   <Ionicons name="camera-reverse-outline" size={22} color={Colors.white} />
                 </TouchableOpacity>
               </View>
@@ -439,7 +546,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
               >
                 <LinearGradient colors={Gradients.primary} style={styles.postBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                   <Ionicons name="send" size={16} color={Colors.white} />
-                  <Text style={styles.postBtnText}>{posting ? t('cam.uploading') || 'Uploading...' : t('cam.postNow')}</Text>
+                  <Text style={styles.postBtnText}>{posting ? t('cam.uploading') : t('cam.postNow')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
               <TouchableOpacity onPress={retake} style={styles.retakeBtn}>
@@ -460,6 +567,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a0f33',
+    maxWidth: 500,
+    width: '100%',
+    marginHorizontal: 'auto' as any,
   },
   topBar: {
     flexDirection: 'row',
@@ -504,11 +614,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#2A1758',
+    position: 'relative',
   },
   permissionBox: {
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 28,
+    zIndex: 2,
   },
   permissionTitle: {
     color: Colors.white,
@@ -543,6 +655,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(26,15,51,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 2,
   },
   facingBadge: {
     position: 'absolute',
@@ -555,6 +668,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
+    zIndex: 2,
   },
   facingBadgeText: {
     color: Colors.white,
@@ -566,6 +680,7 @@ const styles = StyleSheet.create({
     width: CORNER_SIZE,
     height: CORNER_SIZE,
     borderColor: 'rgba(255,255,255,0.7)',
+    zIndex: 2,
   },
   cornerTL: {
     top: 16, left: 16,
@@ -597,6 +712,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     gap: 6,
+    zIndex: 2,
   },
   capturedText: {
     color: Colors.white,
@@ -615,6 +731,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     maxWidth: '58%',
+    zIndex: 2,
   },
   geoTagText: {
     color: Colors.white,
@@ -675,9 +792,6 @@ const styles = StyleSheet.create({
   },
   beautyChipTextActive: {
     color: Colors.white,
-  },
-  beautyOverlay: {
-    ...StyleSheet.absoluteFillObject,
   },
   shutterOuter: {
     width: 80,

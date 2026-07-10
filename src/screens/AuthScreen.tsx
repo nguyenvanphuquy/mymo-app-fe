@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, KeyboardAvoidingView, Platform, Image,
-  ActivityIndicator, Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
-import type { Lang } from '../i18n';
 import SparkleField from '../components/SparkleField';
+import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
 import { loginUser, registerUser, saveAuthSession } from '../services/authApi';
+import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
 interface AuthScreenProps {
   onContinue: () => void;
@@ -31,7 +32,6 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isGenderOpen, setIsGenderOpen] = useState(false);
-  const [currentPickerMonth, setCurrentPickerMonth] = useState(() => new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const genderOptions = [
@@ -41,11 +41,7 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
   ];
 
   const dateOfBirthDisplay = dateOfBirth
-    ? new Date(dateOfBirth).toLocaleDateString(lang === 'vi' ? 'vi' : 'en-US', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      })
+    ? formatDateOnlyDisplay(dateOfBirth, lang)
     : t('auth.dateOfBirth');
 
   const handleAuth = async () => {
@@ -293,63 +289,12 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
             )}
           </View>
 
-          {/* Date picker */}
-          <Modal transparent visible={isDatePickerOpen} animationType="fade" statusBarTranslucent>
-            <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsDatePickerOpen(false)}>
-              <View style={styles.calendarCard}>
-                <View style={styles.yearHeader}>
-                  <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear() - 1, prev.getMonth(), 1))} style={styles.yearButton}>
-                    <Ionicons name="chevron-back-outline" size={18} color={Colors.textDark} />
-                  </TouchableOpacity>
-                  <Text style={styles.calendarYear}>{currentPickerMonth.getFullYear()}</Text>
-                  <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear() + 1, prev.getMonth(), 1))} style={styles.yearButton}>
-                    <Ionicons name="chevron-forward-outline" size={18} color={Colors.textDark} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.calendarHeader}>
-                  <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
-                    <Ionicons name="chevron-back-outline" size={22} color={Colors.textDark} />
-                  </TouchableOpacity>
-                  <Text style={styles.calendarTitle}>{currentPickerMonth.toLocaleString(lang === 'vi' ? 'vi' : 'en-US', { month: 'long' })}</Text>
-                  <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
-                    <Ionicons name="chevron-forward-outline" size={22} color={Colors.textDark} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.weekHeader}>
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                    <Text key={day} style={styles.weekDay}>{day}</Text>
-                  ))}
-                </View>
-                <View style={styles.daysGrid}>
-                  {(() => {
-                    const firstDay = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth(), 1).getDay();
-                    const totalDays = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth() + 1, 0).getDate();
-                    const cells = Array.from({ length: firstDay + totalDays }, (_, index) => {
-                      if (index < firstDay) return null;
-                      return index - firstDay + 1;
-                    });
-                    return cells.map((day, idx) => (
-                      <TouchableOpacity
-                        key={`${currentPickerMonth.getMonth()}-${idx}`}
-                        style={[styles.dayCell, day ? styles.dayCellEnabled : undefined]}
-                        activeOpacity={day ? 0.7 : 1}
-                        disabled={!day}
-                        onPress={() => {
-                          if (!day) return;
-                          const selected = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth(), day);
-                          const iso = selected.toISOString().slice(0, 10);
-                          setDateOfBirth(iso);
-                          setIsDatePickerOpen(false);
-                        }}
-                      >
-                        <Text style={[styles.dayText, !day && styles.dayTextDisabled]}>{day || ''}</Text>
-                      </TouchableOpacity>
-                    ));
-                  })()}
-                </View>
-              </View>
-            </TouchableOpacity>
-          </Modal>
+          <DateOfBirthPicker
+            visible={isDatePickerOpen}
+            value={dateOfBirth}
+            onClose={() => setIsDatePickerOpen(false)}
+            onConfirm={setDateOfBirth}
+          />
 
           {/* Main CTA */}
           <TouchableOpacity onPress={handleAuth} activeOpacity={0.88} style={styles.cta} disabled={isSubmitting}>
@@ -573,92 +518,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   placeholderText: {
-    color: Colors.textMuted,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 24,
-    padding: 20,
-  },
-  modalItem: {
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderColor: '#F1E8FF',
-  },
-  modalItemText: {
-    fontSize: 16,
-    color: Colors.textDark,
-  },
-  calendarCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 24,
-    padding: 18,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  calendarTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
-  yearHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  yearButton: {
-    padding: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(124,91,255,0.08)',
-  },
-  calendarYear: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
-  weekHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  weekDay: {
-    width: 30,
-    textAlign: 'center',
-    color: Colors.textMid,
-    fontSize: 12,
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    justifyContent: 'flex-start',
-  },
-  dayCell: {
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  dayCellEnabled: {
-    backgroundColor: 'rgba(124, 91, 255, 0.08)',
-  },
-  dayText: {
-    color: Colors.textDark,
-    fontSize: 13,
-  },
-  dayTextDisabled: {
     color: Colors.textMuted,
   },
   pwDot: {

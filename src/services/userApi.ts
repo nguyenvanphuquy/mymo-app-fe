@@ -82,9 +82,14 @@ async function requestJson<T>(path: string, method: string, body?: unknown, isMu
   }
 
   if (!response.ok) {
-    const message = typeof data === 'object' && data !== null && 'message' in data
-      ? String((data as { message?: unknown }).message)
-      : 'Unable to complete request';
+    const message = typeof data === 'object' && data !== null
+      ? String(
+          (data as { message?: unknown }).message
+          || (data as { title?: unknown }).title
+          || (data as { error?: unknown }).error
+          || `Upload failed (${response.status})`,
+        )
+      : `Upload failed (${response.status})`;
     throw new Error(message);
   }
 
@@ -124,17 +129,31 @@ export async function updateUserLocation(
 }
 
 export async function uploadUserAvatar(file: FormData): Promise<string> {
-  const response = await requestJson<ApiResponse<string>>('/users/avatar', 'PUT', file, true);
+  const response = await requestJson<ApiResponse<string | { url?: string; avatarUrl?: string }>>(
+    '/users/avatar',
+    'PUT',
+    file,
+    true,
+  );
   if (!response.success) {
     throw new Error(response.message || 'Failed to upload avatar');
   }
-  return response.data;
+  const data = response.data;
+  if (typeof data === 'string') return data;
+  return data?.url || data?.avatarUrl || '';
 }
 
 export async function uploadUserCover(file: FormData): Promise<string> {
-  const response = await requestJson<ApiResponse<string>>('/users/cover', 'PUT', file, true);
+  const response = await requestJson<ApiResponse<string | { url?: string; coverUrl?: string }>>(
+    '/users/cover',
+    'PUT',
+    file,
+    true,
+  );
   if (!response.success) {
     throw new Error(response.message || 'Failed to upload cover');
   }
-  return response.data;
+  const data = response.data;
+  if (typeof data === 'string') return data;
+  return data?.url || data?.coverUrl || '';
 }

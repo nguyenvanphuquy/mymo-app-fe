@@ -132,6 +132,7 @@ function AppInner() {
   const handleDenyLocation = () => {
     setLocationGranted(false);
     setPermissionAsked(true);
+    setLocationPromptOpen(false);
     Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.offDesc') });
   };
 
@@ -220,6 +221,10 @@ function AppInner() {
             selectedFriend={selectedFriend}
             onCloseSheet={() => setSelectedFriend(null)}
             onMessage={f => { setSelectedFriend(null); handleOpenChat({ userId: f.id, title: f.name }); }}
+            onDisableIncognito={() => {
+              setIncognito(false);
+              Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
+            }}
           />
         )}
         {tab === 'friends' && (
@@ -395,6 +400,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.primaryTint,
+    overflow: 'hidden',
+    position: 'relative',
     ...Platform.select({
       web: {
         maxWidth: 500,
@@ -404,7 +411,6 @@ const styles = StyleSheet.create({
         borderRightWidth: 1,
         borderColor: '#EBE8F5',
         boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
-        position: 'relative',
       },
       default: {},
     }),

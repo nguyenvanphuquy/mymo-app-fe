@@ -50,6 +50,7 @@ interface MapScreenProps {
   selectedFriend: Friend | null;
   onCloseSheet: () => void;
   onMessage: (f: Friend) => void;
+  onDisableIncognito?: () => void;
 }
 
 function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivElement {
@@ -249,7 +250,7 @@ function createSearchMarkerEl(): HTMLDivElement {
 
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
-  onFriendTap, selectedFriend, onCloseSheet, onMessage,
+  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -278,7 +279,7 @@ export default function MapScreen({
   const placeMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
-  const hasFittedPostsRef = useRef(false);
+  const hasCenteredOnUserRef = useRef(false);
   const skipInitialThemeRef = useRef(true);
   const MAP_CONTAINER_ID = 'mymo-mapbox-container';
 
@@ -523,24 +524,23 @@ export default function MapScreen({
         .addTo(map);
       postMarkersRef.current.push(marker);
     });
+  }, [filteredPosts, mapReady]);
 
-    if (nearbyPosts.length > 0 && !hasFittedPostsRef.current) {
-      hasFittedPostsRef.current = true;
-      if (nearbyPosts.length === 1) {
-        const post = nearbyPosts[0];
-        map.flyTo({
-          center: [post.longitude, post.latitude],
-          zoom: DEFAULT_ZOOM,
-          duration: 800,
-        });
-      } else {
-        const bounds = new mapboxgl.LngLatBounds();
-        nearbyPosts.forEach(p => bounds.extend([p.longitude, p.latitude]));
-        if (userCoords) bounds.extend([userCoords.lng, userCoords.lat]);
-        map.fitBounds(bounds, { padding: 80, maxZoom: DEFAULT_ZOOM, duration: 800 });
-      }
+  // ── Default: always center on my location when opening the map ───────────
+  useEffect(() => {
+    if (!isActive) {
+      hasCenteredOnUserRef.current = false;
+      return;
     }
-  }, [filteredPosts, nearbyPosts.length, mapReady, userCoords]);
+    const map = mapRef.current;
+    if (!map || !mapReady || !userCoords || hasCenteredOnUserRef.current) return;
+    hasCenteredOnUserRef.current = true;
+    map.flyTo({
+      center: [userCoords.lng, userCoords.lat],
+      zoom: DEFAULT_ZOOM,
+      duration: 800,
+    });
+  }, [isActive, mapReady, userCoords]);
 
   // ── Sync place markers ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -773,7 +773,19 @@ export default function MapScreen({
           <View style={styles.invisibleBanner}>
             <Ionicons name={incognito ? 'glasses-outline' : 'location-outline'} size={14} color="#BFA2FF" />
             <Text style={styles.invisibleText}>{t('map.invisible')}</Text>
-            <View style={styles.offBadge}><Text style={styles.offBadgeText}>{t('common.off')}</Text></View>
+            {incognito ? (
+              <TouchableOpacity
+                onPress={() => onDisableIncognito?.()}
+                style={styles.offBadge}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.offBadgeText}>{t('common.off')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.offBadge}>
+                <Text style={styles.offBadgeText}>{t('common.off')}</Text>
+              </View>
+            )}
           </View>
         )}
 

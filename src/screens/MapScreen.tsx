@@ -43,6 +43,7 @@ interface MapScreenProps {
   selectedFriend: Friend | null;
   onCloseSheet: () => void;
   onMessage: (f: Friend) => void;
+  onDisableIncognito?: () => void;
 }
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
@@ -51,7 +52,7 @@ const DEFAULT_ZOOM = 17;
 
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
-  onFriendTap, selectedFriend, onCloseSheet, onMessage,
+  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -73,7 +74,7 @@ export default function MapScreen({
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const cameraRef = useRef<Camera>(null);
-  const hasFittedPostsRef = useRef(false);
+  const hasCenteredOnUserRef = useRef(false);
 
   const searchProximity = userCoords
     ? { lng: userCoords.lng, lat: userCoords.lat }
@@ -219,17 +220,21 @@ export default function MapScreen({
         (p.city || '').toLowerCase().includes(searchLower))
     : nearbyPlaces;
 
-  useEffect(() => {
-    if (nearbyPosts.length === 0 || hasFittedPostsRef.current || !cameraRef.current) return;
-    hasFittedPostsRef.current = true;
-    const post = nearbyPosts[0];
-    cameraRef.current.flyTo([post.longitude, post.latitude], 800);
-    cameraRef.current.zoomTo(DEFAULT_ZOOM, 800);
-  }, [nearbyPosts]);
-
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
     : DEFAULT_CENTER;
+
+  // ── Default: always center on my location when opening the map ───────────
+  useEffect(() => {
+    if (!isActive) {
+      hasCenteredOnUserRef.current = false;
+      return;
+    }
+    if (!userCoords || !cameraRef.current || hasCenteredOnUserRef.current) return;
+    hasCenteredOnUserRef.current = true;
+    cameraRef.current.flyTo([userCoords.lng, userCoords.lat], 800);
+    cameraRef.current.zoomTo(DEFAULT_ZOOM, 800);
+  }, [isActive, userCoords]);
 
   // ── Fly to selected friend ───────────────────────────────────────────────
   useEffect(() => {
@@ -282,10 +287,10 @@ export default function MapScreen({
       >
         <Camera
           ref={cameraRef}
-          centerCoordinate={mapCenter}
-          zoomLevel={DEFAULT_ZOOM}
-          animationMode="flyTo"
-          animationDuration={0}
+          defaultSettings={{
+            centerCoordinate: mapCenter,
+            zoomLevel: DEFAULT_ZOOM,
+          }}
         />
 
         {/* User location dot */}
@@ -535,7 +540,22 @@ export default function MapScreen({
           <View style={styles.invisibleBanner}>
             <Ionicons name={incognito ? 'glasses-outline' : 'location-outline'} size={14} color="#BFA2FF" />
             <Text style={styles.invisibleText}>{t('map.invisible')}</Text>
-            <View style={styles.offBadge}><Text style={styles.offBadgeText}>{t('common.off')}</Text></View>
+            {incognito ? (
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onDisableIncognito?.();
+                }}
+                style={styles.offBadge}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.offBadgeText}>{t('common.off')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.offBadge}>
+                <Text style={styles.offBadgeText}>{t('common.off')}</Text>
+              </View>
+            )}
           </View>
         )}
 

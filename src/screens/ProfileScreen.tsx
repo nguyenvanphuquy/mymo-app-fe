@@ -20,11 +20,14 @@ import Toggle from '../components/Toggle';
 import * as Haptics from 'expo-haptics';
 import { changeUserPassword, getUserProfile, uploadUserAvatar, uploadUserCover, updateUserProfile, type UserProfile } from '../services/userApi';
 import { getMyPosts, toPostView, type FeedPost, type PostView } from '../services/postApi';
+import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
 import PremiumScreen from './PremiumScreen';
+import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
 import { getPremiumPlan, isPremiumActive, type PremiumPlanId } from '../utils/premiumStorage';
+import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SW } = Dimensions.get('window');
@@ -63,7 +66,6 @@ export default function ProfileScreen({
   const [editBio, setEditBio] = useState('');
   const [isGenderOpen, setIsGenderOpen] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-  const [currentPickerMonth, setCurrentPickerMonth] = useState(() => new Date());
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -87,11 +89,7 @@ export default function ProfileScreen({
   ];
 
   const editDateOfBirthDisplay = editDateOfBirth
-    ? new Date(editDateOfBirth).toLocaleDateString(lang === 'vi' ? 'vi' : 'en-US', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      })
+    ? formatDateOnlyDisplay(editDateOfBirth, lang)
     : t('auth.dateOfBirth');
 
   const stats = [
@@ -158,7 +156,6 @@ export default function ProfileScreen({
     setEditBio(profile.bio ?? '');
     setIsGenderOpen(false);
     setIsDatePickerOpen(false);
-    setCurrentPickerMonth(profile.dateOfBirth ? new Date(profile.dateOfBirth) : new Date());
     setIsEditOpen(true);
   };
 
@@ -190,6 +187,9 @@ export default function ProfileScreen({
   };
 
   const requestImagePermission = async () => {
+    // Web uses the browser file picker — no media-library permission needed.
+    if (Platform.OS === 'web') return true;
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Toast.show({ type: 'error', text1: t('profile.imagePermissionRequired') });
@@ -202,38 +202,73 @@ export default function ProfileScreen({
     const hasPermission = await requestImagePermission();
     if (!hasPermission) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: target === 'avatar' ? [1, 1] : [16, 9],
-    });
-
-    if (result.canceled || !result.assets?.length) return;
-    const asset = result.assets[0];
-    const uri = asset.uri;
-    const fileName = uri.split('/').pop() ?? `${target}.jpg`;
-    const fileTypeMatch = /\.(\w+)$/.exec(fileName);
-    const fileType = fileTypeMatch ? `image/${fileTypeMatch[1]}` : 'image/jpeg';
-    const formData = new FormData();
-    const file: any = { uri, name: fileName, type: fileType };
-    formData.append('file', file);
-
     try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+        allowsEditing: Platform.OS !== 'web',
+        aspect: target === 'avatar' ? [1, 1] : [16, 9],
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      if (!uri) {
+        Toast.show({ type: 'error', text1: t('profile.uploadFailed') });
+        return;
+      }
+
+      const mimeFromAsset = asset.mimeType || undefined;
+      const { fileName, fileType } = guessImageMeta(
+        uri,
+        target === 'avatar' ? 'avatar.jpg' : 'cover.jpg',
+      );
+      const resolvedType = mimeFromAsset
+        || (fileType === 'image/jpg' ? 'image/jpeg' : fileType);
+      const resolvedName = fileName.includes('.')
+        ? fileName
+        : `${target}.${resolvedType.split('/')[1] || 'jpg'}`;
+
+      const formData = await buildImageFormData(uri, resolvedName, resolvedType);
+
       if (target === 'avatar') setUploadingAvatar(true);
       else setUploadingCover(true);
 
-      if (target === 'avatar') {
-        await uploadUserAvatar(formData);
-      } else {
-        await uploadUserCover(formData);
+      const uploadedUrl = target === 'avatar'
+        ? await uploadUserAvatar(formData)
+        : await uploadUserCover(formData);
+
+      // Prefer fresh profile; fall back to returned URL with cache-bust.
+      try {
+        const updatedProfile = await getUserProfile();
+        const bust = `t=${Date.now()}`;
+        setProfile({
+          ...updatedProfile,
+          avatarUrl: updatedProfile.avatarUrl
+            ? `${updatedProfile.avatarUrl}${updatedProfile.avatarUrl.includes('?') ? '&' : '?'}${bust}`
+            : updatedProfile.avatarUrl,
+          coverUrl: updatedProfile.coverUrl
+            ? `${updatedProfile.coverUrl}${updatedProfile.coverUrl.includes('?') ? '&' : '?'}${bust}`
+            : updatedProfile.coverUrl,
+        });
+      } catch {
+        if (uploadedUrl) {
+          setProfile(prev => prev ? {
+            ...prev,
+            ...(target === 'avatar'
+              ? { avatarUrl: `${uploadedUrl}${uploadedUrl.includes('?') ? '&' : '?'}t=${Date.now()}` }
+              : { coverUrl: `${uploadedUrl}${uploadedUrl.includes('?') ? '&' : '?'}t=${Date.now()}` }),
+          } : prev);
+        }
       }
 
-      const updatedProfile = await getUserProfile();
-      setProfile(updatedProfile);
       Toast.show({ type: 'success', text1: t('profile.uploadSuccess') });
     } catch (error) {
-      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('profile.uploadFailed') });
+      Toast.show({
+        type: 'error',
+        text1: error instanceof Error ? error.message : t('profile.uploadFailed'),
+      });
     } finally {
       if (target === 'avatar') setUploadingAvatar(false);
       else setUploadingCover(false);
@@ -351,11 +386,7 @@ export default function ProfileScreen({
               <View style={styles.metaRow}>
                 <Text style={styles.metaText}>{profile.gender}</Text>
                 <Text style={styles.metaDot}>•</Text>
-                <Text style={styles.metaText}>{new Date(profile.dateOfBirth).toLocaleDateString(lang === 'vi' ? 'vi' : 'en-US', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric',
-                })}</Text>
+                <Text style={styles.metaText}>{formatDateOnlyDisplay(profile.dateOfBirth, lang)}</Text>
               </View>
             )}
             {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
@@ -571,62 +602,12 @@ export default function ProfileScreen({
         </View>
       </Modal>
 
-      <Modal transparent visible={isDatePickerOpen} animationType="fade" statusBarTranslucent onRequestClose={() => setIsDatePickerOpen(false)}>
-        <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={() => setIsDatePickerOpen(false)}>
-          <View style={styles.calendarCard}>
-            <View style={styles.yearHeader}>
-              <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear() - 1, prev.getMonth(), 1))} style={styles.yearButton}>
-                <Ionicons name="chevron-back-outline" size={18} color={Colors.textDark} />
-              </TouchableOpacity>
-              <Text style={styles.calendarYear}>{currentPickerMonth.getFullYear()}</Text>
-              <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear() + 1, prev.getMonth(), 1))} style={styles.yearButton}>
-                <Ionicons name="chevron-forward-outline" size={18} color={Colors.textDark} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.calendarHeader}>
-              <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}>
-                <Ionicons name="chevron-back-outline" size={22} color={Colors.textDark} />
-              </TouchableOpacity>
-              <Text style={styles.calendarTitle}>{currentPickerMonth.toLocaleString(lang === 'vi' ? 'vi' : 'en-US', { month: 'long' })}</Text>
-              <TouchableOpacity onPress={() => setCurrentPickerMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}>
-                <Ionicons name="chevron-forward-outline" size={22} color={Colors.textDark} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.weekHeader}>
-              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-                <Text key={day} style={styles.weekDay}>{day}</Text>
-              ))}
-            </View>
-            <View style={styles.daysGrid}>
-              {(() => {
-                const firstDay = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth(), 1).getDay();
-                const totalDays = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth() + 1, 0).getDate();
-                const cells = Array.from({ length: firstDay + totalDays }, (_, index) => {
-                  if (index < firstDay) return null;
-                  return index - firstDay + 1;
-                });
-                return cells.map((day, idx) => (
-                  <TouchableOpacity
-                    key={`${currentPickerMonth.getMonth()}-${idx}`}
-                    style={[styles.dayCell, day ? styles.dayCellEnabled : undefined]}
-                    activeOpacity={day ? 0.7 : 1}
-                    disabled={!day}
-                    onPress={() => {
-                      if (!day) return;
-                      const selected = new Date(currentPickerMonth.getFullYear(), currentPickerMonth.getMonth(), day);
-                      const iso = selected.toISOString().slice(0, 10);
-                      setEditDateOfBirth(iso);
-                      setIsDatePickerOpen(false);
-                    }}
-                  >
-                    <Text style={[styles.dayText, !day && styles.dayTextDisabled]}>{day || ''}</Text>
-                  </TouchableOpacity>
-                ));
-              })()}
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <DateOfBirthPicker
+        visible={isDatePickerOpen}
+        value={editDateOfBirth}
+        onClose={() => setIsDatePickerOpen(false)}
+        onConfirm={setEditDateOfBirth}
+      />
 
       <Modal
         visible={isPasswordOpen}
@@ -1155,81 +1136,6 @@ const styles = StyleSheet.create({
   textarea: {
     minHeight: 100,
     textAlignVertical: 'top',
-  },
-  calendarOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  calendarCard: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: Colors.white,
-    borderRadius: 24,
-    padding: 18,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  calendarTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
-  yearHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  yearButton: {
-    padding: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(124,91,255,0.08)',
-  },
-  calendarYear: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
-  weekHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  weekDay: {
-    width: 30,
-    textAlign: 'center',
-    color: Colors.textMid,
-    fontSize: 12,
-  },
-  daysGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    justifyContent: 'flex-start',
-  },
-  dayCell: {
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  dayCellEnabled: {
-    backgroundColor: 'rgba(124, 91, 255, 0.08)',
-  },
-  dayText: {
-    color: Colors.textDark,
-    fontSize: 13,
-  },
-  dayTextDisabled: {
-    color: Colors.textMuted,
   },
   buttonRow: {
     flexDirection: 'row',
