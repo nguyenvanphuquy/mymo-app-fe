@@ -25,6 +25,7 @@ import PostSheet from './src/components/PostSheet';
 import MymoBot from './src/components/MymoBot';
 import { LocationPermSheet, EnableLocationModal } from './src/components/LocationPermSheet';
 import type { PostView } from './src/services/postApi';
+import { updateUserLocation, updateUserSettings } from './src/services/userApi';
 
 type Screen = 'auth' | 'app';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
@@ -123,17 +124,32 @@ function AppInner() {
     }
   }, [screen, permissionAsked]);
 
+  /** Sync privacy flags + clear server coords so friends stop seeing you on the map. */
+  const syncLocationPrivacy = (sharing: boolean, isAnonymous: boolean) => {
+    void updateUserSettings({
+      isLocationSharing: sharing,
+      isAnonymous,
+    }).catch(() => {});
+    if (!sharing || isAnonymous) {
+      void updateUserLocation(null, null);
+    }
+  };
+
   const handleEnableLocation = () => {
     setLocationGranted(true);
+    setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
+    syncLocationPrivacy(true, false);
     Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
   };
 
   const handleDenyLocation = () => {
     setLocationGranted(false);
+    setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
+    syncLocationPrivacy(false, false);
     Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.offDesc') });
   };
 
@@ -224,6 +240,7 @@ function AppInner() {
             onMessage={f => { setSelectedFriend(null); handleOpenChat({ userId: f.id, title: f.name }); }}
             onDisableIncognito={() => {
               setIncognito(false);
+              syncLocationPrivacy(!!locationGranted, false);
               Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
             }}
           />
@@ -240,16 +257,28 @@ function AppInner() {
             locationGranted={!!locationGranted}
             incognito={incognito}
             isActive={tab === 'profile'}
-            onToggleLocation={() => setLocationGranted(v => !v)}
+            onToggleLocation={() => {
+              const next = !locationGranted;
+              setLocationGranted(next);
+              if (!next) {
+                setIncognito(false);
+                syncLocationPrivacy(false, false);
+              } else {
+                setIncognito(false);
+                syncLocationPrivacy(true, false);
+              }
+            }}
             onToggleIncognito={() => {
               setIncognito(v => {
                 const next = !v;
+                syncLocationPrivacy(!!locationGranted, next);
                 if (next) Toast.show({ type: 'info', text1: t('loc.incognitoOn'), text2: t('loc.incognitoOnDesc') });
                 else Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
                 return next;
               });
             }}
             onLogout={() => {
+              void updateUserLocation(null, null);
               setScreen('auth');
               setTab('home');
               setLocationGranted(null);

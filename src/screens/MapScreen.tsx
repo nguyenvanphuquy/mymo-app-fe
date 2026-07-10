@@ -144,14 +144,15 @@ export default function MapScreen({
     };
   }, [locationGranted]);
 
-  // ── Share own location with server ───────────────────────────────────────
+  // ── Share own location with server (null = hide from friends' maps) ──────
   useEffect(() => {
-    if (!locationGranted || !userCoords) return;
-    const sharing = visibleOnMap && !incognito;
-    updateUserLocation(
-      sharing ? userCoords.lat : null,
-      sharing ? userCoords.lng : null,
-    );
+    const sharing = locationGranted && visibleOnMap && !incognito;
+    if (!sharing) {
+      updateUserLocation(null, null);
+      return;
+    }
+    if (!userCoords) return;
+    updateUserLocation(userCoords.lat, userCoords.lng);
   }, [locationGranted, visibleOnMap, incognito, userCoords?.lat, userCoords?.lng]);
 
   // ── Fetch friend locations ───────────────────────────────────────────────
