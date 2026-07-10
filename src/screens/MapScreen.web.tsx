@@ -16,8 +16,10 @@ import type { Friend } from '../constants/data';
 import FriendSheet from '../components/FriendSheet';
 import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
-import { toPostView, type NearbyPost, type PostView } from '../services/postApi';
+import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from '../services/postApi';
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
+import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
+import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
 import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
 import { getFriendsLocations } from '../services/friendsApi';
@@ -428,6 +430,34 @@ export default function MapScreen({
       subDeleted.remove();
     };
   }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
+    const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
+
+    let cancelled = false;
+    void updateMapArea(lat, lng).catch(() => {});
+
+    const unsubCreated = onMapPostCreated(raw => {
+      if (cancelled) return;
+      const post = normalizeNearbyPost(raw);
+      if (!post || post.isExpired) return;
+      setNearbyPosts(prev => upsertMapNearbyPost(prev, post));
+    });
+
+    const unsubDeleted = onMapPostDeleted(({ postId }) => {
+      if (cancelled) return;
+      setNearbyPosts(prev => removeMapNearbyPost(prev, postId));
+    });
+
+    return () => {
+      cancelled = true;
+      unsubCreated();
+      unsubDeleted();
+    };
+  }, [isActive, coordsBucket]);
 
   const searchLower = searchText.trim().toLowerCase();
   const filteredPosts = searchLower
