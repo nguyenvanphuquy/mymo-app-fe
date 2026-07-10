@@ -28,7 +28,8 @@ import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
 import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
-import { getStoredAuthSession } from '../services/authApi';
+import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
+import { getUserProfile } from '../services/userApi';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -100,8 +101,12 @@ export default function MapScreen({
 
   useEffect(() => {
     getStoredAuthSession()
-      .then(session => setMyUserId(session?.userId ?? null))
+      .then(session => setMyUserId(getAuthUserId(session)))
       .catch(() => setMyUserId(null));
+
+    getUserProfile()
+      .then(profile => setMyUserId(profile.id || null))
+      .catch(() => {});
   }, []);
 
   // ── User location ────────────────────────────────────────────────────────

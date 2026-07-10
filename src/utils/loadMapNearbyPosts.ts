@@ -1,27 +1,25 @@
 import { getStoredAuthSession } from '../services/authApi';
+import { getUserProfile } from '../services/userApi';
 import {
   feedPostToNearbyPost,
   getMyPosts,
   getNearbyPosts,
+  type FeedPost,
   type NearbyPost,
 } from '../services/postApi';
 import { filterActivePosts } from './postExpiration';
 
 function mergeOwnPosts(
   nearby: NearbyPost[],
-  myPosts: Awaited<ReturnType<typeof getMyPosts>>,
-  myUserId: string | null,
+  myPosts: FeedPost[],
   myDisplayName: string,
   myAvatarUrl: string | null,
 ): NearbyPost[] {
-  if (!myUserId) return nearby;
-
   const merged = [...nearby];
   const seen = new Set(merged.map(post => post.postId));
-  const ownId = myUserId.toLowerCase();
 
   for (const post of filterActivePosts(myPosts)) {
-    if (post.userId.toLowerCase() !== ownId || seen.has(post.postId)) continue;
+    if (seen.has(post.postId)) continue;
 
     const mapPost = feedPostToNearbyPost(post, myDisplayName, myAvatarUrl);
     if (!mapPost) continue;
@@ -39,19 +37,26 @@ export async function loadMapNearbyPosts(
   lng: number,
 ): Promise<NearbyPost[]> {
   const session = await getStoredAuthSession().catch(() => null);
-  const myUserId = session?.userId ?? null;
-  const myDisplayName = session?.displayName || session?.username || 'You';
-  const myAvatarUrl = session?.avatarUrl ?? null;
+
+  let myDisplayName = session?.username || 'You';
+  let myAvatarUrl: string | null = null;
+
+  try {
+    const profile = await getUserProfile();
+    myDisplayName = profile.displayName || profile.username || myDisplayName;
+    myAvatarUrl = profile.avatarUrl;
+  } catch {
+    // profile optional for display name only
+  }
 
   const [nearby, myPosts] = await Promise.all([
-    getNearbyPosts(lat, lng, 10, 1, 100),
-    getMyPosts().catch(() => []),
+    getNearbyPosts(lat, lng, 25, 1, 100),
+    getMyPosts().catch(() => [] as FeedPost[]),
   ]);
 
   return mergeOwnPosts(
     filterActivePosts(nearby),
     myPosts,
-    myUserId,
     myDisplayName,
     myAvatarUrl,
   );

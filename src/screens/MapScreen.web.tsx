@@ -31,7 +31,8 @@ import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
 import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
-import { getStoredAuthSession } from '../services/authApi';
+import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
+import { getUserProfile } from '../services/userApi';
 
 // ─── Mapbox GL JS (web-only) ──────────────────────────────────────────────────
 import mapboxgl from 'mapbox-gl';
@@ -300,8 +301,12 @@ export default function MapScreen({
 
   useEffect(() => {
     getStoredAuthSession()
-      .then(session => setMyUserId(session?.userId ?? null))
+      .then(session => setMyUserId(getAuthUserId(session)))
       .catch(() => setMyUserId(null));
+
+    getUserProfile()
+      .then(profile => setMyUserId(profile.id || null))
+      .catch(() => {});
   }, []);
 
   const searchProximity = userCoords

@@ -81,8 +81,25 @@ export async function getStoredAuthSession(): Promise<AuthResponse | null> {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as AuthResponse;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const userId = String(parsed.userId ?? parsed.UserId ?? '').trim();
+    if (!userId) return null;
+
+    return {
+      userId,
+      username: String(parsed.username ?? parsed.Username ?? ''),
+      email: String(parsed.email ?? parsed.Email ?? ''),
+      accessToken: String(parsed.accessToken ?? parsed.AccessToken ?? ''),
+      refreshToken: String(parsed.refreshToken ?? parsed.RefreshToken ?? ''),
+    };
   } catch {
     return null;
   }
+}
+
+/** Resolve current user id from stored auth (handles PascalCase legacy payloads). */
+export function getAuthUserId(session: AuthResponse | null | undefined): string | null {
+  if (!session?.userId) return null;
+  const id = session.userId.trim();
+  return id || null;
 }
