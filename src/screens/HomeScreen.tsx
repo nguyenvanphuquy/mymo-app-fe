@@ -81,6 +81,7 @@ export default function HomeScreen({
   const [selectedVibe, setSelectedVibe] = useState<string>('chill');
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [friendNames, setFriendNames] = useState<Record<string, { name: string; avatar?: string | null }>>({});
   const [pendingRequests, setPendingRequests] = useState(0);
   const [suggestionCount, setSuggestionCount] = useState(0);
@@ -93,8 +94,10 @@ export default function HomeScreen({
       const profile = await getUserProfile();
       setDisplayName(profile.displayName || profile.username);
       setAvatarUrl(profile.avatarUrl);
+      setCurrentUserId(profile.id);
     } catch {
       setDisplayName('');
+      setCurrentUserId(null);
     }
 
     try {
@@ -328,7 +331,15 @@ export default function HomeScreen({
         </View>
 
         <View style={styles.storiesWrap}>
-          <FriendMomentsSection friendNames={friendNames} hideTitle />
+          <FriendMomentsSection
+            friendNames={friendNames}
+            currentUser={currentUserId ? {
+              userId: currentUserId,
+              name: displayName || t('friends.yourStory'),
+              avatar: avatarUrl,
+            } : null}
+            hideTitle
+          />
         </View>
 
         {/* Signals */}

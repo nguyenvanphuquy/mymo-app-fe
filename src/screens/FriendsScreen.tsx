@@ -28,6 +28,7 @@ import {
   type PendingFriendRequest,
   type SentFriendRequest,
 } from '../services/friendsApi';
+import { getUserProfile } from '../services/userApi';
 import FriendMomentsSection from '../components/FriendMomentsSection';
 import FriendRequestsSection from '../components/FriendRequestsSection';
 import SentRequestsSection from '../components/SentRequestsSection';
@@ -39,16 +40,19 @@ import * as Haptics from 'expo-haptics';
 import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import type { FriendProfileParams } from '../screens/FriendProfileScreen';
+
 // ─── Interfaces ──────────────────────────────────────────────────────────────
 interface FriendsScreenProps {
   onFriendTap: (f: Friend) => void;
   onOpenChat: (params: OpenChatParams) => void;
+  onViewProfile: (params: FriendProfileParams) => void;
   onAdd: () => void;
 }
 
 type FriendView = Friend & { avatar: string; lastMsg: string; lastTime: string };
 
-export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: FriendsScreenProps) {
+export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, onAdd }: FriendsScreenProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
@@ -60,6 +64,11 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: Friend
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [actionFriend, setActionFriend] = useState<FriendView | null>(null);
   const [searchResults, setSearchResults] = useState<FriendView[] | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    userId: string;
+    name: string;
+    avatar?: string | null;
+  } | null>(null);
 
   const mapFriendSummary = (item: FriendSummary): FriendView => {
     const name = item.displayName || item.username;
@@ -118,16 +127,24 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: Friend
   const fetchFriendData = async () => {
     setIsLoading(true);
     try {
-      const [friendsRes, suggestionsRes, requestsRes, sentRes] = await Promise.all([
+      const [friendsRes, suggestionsRes, requestsRes, sentRes, profileRes] = await Promise.all([
         getFriends(),
         getFriendSuggestions(),
         getFriendRequests(),
         getSentRequests(),
+        getUserProfile().catch(() => null),
       ]);
       setFriends(friendsRes);
       setSuggestions(suggestionsRes);
       setFriendRequests(requestsRes);
       setSentRequests(sentRes);
+      if (profileRes?.id) {
+        setCurrentUser({
+          userId: profileRes.id,
+          name: profileRes.displayName || profileRes.username,
+          avatar: profileRes.avatarUrl,
+        });
+      }
     } catch (error) {
       Toast.show({ type: 'error', text1: String(error instanceof Error ? error.message : 'Unable to load friends') });
     } finally {
@@ -261,11 +278,27 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: Friend
               suggestions={suggestions}
               onAdd={handleAddSuggestion}
             />
-            <FriendMomentsSection friendNames={friendLookup} />
+            <FriendMomentsSection friendNames={friendLookup} currentUser={currentUser} />
           </View>
         )}
         renderItem={({ item: f }) => (
           <View style={styles.chatItem}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onViewProfile({
+                  userId: f.id,
+                  displayName: f.name,
+                  avatarUrl: f.avatar,
+                });
+              }}
+              style={styles.chatAvatarWrap}
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: f.avatar }} style={styles.chatAvatar} />
+              {f.status === 'active' && <View style={styles.chatActiveDot} />}
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -278,11 +311,6 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: Friend
               style={styles.chatItemMain}
               activeOpacity={0.7}
             >
-              <View style={styles.chatAvatarWrap}>
-                <Image source={{ uri: f.avatar }} style={styles.chatAvatar} />
-                {f.status === 'active' && <View style={styles.chatActiveDot} />}
-              </View>
-
               <View style={styles.chatInfo}>
                 <Text style={styles.chatName}>{f.name}</Text>
                 <Text style={styles.chatMsg} numberOfLines={1}>
@@ -313,6 +341,15 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onAdd }: Friend
         visible={!!actionFriend}
         friendName={actionFriend?.name || ''}
         onClose={() => setActionFriend(null)}
+        onViewProfile={() => {
+          if (!actionFriend) return;
+          onViewProfile({
+            userId: actionFriend.id,
+            displayName: actionFriend.name,
+            avatarUrl: actionFriend.avatar,
+          });
+          setActionFriend(null);
+        }}
         onRemove={async () => {
           if (!actionFriend) return;
           await removeFriend(actionFriend.id);

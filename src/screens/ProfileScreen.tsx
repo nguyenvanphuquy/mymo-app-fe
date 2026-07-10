@@ -34,9 +34,10 @@ const { width: SW } = Dimensions.get('window');
 
 interface ProfileScreenProps {
   locationGranted: boolean;
+  shareLocationOnMap: boolean;
   incognito: boolean;
   isActive?: boolean;
-  onToggleLocation: () => void;
+  onToggleShareLocation: () => void;
   onToggleIncognito: () => void;
   onLogout: () => void;
 }
@@ -50,8 +51,8 @@ const MOODS = [
 ];
 
 export default function ProfileScreen({
-  locationGranted, incognito, isActive = true,
-  onToggleLocation, onToggleIncognito, onLogout,
+  locationGranted, shareLocationOnMap, incognito, isActive = true,
+  onToggleShareLocation, onToggleIncognito, onLogout,
 }: ProfileScreenProps) {
   const { t, lang, setLang } = useI18n();
   const insets = useSafeAreaInsets();
@@ -126,10 +127,12 @@ export default function ProfileScreen({
   useEffect(() => {
     refreshAll();
     const sub1 = DeviceEventEmitter.addListener('post:created', refreshAll);
-    const sub2 = DeviceEventEmitter.addListener('friend:accepted', loadProfile);
+    const sub2 = DeviceEventEmitter.addListener('post:deleted', refreshAll);
+    const sub3 = DeviceEventEmitter.addListener('friend:accepted', loadProfile);
     return () => {
       sub1.remove();
       sub2.remove();
+      sub3.remove();
     };
   }, [refreshAll, loadProfile]);
 
@@ -465,7 +468,7 @@ export default function ProfileScreen({
       />
 
       {selectedPost && (
-        <PostSheet post={selectedPost} onClose={() => setSelectedPost(null)} />
+        <PostSheet post={selectedPost} isOwnPost onClose={() => setSelectedPost(null)} />
       )}
 
       <Modal
@@ -700,10 +703,10 @@ export default function ProfileScreen({
           hint={t('profile.shareLocHint')}
           right={
             <Toggle
-              on={locationGranted}
+              on={shareLocationOnMap}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onToggleLocation();
+                onToggleShareLocation();
               }}
             />
           }
@@ -712,16 +715,16 @@ export default function ProfileScreen({
           icon="glasses"
           label={t('profile.incognito')}
           hint={t('profile.incognitoHint')}
-          disabled={!locationGranted}
+          disabled={!locationGranted || !shareLocationOnMap}
           right={
             <Toggle
-              on={incognito && locationGranted}
+              on={incognito && shareLocationOnMap}
               onPress={() => {
-                if (!locationGranted) return;
+                if (!locationGranted || !shareLocationOnMap) return;
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onToggleIncognito();
               }}
-              disabled={!locationGranted}
+              disabled={!locationGranted || !shareLocationOnMap}
             />
           }
         />

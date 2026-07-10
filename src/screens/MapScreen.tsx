@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Dimensions, Image, DeviceEventEmitter,
@@ -13,21 +13,22 @@ import type { Friend } from '../constants/data';
 import FriendSheet from '../components/FriendSheet';
 import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
-import { getNearbyPosts, toPostView, type NearbyPost, type PostView } from '../services/postApi';
-import { filterActivePosts } from '../utils/postExpiration';
+import { toPostView, type NearbyPost, type PostView } from '../services/postApi';
+import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
+import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
 import { getFriendsLocations } from '../services/friendsApi';
-import { updateUserLocation } from '../services/userApi';
+import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
 import { getMymoMapStyle, MAP_THEME_UI, type MapTheme } from '../utils/mapStyles';
 import MapAtmosphere from '../components/MapAtmosphere';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
+import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
-import Toast from 'react-native-toast-message';
+import { getStoredAuthSession } from '../services/authApi';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -44,6 +45,7 @@ interface MapScreenProps {
   onCloseSheet: () => void;
   onMessage: (f: Friend) => void;
   onDisableIncognito?: () => void;
+  onViewProfile?: (f: Friend) => void;
 }
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
@@ -52,7 +54,7 @@ const DEFAULT_ZOOM = 17;
 
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
-  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito,
+  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -76,9 +78,12 @@ export default function MapScreen({
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
+  const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const cameraRef = useRef<Camera>(null);
   const hasCenteredOnUserRef = useRef(false);
 
@@ -92,6 +97,12 @@ export default function MapScreen({
     setFocused: setSearchFocused,
     showDropdown: showSearchDropdown,
   } = useMapGeocodeSearch(searchText, { proximity: searchProximity });
+
+  useEffect(() => {
+    getStoredAuthSession()
+      .then(session => setMyUserId(session?.userId ?? null))
+      .catch(() => setMyUserId(null));
+  }, []);
 
   // ── User location ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -146,14 +157,13 @@ export default function MapScreen({
 
   // ── Share own location with server (null = hide from friends' maps) ──────
   useEffect(() => {
-    const sharing = locationGranted && visibleOnMap && !incognito;
-    if (!sharing) {
-      updateUserLocation(null, null);
+    if (!visibleOnMap) {
+      void hideUserLocation().catch(() => {});
       return;
     }
     if (!userCoords) return;
-    updateUserLocation(userCoords.lat, userCoords.lng);
-  }, [locationGranted, visibleOnMap, incognito, userCoords?.lat, userCoords?.lng]);
+    void updateUserLocation(userCoords.lat, userCoords.lng).catch(() => {});
+  }, [visibleOnMap, userCoords?.lat, userCoords?.lng]);
 
   // ── Fetch friend locations ───────────────────────────────────────────────
   const fetchFriendLocations = useCallback(async () => {
@@ -185,8 +195,8 @@ export default function MapScreen({
     const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
-      const posts = await getNearbyPosts(lat, lng, 5, 1, 20);
-      setNearbyPosts(filterActivePosts(posts));
+      const posts = await loadMapNearbyPosts(lat, lng);
+      setNearbyPosts(posts);
     } catch {
       setNearbyPosts([]);
     }
@@ -207,11 +217,18 @@ export default function MapScreen({
     if (!isActive) return;
     fetchNearbyPosts();
     fetchNearbyPlaces();
-    const sub = DeviceEventEmitter.addListener('post:created', () => {
+    const subCreated = DeviceEventEmitter.addListener('post:created', () => {
       fetchNearbyPosts();
       fetchNearbyPlaces();
     });
-    return () => sub.remove();
+    const subDeleted = DeviceEventEmitter.addListener('post:deleted', () => {
+      fetchNearbyPosts();
+      fetchNearbyPlaces();
+    });
+    return () => {
+      subCreated.remove();
+      subDeleted.remove();
+    };
   }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
 
   const searchLower = searchText.trim().toLowerCase();
@@ -230,6 +247,20 @@ export default function MapScreen({
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
     : DEFAULT_CENTER;
+
+  const showDetailPins = mapZoom >= MAP_DETAIL_MIN_ZOOM;
+
+  const spreadMapPosts = useMemo(
+    () => spreadOverlappingMarkers(filteredPosts),
+    [filteredPosts],
+  );
+
+  useEffect(() => {
+    if (showDetailPins) return;
+    setSelectedPost(null);
+    setSelectedPostIsOwn(false);
+    setSelectedPlace(null);
+  }, [showDetailPins]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
@@ -290,6 +321,12 @@ export default function MapScreen({
         attributionEnabled={false}
         compassEnabled={false}
         scaleBarEnabled={false}
+        onCameraChanged={state => {
+          const zoom = state.properties.zoom;
+          if (typeof zoom === 'number' && !Number.isNaN(zoom)) {
+            setMapZoom(zoom);
+          }
+        }}
       >
         <Camera
           ref={cameraRef}
@@ -329,8 +366,8 @@ export default function MapScreen({
           </MarkerView>
         )}
 
-        {/* Nearby place pins */}
-        {filteredPlaces.map(place => (
+        {/* Nearby place pins — only when zoomed in */}
+        {showDetailPins && filteredPlaces.map(place => (
           <MarkerView
             key={`place-${place.placeId}`}
             coordinate={[place.longitude, place.latitude]}
@@ -373,17 +410,20 @@ export default function MapScreen({
           </MarkerView>
         ))}
 
-        {/* Nearby post pins */}
-        {filteredPosts.map(post => (
+        {/* Nearby post pins — only when zoomed in */}
+        {showDetailPins && spreadMapPosts.map(({ post, latitude, longitude }) => (
           <MarkerView
             key={`post-${post.postId}`}
-            coordinate={[post.longitude, post.latitude]}
+            coordinate={[longitude, latitude]}
             anchor={{ x: 0.5, y: 1 }}
           >
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setSelectedPlace(null);
+                setSelectedPostIsOwn(
+                  Boolean(myUserId && post.userId && myUserId.toLowerCase() === post.userId.toLowerCase()),
+                );
                 setSelectedPost(toPostView(post));
               }}
               style={styles.postPin}
@@ -647,7 +687,11 @@ export default function MapScreen({
       {selectedPost && (
         <PostSheet
           post={selectedPost}
-          onClose={() => setSelectedPost(null)}
+          isOwnPost={selectedPostIsOwn}
+          onClose={() => {
+            setSelectedPost(null);
+            setSelectedPostIsOwn(false);
+          }}
         />
       )}
 
@@ -657,6 +701,7 @@ export default function MapScreen({
           friend={selectedFriend}
           onClose={onCloseSheet}
           onMessage={(f) => { onCloseSheet(); onMessage(f); }}
+          onViewProfile={onViewProfile ? (f) => { onCloseSheet(); onViewProfile(f); } : undefined}
         />
       )}
     </View>

@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  StatusBar, Platform, Image, DeviceEventEmitter, ActivityIndicator, ScrollView,
+  StatusBar, Platform, Image, DeviceEventEmitter, ActivityIndicator, ScrollView, TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,9 @@ import { createPost } from '../services/postApi';
 import { buildImageFormData } from '../utils/imageFormData';
 import { getNearbyPlaces, pickClosestPlace, PlaceResult } from '../services/placeApi';
 import { BEAUTY_FILTERS, getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
+import { pickRandomAlias } from '../utils/anonymousAlias';
+
+const CAPTION_MAX = 150;
 
 interface CameraSheetProps {
   locationGranted: boolean;
@@ -35,7 +39,9 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
   const [nearestPlace, setNearestPlace] = useState<PlaceResult | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [resolvingPlace, setResolvingPlace] = useState(false);
-  const [visibility, setVisibility] = useState<'Public' | 'Friends'>('Public');
+  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Anonymous'>('Public');
+  const [anonymousAlias, setAnonymousAlias] = useState(() => pickRandomAlias());
+  const [caption, setCaption] = useState('');
   const [beautyFilter, setBeautyFilter] = useState<BeautyFilterId>('soft');
   const [showBeautyPanel, setShowBeautyPanel] = useState(false);
   const slideAnim = useRef(new Animated.Value(800)).current;
@@ -159,6 +165,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
   const retake = () => {
     setCaptured(false);
     setSelectedImageUri(null);
+    setCaption('');
     setCameraReady(false);
   };
 
@@ -211,11 +218,15 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
       }
 
       const payload: Record<string, unknown> = {
-        caption: t('cam.defaultCaption') || 'Shared from MYMO',
+        caption: caption.trim(),
         postType: 'Image',
         visibility,
         mediaIds: [mediaId],
       };
+
+      if (visibility === 'Anonymous') {
+        payload.anonymousAlias = anonymousAlias.trim() || pickRandomAlias();
+      }
 
       if (placeId) {
         payload.placeId = placeId;
@@ -257,6 +268,10 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
 
   return (
     <Modal transparent={false} animationType="none" statusBarTranslucent>
+      <KeyboardAvoidingView
+        style={styles.keyboardRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <Animated.View style={[styles.container, { transform: [{ translateY: slideAnim }] }]}>
         <LinearGradient colors={['#1a0f33', '#2A1758', '#1a0f33']} style={StyleSheet.absoluteFill} />
 
@@ -334,9 +349,26 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
           {captured && selectedImageUri && (
             <>
               <Image source={{ uri: selectedImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              <View style={styles.capturedBadge}>
-                <Ionicons name="checkmark-circle" size={22} color={Colors.white} />
-                <Text style={styles.capturedText}>{t('cam.captured')}</Text>
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
+                style={styles.captionGradient}
+              />
+              <View style={styles.captionComposer}>
+                <TextInput
+                  style={styles.captionInput}
+                  value={caption}
+                  onChangeText={text => setCaption(text.slice(0, CAPTION_MAX))}
+                  placeholder={t('cam.captionPlaceholder')}
+                  placeholderTextColor="rgba(255,255,255,0.55)"
+                  multiline
+                  maxLength={CAPTION_MAX}
+                  autoFocus
+                  returnKeyType="done"
+                  blurOnSubmit
+                />
+                <Text style={styles.captionCounter}>
+                  {caption.length}/{CAPTION_MAX}
+                </Text>
               </View>
             </>
           )}
@@ -430,7 +462,37 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
                     {t('cam.visibilityFriends')}
                   </Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setVisibility('Anonymous');
+                    setAnonymousAlias(pickRandomAlias());
+                  }}
+                  style={[styles.visibilityChip, visibility === 'Anonymous' && styles.visibilityChipActive]}
+                >
+                  <Ionicons name="eye-off-outline" size={14} color={visibility === 'Anonymous' ? Colors.white : Colors.primary} />
+                  <Text style={[styles.visibilityText, visibility === 'Anonymous' && styles.visibilityTextActive]}>
+                    {t('cam.visibilityAnonymous')}
+                  </Text>
+                </TouchableOpacity>
               </View>
+              {visibility === 'Anonymous' && (
+                <View style={styles.aliasRow}>
+                  <TextInput
+                    style={styles.aliasInput}
+                    value={anonymousAlias}
+                    onChangeText={setAnonymousAlias}
+                    placeholder={t('cam.aliasPlaceholder')}
+                    placeholderTextColor="rgba(255,255,255,0.5)"
+                    maxLength={32}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setAnonymousAlias(pickRandomAlias())}
+                    style={styles.aliasShuffleBtn}
+                  >
+                    <Ionicons name="shuffle" size={18} color={Colors.white} />
+                  </TouchableOpacity>
+                </View>
+              )}
               <TouchableOpacity
                 onPress={handlePostNow}
                 activeOpacity={0.85}
@@ -449,6 +511,7 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
           )}
         </View>
       </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -457,6 +520,9 @@ const CORNER_SIZE = 24;
 const CORNER_THICKNESS = 3;
 
 const styles = StyleSheet.create({
+  keyboardRoot: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#1a0f33',
@@ -587,20 +653,38 @@ const styles = StyleSheet.create({
     borderBottomWidth: CORNER_THICKNESS, borderRightWidth: CORNER_THICKNESS,
     borderBottomRightRadius: 8,
   },
-  capturedBadge: {
+  captionGradient: {
     position: 'absolute',
-    bottom: 18,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(30,15,60,0.75)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
-    alignItems: 'center',
-    gap: 6,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '48%',
   },
-  capturedText: {
+  captionComposer: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 56,
+    alignItems: 'center',
+    gap: 8,
+  },
+  captionInput: {
+    width: '100%',
+    minHeight: 48,
+    maxHeight: 120,
     color: Colors.white,
-    fontSize: 13,
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  captionCounter: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
     fontWeight: '600',
   },
   geoTag: {
@@ -703,6 +787,7 @@ const styles = StyleSheet.create({
   },
   visibilityRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     justifyContent: 'center',
   },
@@ -728,6 +813,32 @@ const styles = StyleSheet.create({
   },
   visibilityTextActive: {
     color: Colors.white,
+  },
+  aliasRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  aliasInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  aliasShuffleBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   postBtn: {
     borderRadius: 16,

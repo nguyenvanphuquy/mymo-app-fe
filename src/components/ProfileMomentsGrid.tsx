@@ -18,24 +18,36 @@ const TILE = (CARD_W - H_PAD * 2 - GAP * (COLS - 1)) / COLS;
 interface ProfileMomentsGridProps {
   posts: FeedPost[];
   onPostPress: (post: FeedPost) => void;
+  title?: string;
+  emptyTitle?: string;
+  emptySub?: string;
 }
 
-export default function ProfileMomentsGrid({ posts, onPostPress }: ProfileMomentsGridProps) {
+export default function ProfileMomentsGrid({
+  posts,
+  onPostPress,
+  title,
+  emptyTitle,
+  emptySub,
+}: ProfileMomentsGridProps) {
   const { t } = useI18n();
+  const gridTitle = title ?? t('profile.myMoments');
+  const gridEmptyTitle = emptyTitle ?? t('profile.noMoments');
+  const gridEmptySub = emptySub ?? t('profile.noMomentsDesc');
 
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Ionicons name="grid-outline" size={16} color={Colors.primary} />
-        <Text style={styles.title}>{t('profile.myMoments')}</Text>
+        <Text style={styles.title}>{gridTitle}</Text>
         <Text style={styles.count}>{posts.length}</Text>
       </View>
 
       {posts.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="images-outline" size={28} color={Colors.primaryLight} />
-          <Text style={styles.emptyTitle}>{t('profile.noMoments')}</Text>
-          <Text style={styles.emptySub}>{t('profile.noMomentsDesc')}</Text>
+          <Text style={styles.emptyTitle}>{gridEmptyTitle}</Text>
+          <Text style={styles.emptySub}>{gridEmptySub}</Text>
         </View>
       ) : (
         <View style={styles.grid}>
@@ -58,6 +70,11 @@ export default function ProfileMomentsGrid({ posts, onPostPress }: ProfileMoment
                 {post.visibility === 'Friends' && (
                   <View style={styles.visBadge}>
                     <Ionicons name="people" size={10} color={Colors.white} />
+                  </View>
+                )}
+                {post.visibility === 'Anonymous' && (
+                  <View style={[styles.visBadge, styles.anonBadge]}>
+                    <Ionicons name="eye-off" size={10} color={Colors.white} />
                   </View>
                 )}
               </TouchableOpacity>
@@ -133,6 +150,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(124,91,255,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  anonBadge: {
+    backgroundColor: 'rgba(60,60,80,0.9)',
   },
   empty: {
     alignItems: 'center',

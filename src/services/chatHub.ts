@@ -6,6 +6,7 @@ import { MessageType } from './chatApi';
 const HUB_URL = 'https://beexe-production.up.railway.app/hubs/chat';
 
 type MessageHandler = (message: ChatMessage) => void;
+type MessageDeletedHandler = (payload: { messageId: string }) => void;
 type TypingHandler = (payload: { userId: string; displayName: string }) => void;
 type StopTypingHandler = (payload: { userId: string }) => void;
 
@@ -13,6 +14,7 @@ let connection: signalR.HubConnection | null = null;
 let starting: Promise<signalR.HubConnection> | null = null;
 
 const messageHandlers = new Set<MessageHandler>();
+const messageDeletedHandlers = new Set<MessageDeletedHandler>();
 const typingHandlers = new Set<TypingHandler>();
 const stopTypingHandlers = new Set<StopTypingHandler>();
 
@@ -26,6 +28,11 @@ function parseHubMessage(raw: Record<string, unknown>): ChatMessage {
     messageType = MessageType[messageTypeRaw as keyof typeof MessageType] ?? MessageType.Text;
   }
 
+  const content = String(raw.content || raw.Content || '');
+  const isDeleted = Boolean(
+    raw.isDeleted ?? raw.IsDeleted ?? content === 'This message has been deleted.',
+  );
+
   return {
     messageId: String(raw.messageId || raw.MessageId || ''),
     conversationId: String(raw.conversationId || raw.ConversationId || ''),
@@ -35,24 +42,32 @@ function parseHubMessage(raw: Record<string, unknown>): ChatMessage {
       avatarUrl: (sender.avatarUrl ?? sender.AvatarUrl ?? null) as string | null,
     },
     messageType,
-    content: String(raw.content || raw.Content || ''),
+    content,
     mediaUrl: (raw.mediaUrl ?? raw.MediaUrl ?? null) as string | null,
     latitude: raw.latitude != null ? Number(raw.latitude) : raw.Latitude != null ? Number(raw.Latitude) : null,
     longitude: raw.longitude != null ? Number(raw.longitude) : raw.Longitude != null ? Number(raw.Longitude) : null,
     referenceId: raw.referenceId ? String(raw.referenceId) : raw.ReferenceId ? String(raw.ReferenceId) : null,
     createdAt: String(raw.createdAt || raw.CreatedAt || new Date().toISOString()),
     isRead: Boolean(raw.isRead ?? raw.IsRead ?? false),
+    isDeleted,
   };
 }
 
 function wireConnection(conn: signalR.HubConnection) {
   conn.off('ReceiveMessage');
+  conn.off('MessageDeleted');
   conn.off('UserTyping');
   conn.off('UserStopTyping');
 
   conn.on('ReceiveMessage', (raw: Record<string, unknown>) => {
     const message = parseHubMessage(raw);
     messageHandlers.forEach(handler => handler(message));
+  });
+
+  conn.on('MessageDeleted', (raw: { messageId?: string; MessageId?: string }) => {
+    const messageId = String(raw.messageId || raw.MessageId || '');
+    if (!messageId) return;
+    messageDeletedHandlers.forEach(handler => handler({ messageId }));
   });
 
   conn.on('UserTyping', (raw: { userId?: string; UserId?: string; displayName?: string; DisplayName?: string }) => {
@@ -127,6 +142,11 @@ export function onReceiveMessage(handler: MessageHandler): () => void {
   return () => messageHandlers.delete(handler);
 }
 
+export function onMessageDeleted(handler: MessageDeletedHandler): () => void {
+  messageDeletedHandlers.add(handler);
+  return () => messageDeletedHandlers.delete(handler);
+}
+
 export function onUserTyping(handler: TypingHandler): () => void {
   typingHandlers.add(handler);
   return () => typingHandlers.delete(handler);
@@ -143,6 +163,7 @@ export default {
   leaveConversation,
   disconnectChatHub,
   onReceiveMessage,
+  onMessageDeleted,
   onUserTyping,
   onUserStopTyping,
 };

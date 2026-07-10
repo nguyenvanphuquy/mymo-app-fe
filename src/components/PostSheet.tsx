@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
   Platform, Image, ActivityIndicator, ScrollView, TextInput,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, DeviceEventEmitter,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,7 @@ import {
   getPostById,
   likePost,
   unlikePost,
+  deletePost,
   type PostDetail,
   type PostView,
 } from '../services/postApi';
@@ -29,6 +30,12 @@ import { getStoredAuthSession } from '../services/authApi';
 interface PostSheetProps {
   post: PostView;
   onClose: () => void;
+  isOwnPost?: boolean;
+}
+
+function sameUserId(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return a.toLowerCase() === b.toLowerCase();
 }
 
 function formatCaption(caption: string | null | undefined, t: (key: string) => string): string {
@@ -107,7 +114,7 @@ function CommentRow({
   );
 }
 
-export default function PostSheet({ post, onClose }: PostSheetProps) {
+export default function PostSheet({ post, onClose, isOwnPost = false }: PostSheetProps) {
   const { t } = useI18n();
   const appWidth = useAppContentWidth();
   const slideAnim = useRef(new Animated.Value(400)).current;
@@ -126,6 +133,8 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [commentCount, setCommentCount] = useState(post.commentCount);
+  const [recalling, setRecalling] = useState(false);
+  const [recallConfirmOpen, setRecallConfirmOpen] = useState(false);
 
   const contentPad = 24;
   const mediaSize = appWidth - contentPad * 2;
@@ -292,9 +301,36 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
     }
   }, [commentText, submittingComment, replyTo, post.postId, loadComments, t]);
 
+  const isPostOwner = isOwnPost || sameUserId(currentUserId, detail?.owner?.userId);
+
+  const performRecall = useCallback(async () => {
+    if (recalling) return;
+    setRecallConfirmOpen(false);
+    setRecalling(true);
+    try {
+      await deletePost(post.postId);
+      DeviceEventEmitter.emit('post:deleted');
+      Toast.show({ type: 'success', text1: t('post.recalled') });
+      close();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('post.recallError'),
+      });
+    } finally {
+      setRecalling(false);
+    }
+  }, [recalling, post.postId, t]);
+
+  const handleRecallPost = useCallback(() => {
+    setRecallConfirmOpen(true);
+  }, []);
+
   const owner = detail?.owner;
+  const isAnonymous = detail?.visibility === 'Anonymous';
   const displayName = owner?.displayName || owner?.username || post.displayName;
   const avatarUrl = owner?.avatarUrl ?? post.avatarUrl;
+  const showUsername = owner?.username && owner.username !== 'anonymous';
   const caption = formatCaption(detail?.caption ?? post.caption, t);
   const primaryMedia = detail?.media?.[0];
   const imageUrl = primaryMedia?.url || primaryMedia?.thumbnailUrl || post.thumbnailUrl;
@@ -302,6 +338,7 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
   const shareCount = detail?.shareCount ?? 0;
 
   return (
+    <>
     <Modal transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={close} />
       <KeyboardAvoidingView
@@ -321,13 +358,19 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
               ) : (
-                <Ionicons name="person" size={16} color={Colors.primary} />
+                <Ionicons
+                  name={isAnonymous ? 'eye-off-outline' : 'person'}
+                  size={16}
+                  color={Colors.primary}
+                />
               )}
             </View>
             <View style={styles.headerInfo}>
               <Text style={styles.name}>{displayName}</Text>
-              {owner?.username ? (
-                <Text style={styles.username}>@{owner.username}</Text>
+              {isAnonymous ? (
+                <Text style={styles.username}>{t('post.anonymous')}</Text>
+              ) : showUsername ? (
+                <Text style={styles.username}>@{owner?.username}</Text>
               ) : null}
             </View>
             <TouchableOpacity onPress={close} style={styles.closeBtn}>
@@ -423,6 +466,22 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
                   )}
                 </View>
 
+                {isPostOwner && (
+                  <TouchableOpacity
+                    onPress={handleRecallPost}
+                    disabled={recalling}
+                    style={styles.recallBtn}
+                    activeOpacity={0.85}
+                  >
+                    {recalling ? (
+                      <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
+                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    )}
+                    <Text style={styles.recallBtnText}>{t('post.recall')}</Text>
+                  </TouchableOpacity>
+                )}
+
                 {showComments && (
                   <View style={styles.commentsSection}>
                     <Text style={styles.commentsTitle}>{t('post.comments')}</Text>
@@ -491,6 +550,41 @@ export default function PostSheet({ post, onClose }: PostSheetProps) {
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
+
+    <Modal
+      visible={recallConfirmOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setRecallConfirmOpen(false)}
+    >
+      <View style={styles.confirmOverlay}>
+        <View style={styles.confirmCard}>
+          <Text style={styles.confirmTitle}>{t('post.recallConfirmTitle')}</Text>
+          <Text style={styles.confirmMessage}>{t('post.recallConfirmMessage')}</Text>
+          <View style={styles.confirmActions}>
+            <TouchableOpacity
+              style={styles.confirmCancelBtn}
+              onPress={() => setRecallConfirmOpen(false)}
+              disabled={recalling}
+            >
+              <Text style={styles.confirmCancelText}>{t('post.recallCancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.confirmDeleteBtn}
+              onPress={performRecall}
+              disabled={recalling}
+            >
+              {recalling ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Text style={styles.confirmDeleteText}>{t('post.recallConfirm')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -650,6 +744,81 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     marginLeft: 'auto',
+  },
+  recallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  recallBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(42,23,88,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 22,
+    ...Shadows.float,
+  },
+  confirmTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textDark,
+    marginBottom: 8,
+  },
+  confirmMessage: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.textMuted,
+    marginBottom: 20,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryTint,
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  confirmDeleteText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.white,
   },
   commentsSection: {
     marginTop: 8,

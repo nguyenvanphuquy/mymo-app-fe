@@ -16,9 +16,10 @@ interface FriendSheetProps {
   friend: Friend;
   onClose: () => void;
   onMessage: (f: Friend) => void;
+  onViewProfile?: (f: Friend) => void;
 }
 
-export default function FriendSheet({ friend, onClose, onMessage }: FriendSheetProps) {
+export default function FriendSheet({ friend, onClose, onMessage, onViewProfile }: FriendSheetProps) {
   const { t } = useI18n();
   const appWidth = useAppContentWidth();
   const slideAnim = useRef(new Animated.Value(400)).current;
@@ -131,6 +132,17 @@ export default function FriendSheet({ friend, onClose, onMessage }: FriendSheetP
         </View>
 
         <View style={styles.actions}>
+          {onViewProfile && (
+            <TouchableOpacity
+              onPress={() => onViewProfile(friend)}
+              style={styles.btnProfile}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="person-outline" size={16} color={Colors.primary} />
+              <Text style={styles.btnProfileText}>{t('friends.viewProfile')}</Text>
+            </TouchableOpacity>
+          )}
+          <View style={styles.actionsRow}>
           <TouchableOpacity
             onPress={() => onMessage(friend)}
             style={styles.btnMsg}
@@ -152,6 +164,7 @@ export default function FriendSheet({ friend, onClose, onMessage }: FriendSheetP
               <Text style={styles.btnDirText}>{t('friend.direction')}</Text>
             </LinearGradient>
           </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.dangerActions}>
@@ -348,8 +361,27 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   actions: {
+    gap: 10,
+  },
+  actionsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  btnProfile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primaryTint,
+    borderRadius: 16,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: '#E8E0FF',
+  },
+  btnProfileText: {
+    color: Colors.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   btnMsg: {
     flex: 1,

@@ -97,8 +97,51 @@ async function requestJson<T>(path: string, method: string, body?: unknown, isMu
 }
 
 export async function getUserProfile(): Promise<UserProfile> {
-  const response = await requestJson<ApiResponse<UserProfile>>('/users/me', 'GET');
-  return response.data;
+  const response = await requestJson<ApiResponse<Record<string, unknown>>>('/users/me', 'GET');
+  const raw = response.data;
+  return {
+    id: String(raw.id ?? raw.Id ?? raw.userId ?? raw.UserId ?? ''),
+    username: String(raw.username ?? raw.Username ?? ''),
+    displayName: String(raw.displayName ?? raw.DisplayName ?? ''),
+    avatarUrl: (raw.avatarUrl ?? raw.AvatarUrl ?? null) as string | null,
+    coverUrl: (raw.coverUrl ?? raw.CoverUrl ?? null) as string | null,
+    bio: (raw.bio ?? raw.Bio ?? null) as string | null,
+    gender: String(raw.gender ?? raw.Gender ?? ''),
+    dateOfBirth: String(raw.dateOfBirth ?? raw.DateOfBirth ?? ''),
+    email: String(raw.email ?? raw.Email ?? ''),
+    phoneNumber: String(raw.phoneNumber ?? raw.PhoneNumber ?? ''),
+    friendCount: Number(raw.friendCount ?? raw.FriendCount ?? 0),
+    postCount: Number(raw.postCount ?? raw.PostCount ?? 0),
+    placeCount: Number(raw.placeCount ?? raw.PlaceCount ?? 0),
+    createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
+  };
+}
+
+export type PublicUserProfile = Omit<UserProfile, 'email' | 'phoneNumber'>;
+
+function normalizePublicProfile(raw: Record<string, unknown>): PublicUserProfile {
+  return {
+    id: String(raw.id ?? raw.Id ?? raw.userId ?? raw.UserId ?? ''),
+    username: String(raw.username ?? raw.Username ?? ''),
+    displayName: String(raw.displayName ?? raw.DisplayName ?? ''),
+    avatarUrl: (raw.avatarUrl ?? raw.AvatarUrl ?? null) as string | null,
+    coverUrl: (raw.coverUrl ?? raw.CoverUrl ?? null) as string | null,
+    bio: (raw.bio ?? raw.Bio ?? null) as string | null,
+    gender: String(raw.gender ?? raw.Gender ?? ''),
+    dateOfBirth: String(raw.dateOfBirth ?? raw.DateOfBirth ?? ''),
+    friendCount: Number(raw.friendCount ?? raw.FriendCount ?? 0),
+    postCount: Number(raw.postCount ?? raw.PostCount ?? 0),
+    placeCount: Number(raw.placeCount ?? raw.PlaceCount ?? 0),
+    createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
+  };
+}
+
+export async function getUserPublicProfile(userId: string): Promise<PublicUserProfile> {
+  const response = await requestJson<ApiResponse<Record<string, unknown>>>(`/users/${userId}`, 'GET');
+  if (!response.success) {
+    throw new Error(response.message || 'Unable to load profile');
+  }
+  return normalizePublicProfile(response.data);
 }
 
 export async function updateUserProfile(payload: UpdateUserPayload): Promise<UserProfile> {
@@ -111,20 +154,26 @@ export async function changeUserPassword(payload: ChangePasswordPayload): Promis
 }
 
 export async function updateUserSettings(payload: UserSettingsPayload): Promise<void> {
-  await requestJson<ApiResponse<null>>('/users/settings', 'PATCH', payload);
+  const response = await requestJson<ApiResponse<boolean>>('/users/settings', 'PATCH', payload);
+  if (!response.success) {
+    throw new Error(response.message || 'Unable to update settings');
+  }
+}
+
+export async function hideUserLocation(): Promise<void> {
+  await updateUserLocation(null, null);
 }
 
 export async function updateUserLocation(
   latitude: number | null,
   longitude: number | null,
 ): Promise<void> {
-  try {
-    await requestJson<ApiResponse<boolean>>('/users/location', 'PUT', {
-      latitude,
-      longitude,
-    });
-  } catch {
-    // Endpoint may not be deployed yet — ignore silently
+  const response = await requestJson<ApiResponse<boolean>>('/users/location', 'PUT', {
+    latitude,
+    longitude,
+  });
+  if (!response.success) {
+    throw new Error(response.message || 'Unable to update location');
   }
 }
 

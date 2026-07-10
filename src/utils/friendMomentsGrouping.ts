@@ -17,9 +17,10 @@ export function groupPostsByUser(
   const map = new Map<string, FeedPost[]>();
 
   for (const post of posts) {
-    const bucket = map.get(post.userId) ?? [];
+    const userId = post.userId.toLowerCase();
+    const bucket = map.get(userId) ?? [];
     bucket.push(post);
-    map.set(post.userId, bucket);
+    map.set(userId, bucket);
   }
 
   return Array.from(map.entries())
@@ -27,7 +28,7 @@ export function groupPostsByUser(
       const sorted = [...userPosts].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
-      const friend = friendNames[userId];
+      const friend = friendNames[userId] ?? friendNames[userId.toLowerCase()];
 
       return {
         userId,

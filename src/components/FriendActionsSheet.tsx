@@ -14,6 +14,7 @@ interface FriendActionsSheetProps {
   visible: boolean;
   friendName: string;
   onClose: () => void;
+  onViewProfile: () => void;
   onRemove: () => Promise<void>;
   onBlock: () => Promise<void>;
 }
@@ -22,6 +23,7 @@ export default function FriendActionsSheet({
   visible,
   friendName,
   onClose,
+  onViewProfile,
   onRemove,
   onBlock,
 }: FriendActionsSheetProps) {
@@ -94,6 +96,15 @@ export default function FriendActionsSheet({
             <>
               <Text style={styles.title}>{friendName}</Text>
               <Text style={styles.subtitle}>{t('friends.manageFriend')}</Text>
+
+              <TouchableOpacity
+                onPress={onViewProfile}
+                style={styles.actionRowPrimary}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="person-outline" size={20} color={Colors.primary} />
+                <Text style={styles.actionPrimary}>{t('friends.viewProfile')}</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => setConfirm('remove')}
@@ -179,6 +190,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FECACA',
     marginBottom: 8,
+  },
+  actionRowPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: Colors.primaryTint,
+    borderWidth: 1,
+    borderColor: '#E8E0FF',
+    marginBottom: 8,
+  },
+  actionPrimary: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   actionDanger: {
     fontSize: 15,

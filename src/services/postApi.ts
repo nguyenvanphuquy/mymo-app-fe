@@ -41,8 +41,12 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
   }
 
   if (!response.ok) {
-    const message = typeof data === 'object' && data !== null && 'message' in data
-      ? String((data as { message?: unknown }).message)
+    const message = typeof data === 'object' && data !== null
+      ? String(
+          ('message' in data && (data as { message?: unknown }).message)
+          || ('title' in data && (data as { title?: unknown }).title)
+          || 'Unable to complete request',
+        )
       : 'Unable to complete request';
     throw new Error(message);
   }
@@ -55,6 +59,7 @@ export interface PostPayload {
   caption: string;
   postType: string;
   visibility: string;
+  anonymousAlias?: string;
   latitude?: number;
   longitude?: number;
   mediaIds: string[];
@@ -80,6 +85,8 @@ export interface NearbyPost {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  isAnonymous?: boolean;
+  anonymousAlias?: string | null;
   thumbnailUrl: string | null;
   caption: string;
   latitude: number;
@@ -101,6 +108,7 @@ export interface FeedPost {
   userId: string;
   caption?: string | null;
   visibility?: string;
+  anonymousAlias?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   createdAt: string;
@@ -152,6 +160,7 @@ export interface PostDetail {
   caption: string | null;
   postType: string;
   visibility: string;
+  anonymousAlias?: string | null;
   createdAt: string;
   updatedAt: string | null;
   latitude: number | null;
@@ -166,6 +175,59 @@ export interface PostDetail {
   media: PostDetailMedia[];
 }
 
+function normalizeFeedMediaItem(raw: Record<string, unknown>): PostMedia {
+  return {
+    mediaId: String(raw.mediaId ?? raw.MediaId ?? ''),
+    url: String(raw.url ?? raw.Url ?? ''),
+    thumbnailUrl: (raw.thumbnailUrl ?? raw.ThumbnailUrl ?? null) as string | null,
+  };
+}
+
+export function normalizeFeedPost(raw: unknown): FeedPost | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const item = raw as Record<string, unknown>;
+  const postId = String(item.postId ?? item.PostId ?? item.id ?? item.Id ?? '').trim();
+  const userId = String(item.userId ?? item.UserId ?? '').trim().toLowerCase();
+  if (!postId) return null;
+
+  const mediaRaw = (item.media ?? item.Media ?? []) as Record<string, unknown>[];
+  const visibility = String(item.visibility ?? item.Visibility ?? 'Public');
+
+  return {
+    postId,
+    userId,
+    caption: (item.caption ?? item.Caption ?? null) as string | null,
+    visibility,
+    anonymousAlias: (item.anonymousAlias ?? item.AnonymousAlias ?? null) as string | null,
+    latitude: item.latitude != null || item.Latitude != null
+      ? Number(item.latitude ?? item.Latitude)
+      : null,
+    longitude: item.longitude != null || item.Longitude != null
+      ? Number(item.longitude ?? item.Longitude)
+      : null,
+    createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
+    likeCount: Number(item.likeCount ?? item.LikeCount ?? 0),
+    commentCount: Number(item.commentCount ?? item.CommentCount ?? 0),
+    media: mediaRaw.map(normalizeFeedMediaItem).filter(m => m.mediaId || m.url),
+    isExpired: Boolean(item.isExpired ?? item.IsExpired ?? false),
+  };
+}
+
+function normalizeFeedPosts(raw: unknown[]): FeedPost[] {
+  const seen = new Set<string>();
+  const result: FeedPost[] = [];
+
+  for (const item of raw) {
+    const post = normalizeFeedPost(item);
+    if (!post || seen.has(post.postId)) continue;
+    seen.add(post.postId);
+    result.push(post);
+  }
+
+  return result;
+}
+
 function normalizePostDetail(raw: Record<string, unknown>): PostDetail {
   const ownerRaw = (raw.owner ?? raw.Owner ?? {}) as Record<string, unknown>;
   const placeRaw = raw.place ?? raw.Place;
@@ -176,6 +238,7 @@ function normalizePostDetail(raw: Record<string, unknown>): PostDetail {
     caption: (raw.caption ?? raw.Caption ?? null) as string | null,
     postType: String(raw.postType ?? raw.PostType ?? 'Image'),
     visibility: String(raw.visibility ?? raw.Visibility ?? 'Public'),
+    anonymousAlias: (raw.anonymousAlias ?? raw.AnonymousAlias ?? null) as string | null,
     createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
     updatedAt: (raw.updatedAt ?? raw.UpdatedAt ?? null) as string | null,
     latitude: raw.latitude != null || raw.Latitude != null
@@ -241,6 +304,13 @@ export async function unlikePost(postId: string): Promise<void> {
   }
 }
 
+export async function deletePost(postId: string): Promise<void> {
+  const response = await requestJson<ApiResponse<boolean>>(`/posts/${postId}`, 'DELETE');
+  if (!response.success) {
+    throw new Error(response.message || 'Unable to delete post');
+  }
+}
+
 export function getPostThumbnail(post: FeedPost | NearbyPost): string | null {
   if ('thumbnailUrl' in post && post.thumbnailUrl) return post.thumbnailUrl;
   const media = 'media' in post ? post.media?.[0] : null;
@@ -263,31 +333,112 @@ export function toPostView(
   };
 }
 
+export function normalizeNearbyPost(raw: unknown): NearbyPost | null {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const item = raw as Record<string, unknown>;
+  const postId = String(item.postId ?? item.PostId ?? '').trim();
+  if (!postId) return null;
+
+  const userId = String(item.userId ?? item.UserId ?? '00000000-0000-0000-0000-000000000000').trim().toLowerCase();
+  const isAnonymous = Boolean(item.isAnonymous ?? item.IsAnonymous)
+    || String(item.visibility ?? item.Visibility ?? '') === 'Anonymous';
+  const anonymousAlias = (item.anonymousAlias ?? item.AnonymousAlias ?? null) as string | null;
+
+  const latitude = Number(item.latitude ?? item.Latitude);
+  const longitude = Number(item.longitude ?? item.Longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  return {
+    postId,
+    userId,
+    displayName: String(item.displayName ?? item.DisplayName ?? anonymousAlias ?? 'User'),
+    avatarUrl: (item.avatarUrl ?? item.AvatarUrl ?? null) as string | null,
+    isAnonymous,
+    anonymousAlias,
+    thumbnailUrl: (item.thumbnailUrl ?? item.ThumbnailUrl ?? null) as string | null,
+    caption: String(item.caption ?? item.Caption ?? ''),
+    latitude,
+    longitude,
+    createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
+    likeCount: Number(item.likeCount ?? item.LikeCount ?? 0),
+    commentCount: Number(item.commentCount ?? item.CommentCount ?? 0),
+    isExpired: Boolean(item.isExpired ?? item.IsExpired ?? false),
+  };
+}
+
+function normalizeNearbyPosts(raw: unknown[]): NearbyPost[] {
+  const seen = new Set<string>();
+  const result: NearbyPost[] = [];
+
+  for (const item of raw) {
+    const post = normalizeNearbyPost(item);
+    if (!post || seen.has(post.postId)) continue;
+    seen.add(post.postId);
+    result.push(post);
+  }
+
+  return result;
+}
+
+export function feedPostToNearbyPost(
+  post: FeedPost,
+  displayName: string,
+  avatarUrl?: string | null,
+): NearbyPost | null {
+  if (post.latitude == null || post.longitude == null) return null;
+
+  const isAnonymous = post.visibility === 'Anonymous';
+  const alias = post.anonymousAlias || displayName;
+
+  return {
+    postId: post.postId,
+    userId: post.userId,
+    displayName: isAnonymous ? alias : displayName,
+    avatarUrl: isAnonymous ? null : (avatarUrl ?? null),
+    isAnonymous,
+    anonymousAlias: post.anonymousAlias ?? null,
+    thumbnailUrl: getPostThumbnail(post),
+    caption: post.caption || '',
+    latitude: post.latitude,
+    longitude: post.longitude,
+    createdAt: post.createdAt,
+    likeCount: post.likeCount,
+    commentCount: post.commentCount,
+    isExpired: post.isExpired,
+  };
+}
+
 export async function getNearbyPosts(
   lat: number,
   lng: number,
   radius = 5,
   page = 1,
-  pageSize = 20,
+  pageSize = 100,
 ): Promise<NearbyPost[]> {
   const query = `?lat=${lat}&lng=${lng}&radius=${radius}&page=${page}&pageSize=${pageSize}`;
-  const response = await requestJson<ApiResponse<NearbyPost[]>>(`/posts/nearby${query}`, 'GET');
-  return response.data ?? [];
+  const response = await requestJson<ApiResponse<unknown[]>>(`/posts/nearby${query}`, 'GET');
+  return normalizeNearbyPosts(response.data ?? []);
 }
 
 export async function getFriendsFeed(): Promise<FeedPost[]> {
-  const response = await requestJson<ApiResponse<FeedPost[]>>('/posts/feed/friends', 'GET');
-  return response.data ?? [];
+  const response = await requestJson<ApiResponse<unknown[]>>('/posts/feed/friends', 'GET');
+  return normalizeFeedPosts(response.data ?? []);
 }
 
 export async function getFeed(): Promise<FeedPost[]> {
-  const response = await requestJson<ApiResponse<FeedPost[]>>('/posts/feed', 'GET');
-  return response.data ?? [];
+  const response = await requestJson<ApiResponse<unknown[]>>('/posts/feed', 'GET');
+  return normalizeFeedPosts(response.data ?? []);
 }
 
 export async function getMyPosts(): Promise<FeedPost[]> {
-  const response = await requestJson<ApiResponse<FeedPost[]>>('/posts/me', 'GET');
-  return response.data ?? [];
+  const response = await requestJson<ApiResponse<unknown[]>>('/posts/me', 'GET');
+  return normalizeFeedPosts(response.data ?? []);
+}
+
+export async function getUserPosts(userId: string): Promise<FeedPost[]> {
+  const response = await requestJson<ApiResponse<unknown[]>>(`/users/${userId}/posts`, 'GET');
+  return normalizeFeedPosts(response.data ?? []);
 }
 
 export default {
@@ -295,8 +446,10 @@ export default {
   getPostById,
   likePost,
   unlikePost,
+  deletePost,
   getNearbyPosts,
   getFriendsFeed,
   getFeed,
   getMyPosts,
+  getUserPosts,
 };

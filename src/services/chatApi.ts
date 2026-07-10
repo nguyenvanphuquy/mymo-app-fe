@@ -50,6 +50,7 @@ export interface ChatMessage {
   referenceId?: string | null;
   createdAt: string;
   isRead: boolean;
+  isDeleted?: boolean;
 }
 
 export interface PagedMessages {
@@ -86,18 +87,24 @@ function normalizeSender(raw: Record<string, unknown>): ChatSender {
 }
 
 function normalizeMessage(raw: Record<string, unknown>): ChatMessage {
+  const content = String(raw.content || raw.Content || '');
+  const isDeleted = Boolean(
+    raw.isDeleted ?? raw.IsDeleted ?? content === 'This message has been deleted.',
+  );
+
   return {
     messageId: String(raw.messageId || raw.MessageId || ''),
     conversationId: String(raw.conversationId || raw.ConversationId || ''),
     sender: normalizeSender((raw.sender || raw.Sender || {}) as Record<string, unknown>),
     messageType: parseMessageType(raw.messageType ?? raw.MessageType),
-    content: String(raw.content || raw.Content || ''),
+    content,
     mediaUrl: (raw.mediaUrl ?? raw.MediaUrl ?? null) as string | null,
     latitude: raw.latitude != null ? Number(raw.latitude) : raw.Latitude != null ? Number(raw.Latitude) : null,
     longitude: raw.longitude != null ? Number(raw.longitude) : raw.Longitude != null ? Number(raw.Longitude) : null,
     referenceId: raw.referenceId ? String(raw.referenceId) : raw.ReferenceId ? String(raw.ReferenceId) : null,
     createdAt: String(raw.createdAt || raw.CreatedAt || new Date().toISOString()),
     isRead: Boolean(raw.isRead ?? raw.IsRead ?? false),
+    isDeleted,
   };
 }
 
@@ -200,6 +207,13 @@ export async function markMessageRead(messageId: string): Promise<boolean> {
   return res.data;
 }
 
+export async function deleteMessage(messageId: string): Promise<void> {
+  const res = await requestJson<ApiResponse<boolean>>(`/messages/${messageId}`, 'DELETE');
+  if (!res.success) {
+    throw new Error(res.message || 'Unable to delete message');
+  }
+}
+
 export default {
   getConversations,
   createPrivateConversation,
@@ -207,5 +221,6 @@ export default {
   sendMessage,
   markConversationRead,
   markMessageRead,
+  deleteMessage,
   MessageType,
 };

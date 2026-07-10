@@ -3,7 +3,7 @@
  * Uses Mapbox GL JS (mapbox-gl) directly in the browser.
  * Native platform → see MapScreen.native.tsx (@rnmapbox/maps).
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Dimensions, Animated, Platform, DeviceEventEmitter, Image,
@@ -16,20 +16,22 @@ import type { Friend } from '../constants/data';
 import FriendSheet from '../components/FriendSheet';
 import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
-import { getNearbyPosts, toPostView, type NearbyPost, type PostView } from '../services/postApi';
-import { filterActivePosts } from '../utils/postExpiration';
+import { toPostView, type NearbyPost, type PostView } from '../services/postApi';
+import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
+import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
 import { getFriendsLocations } from '../services/friendsApi';
-import { updateUserLocation } from '../services/userApi';
+import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
 import { getMymoMapStyle, MAP_THEME_UI, type MapTheme } from '../utils/mapStyles';
 import MapAtmosphere from '../components/MapAtmosphere';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
+import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
+import { getStoredAuthSession } from '../services/authApi';
 
 // ─── Mapbox GL JS (web-only) ──────────────────────────────────────────────────
 import mapboxgl from 'mapbox-gl';
@@ -51,6 +53,7 @@ interface MapScreenProps {
   onCloseSheet: () => void;
   onMessage: (f: Friend) => void;
   onDisableIncognito?: () => void;
+  onViewProfile?: (f: Friend) => void;
 }
 
 function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivElement {
@@ -250,7 +253,7 @@ function createSearchMarkerEl(): HTMLDivElement {
 
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
-  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito,
+  onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -273,10 +276,13 @@ export default function MapScreen({
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
+  const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -291,6 +297,12 @@ export default function MapScreen({
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
     : DEFAULT_CENTER;
+
+  useEffect(() => {
+    getStoredAuthSession()
+      .then(session => setMyUserId(session?.userId ?? null))
+      .catch(() => setMyUserId(null));
+  }, []);
 
   const searchProximity = userCoords
     ? { lng: userCoords.lng, lat: userCoords.lat }
@@ -338,14 +350,13 @@ export default function MapScreen({
 
   // ── Share own location with server (null = hide from friends' maps) ──────
   useEffect(() => {
-    const sharing = locationGranted && visibleOnMap && !incognito;
-    if (!sharing) {
-      updateUserLocation(null, null);
+    if (!visibleOnMap) {
+      void hideUserLocation().catch(() => {});
       return;
     }
     if (!userCoords) return;
-    updateUserLocation(userCoords.lat, userCoords.lng);
-  }, [locationGranted, visibleOnMap, incognito, userCoords?.lat, userCoords?.lng]);
+    void updateUserLocation(userCoords.lat, userCoords.lng).catch(() => {});
+  }, [visibleOnMap, userCoords?.lat, userCoords?.lng]);
 
   // ── Fetch friend locations ─────────────────────────────────────────────────
   const fetchFriendLocations = useCallback(async () => {
@@ -377,8 +388,8 @@ export default function MapScreen({
     const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
-      const posts = await getNearbyPosts(lat, lng, 5, 1, 20);
-      setNearbyPosts(filterActivePosts(posts));
+      const posts = await loadMapNearbyPosts(lat, lng);
+      setNearbyPosts(posts);
     } catch {
       setNearbyPosts([]);
     }
@@ -399,11 +410,18 @@ export default function MapScreen({
     if (!isActive) return;
     fetchNearbyPosts();
     fetchNearbyPlaces();
-    const sub = DeviceEventEmitter.addListener('post:created', () => {
+    const subCreated = DeviceEventEmitter.addListener('post:created', () => {
       fetchNearbyPosts();
       fetchNearbyPlaces();
     });
-    return () => sub.remove();
+    const subDeleted = DeviceEventEmitter.addListener('post:deleted', () => {
+      fetchNearbyPosts();
+      fetchNearbyPlaces();
+    });
+    return () => {
+      subCreated.remove();
+      subDeleted.remove();
+    };
   }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
 
   const searchLower = searchText.trim().toLowerCase();
@@ -418,6 +436,20 @@ export default function MapScreen({
         (p.address || '').toLowerCase().includes(searchLower) ||
         (p.city || '').toLowerCase().includes(searchLower))
     : nearbyPlaces;
+
+  const showDetailPins = mapZoom >= MAP_DETAIL_MIN_ZOOM;
+
+  const spreadMapPosts = useMemo(
+    () => spreadOverlappingMarkers(filteredPosts),
+    [filteredPosts],
+  );
+
+  useEffect(() => {
+    if (showDetailPins) return;
+    setSelectedPost(null);
+    setSelectedPostIsOwn(false);
+    setSelectedPlace(null);
+  }, [showDetailPins]);
 
   // ── Inject mapbox-gl CSS once and wait for it to load ──────────────────────
   useEffect(() => {
@@ -452,6 +484,11 @@ export default function MapScreen({
 
     mapRef.current = map;
 
+    const syncZoom = () => setMapZoom(map.getZoom());
+    map.on('zoom', syncZoom);
+    map.on('moveend', syncZoom);
+    syncZoom();
+
     map.on('load', () => {
       // Force resize to ensure correct canvas sizing
       map.resize();
@@ -481,6 +518,8 @@ export default function MapScreen({
     });
 
     return () => {
+      map.off('zoom', syncZoom);
+      map.off('moveend', syncZoom);
       map.remove();
       mapRef.current = null;
       markersRef.current = [];
@@ -520,17 +559,22 @@ export default function MapScreen({
     postMarkersRef.current.forEach(m => m.remove());
     postMarkersRef.current = [];
 
-    filteredPosts.forEach(post => {
+    if (!showDetailPins) return;
+
+    spreadMapPosts.forEach(({ post, latitude, longitude }) => {
       const el = createPostMarkerEl(post, () => {
         setSelectedPlace(null);
+        setSelectedPostIsOwn(
+          Boolean(myUserId && post.userId && myUserId.toLowerCase() === post.userId.toLowerCase()),
+        );
         setSelectedPost(toPostView(post));
       });
       const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([post.longitude, post.latitude])
+        .setLngLat([longitude, latitude])
         .addTo(map);
       postMarkersRef.current.push(marker);
     });
-  }, [filteredPosts, mapReady]);
+  }, [spreadMapPosts, mapReady, myUserId, showDetailPins]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
@@ -556,6 +600,8 @@ export default function MapScreen({
     placeMarkersRef.current.forEach(m => m.remove());
     placeMarkersRef.current = [];
 
+    if (!showDetailPins) return;
+
     filteredPlaces.forEach(place => {
       const el = createPlaceMarkerEl(place, () => {
         setSelectedPost(null);
@@ -566,7 +612,7 @@ export default function MapScreen({
         .addTo(map);
       placeMarkersRef.current.push(marker);
     });
-  }, [filteredPlaces, mapReady]);
+  }, [filteredPlaces, mapReady, showDetailPins]);
 
   // ── Sync friend markers ────────────────────────────────────────────────────
   useEffect(() => {
@@ -864,7 +910,11 @@ export default function MapScreen({
       {selectedPost && (
         <PostSheet
           post={selectedPost}
-          onClose={() => setSelectedPost(null)}
+          isOwnPost={selectedPostIsOwn}
+          onClose={() => {
+            setSelectedPost(null);
+            setSelectedPostIsOwn(false);
+          }}
         />
       )}
 
@@ -874,6 +924,7 @@ export default function MapScreen({
           friend={selectedFriend}
           onClose={onCloseSheet}
           onMessage={f => { onCloseSheet(); onMessage(f); }}
+          onViewProfile={onViewProfile ? f => { onCloseSheet(); onViewProfile(f); } : undefined}
         />
       )}
     </View>

@@ -8,9 +8,11 @@ import { DeviceEventEmitter } from 'react-native';
 import { Colors, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import FriendStoryViewer from './FriendStoryViewer';
+import type { FeedPost } from '../services/postApi';
 import {
   getFriendsFeed,
   getFeed,
+  getMyPosts,
 } from '../services/postApi';
 import {
   groupPostsByUser,
@@ -19,46 +21,108 @@ import {
 } from '../utils/friendMomentsGrouping';
 import { filterActivePosts } from '../utils/postExpiration';
 
+interface CurrentUser {
+  userId: string;
+  name: string;
+  avatar?: string | null;
+}
+
 interface FriendMomentsSectionProps {
   friendNames: Record<string, { name: string; avatar?: string | null }>;
+  currentUser?: CurrentUser | null;
   hideTitle?: boolean;
 }
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
-export default function FriendMomentsSection({ friendNames, hideTitle = false }: FriendMomentsSectionProps) {
+function mergeFeedPosts(friendsFeed: FeedPost[], ownPosts: FeedPost[]): FeedPost[] {
+  const seen = new Set(friendsFeed.map(post => post.postId));
+  const merged = [...friendsFeed];
+  for (const post of ownPosts) {
+    if (!seen.has(post.postId)) {
+      merged.push(post);
+      seen.add(post.postId);
+    }
+  }
+  return merged;
+}
+
+export default function FriendMomentsSection({
+  friendNames,
+  currentUser = null,
+  hideTitle = false,
+}: FriendMomentsSectionProps) {
   const { t } = useI18n();
   const [groups, setGroups] = useState<UserMomentGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<UserMomentGroup | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadPosts = useCallback(async () => {
-    const friendIds = new Set(Object.keys(friendNames));
+    const friendIds = new Set(
+      Object.keys(friendNames).map(id => id.toLowerCase()),
+    );
+
+    const namesLookup: Record<string, { name: string; avatar?: string | null }> = {};
+    Object.entries(friendNames).forEach(([id, info]) => {
+      namesLookup[id.toLowerCase()] = info;
+    });
+
+    if (currentUser?.userId) {
+      namesLookup[currentUser.userId.toLowerCase()] = {
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+      };
+    }
+
+    let feed: FeedPost[] = [];
     try {
-      const feed = await getFriendsFeed();
-      setGroups(groupPostsByUser(filterActivePosts(feed), friendNames));
+      feed = await getFriendsFeed();
     } catch {
       try {
-        const feed = await getFeed();
-        setGroups(groupPostsByUser(
-          filterActivePosts(feed.filter(p => friendIds.has(p.userId))),
-          friendNames,
-        ));
+        const mixed = await getFeed();
+        feed = mixed.filter(p => friendIds.has(p.userId.toLowerCase()));
       } catch {
-        setGroups([]);
+        feed = [];
       }
-    } finally {
-      setLoading(false);
     }
-  }, [friendNames]);
+
+    if (currentUser?.userId) {
+      try {
+        const ownPosts = filterActivePosts(await getMyPosts()).filter(
+          post => post.userId.toLowerCase() === currentUser.userId.toLowerCase(),
+        );
+        feed = mergeFeedPosts(feed, ownPosts);
+      } catch {
+        // keep friends feed only
+      }
+    }
+
+    setGroups(groupPostsByUser(filterActivePosts(feed), namesLookup));
+  }, [friendNames, currentUser]);
 
   useEffect(() => {
-    loadPosts();
-    const sub = DeviceEventEmitter.addListener('post:created', loadPosts);
-    return () => sub.remove();
+    loadPosts().finally(() => setLoading(false));
+    const subCreated = DeviceEventEmitter.addListener('post:created', loadPosts);
+    const subDeleted = DeviceEventEmitter.addListener('post:deleted', loadPosts);
+    return () => {
+      subCreated.remove();
+      subDeleted.remove();
+    };
   }, [loadPosts]);
 
-  const visibleGroups = useMemo(() => groups.filter(g => g.count > 0), [groups]);
+  const visibleGroups = useMemo(() => {
+    const filtered = groups.filter(g => g.count > 0);
+    if (!currentUser?.userId) return filtered;
+
+    const ownId = currentUser.userId.toLowerCase();
+    return [...filtered].sort((a, b) => {
+      if (a.userId === ownId && b.userId !== ownId) return -1;
+      if (b.userId === ownId && a.userId !== ownId) return 1;
+      return (
+        new Date(b.latestPost.createdAt).getTime() - new Date(a.latestPost.createdAt).getTime()
+      );
+    });
+  }, [groups, currentUser]);
 
   if (loading || visibleGroups.length === 0) return null;
 
@@ -111,7 +175,9 @@ export default function FriendMomentsSection({ friendNames, hideTitle = false }:
               )}
 
               <Text style={styles.author} numberOfLines={1}>
-                {group.displayName}
+                {group.userId === currentUser?.userId.toLowerCase()
+                  ? t('friends.yourStory')
+                  : group.displayName}
               </Text>
             </TouchableOpacity>
           );

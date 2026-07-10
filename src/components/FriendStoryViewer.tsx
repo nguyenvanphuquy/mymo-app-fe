@@ -106,7 +106,7 @@ export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerP
             <View style={styles.header}>
               <View style={styles.progressRow}>
                 {posts.map((post, index) => (
-                  <View key={post.postId} style={styles.progressTrack}>
+                  <View key={`${post.postId}-${index}`} style={styles.progressTrack}>
                     <View
                       style={[
                         styles.progressFill,

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator,
-  Modal, Pressable, Linking,
+  Modal, Pressable, Linking, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import Toast from 'react-native-toast-message';
 import {
   getMessages,
   sendMessage,
+  deleteMessage,
   markConversationRead,
   MessageType,
   type ChatMessage,
@@ -24,6 +25,7 @@ import {
   joinConversation,
   leaveConversation,
   onReceiveMessage,
+  onMessageDeleted,
   onUserTyping,
   onUserStopTyping,
 } from '../services/chatHub';
@@ -42,6 +44,12 @@ export interface ChatScreenProps {
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
+function sortMessagesChronologically(items: ChatMessage[]): ChatMessage[] {
+  return [...items].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+}
+
 export default function ChatScreen({
   conversationId,
   title,
@@ -58,6 +66,7 @@ export default function ChatScreen({
   const [attachOpen, setAttachOpen] = useState(false);
   const [typingName, setTypingName] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [recallingId, setRecallingId] = useState<string | null>(null);
   const flatRef = useRef<FlatList>(null);
   const sharedOnce = useRef(false);
 
@@ -68,16 +77,33 @@ export default function ChatScreen({
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages(prev => {
       if (prev.some(m => m.messageId === msg.messageId)) return prev;
-      return [...prev, msg];
+      return sortMessagesChronologically([...prev, msg]);
     });
     scrollToEnd();
   }, [scrollToEnd]);
+
+  const markMessageRecalled = useCallback((messageId: string) => {
+    setMessages(prev => prev.map(msg => (
+      msg.messageId === messageId
+        ? {
+            ...msg,
+            isDeleted: true,
+            content: 'This message has been deleted.',
+            mediaUrl: null,
+            latitude: null,
+            longitude: null,
+            referenceId: null,
+            messageType: MessageType.Text,
+          }
+        : msg
+    )));
+  }, []);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
     try {
       const page = await getMessages(conversationId, 1, 100);
-      setMessages(page.items);
+      setMessages(sortMessagesChronologically(page.items));
       await markConversationRead(conversationId);
       DeviceEventEmitter.emit('chat:refresh');
       scrollToEnd();
@@ -121,6 +147,12 @@ export default function ChatScreen({
       }
     });
 
+    const unsubDeleted = onMessageDeleted(({ messageId }) => {
+      if (!active) return;
+      markMessageRecalled(messageId);
+      DeviceEventEmitter.emit('chat:refresh');
+    });
+
     const unsubTyping = onUserTyping(({ userId, displayName }) => {
       if (userId !== myUserId) setTypingName(displayName);
     });
@@ -132,11 +164,12 @@ export default function ChatScreen({
     return () => {
       active = false;
       unsubMsg();
+      unsubDeleted();
       unsubTyping();
       unsubStop();
       leaveConversation(conversationId).catch(() => {});
     };
-  }, [conversationId, myUserId, appendMessage]);
+  }, [conversationId, myUserId, appendMessage, markMessageRecalled]);
 
   useEffect(() => {
     if (sharedOnce.current || loading) return;
@@ -268,7 +301,44 @@ export default function ChatScreen({
     }
   };
 
+  const performRecallMessage = useCallback(async (messageId: string) => {
+    if (recallingId) return;
+    setRecallingId(messageId);
+    try {
+      await deleteMessage(messageId);
+      markMessageRecalled(messageId);
+      DeviceEventEmitter.emit('chat:refresh');
+      Toast.show({ type: 'success', text1: t('chat.recalled') });
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: String(err instanceof Error ? err.message : t('chat.recallError')),
+      });
+    } finally {
+      setRecallingId(null);
+    }
+  }, [recallingId, markMessageRecalled, t]);
+
+  const handleRecallMessage = useCallback((messageId: string) => {
+    Alert.alert(
+      t('chat.recallConfirmTitle'),
+      t('chat.recallConfirmMessage'),
+      [
+        { text: t('chat.recallCancel'), style: 'cancel' },
+        { text: t('chat.recallConfirm'), style: 'destructive', onPress: () => performRecallMessage(messageId) },
+      ],
+    );
+  }, [performRecallMessage, t]);
+
   const renderMessageBody = (item: ChatMessage, isMe: boolean) => {
+    if (item.isDeleted) {
+      return (
+        <Text style={[styles.recalledText, isMe && styles.recalledTextMe]}>
+          {t('chat.messageRecalled')}
+        </Text>
+      );
+    }
+
     switch (item.messageType) {
       case MessageType.Image:
         return (
@@ -357,17 +427,30 @@ export default function ChatScreen({
             ref={flatRef}
             data={messages}
             keyExtractor={m => m.messageId}
-            contentContainerStyle={styles.msgList}
+            contentContainerStyle={[
+              styles.msgList,
+              messages.length > 0 && styles.msgListWithMessages,
+            ]}
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToEnd}
+            onLayout={scrollToEnd}
             ListEmptyComponent={
               <Text style={styles.emptyText}>{t('chat.empty')}</Text>
             }
             renderItem={({ item }) => {
               const isMe = item.sender.userId === myUserId;
+              const canRecall = isMe && !item.isDeleted;
               return (
-                <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-                  {isMe ? (
+                <Pressable
+                  onLongPress={canRecall ? () => handleRecallMessage(item.messageId) : undefined}
+                  delayLongPress={400}
+                  style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}
+                >
+                  {item.isDeleted ? (
+                    <View style={[styles.bubbleThemView, styles.recalledBubble]}>
+                      {renderMessageBody(item, isMe)}
+                    </View>
+                  ) : isMe ? (
                     <LinearGradient
                       colors={Gradients.primary}
                       style={styles.bubbleMeGrad}
@@ -381,7 +464,7 @@ export default function ChatScreen({
                       {renderMessageBody(item, false)}
                     </View>
                   )}
-                </View>
+                </Pressable>
               );
             }}
           />
@@ -525,6 +608,9 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     flexGrow: 1,
   },
+  msgListWithMessages: {
+    justifyContent: 'flex-end',
+  },
   bubble: {
     maxWidth: '78%',
   },
@@ -557,6 +643,20 @@ const styles = StyleSheet.create({
   bubbleThemText: {
     color: Colors.textDark,
     fontSize: 14,
+  },
+  recalledBubble: {
+    opacity: 0.85,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  recalledText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: Colors.textMuted,
+  },
+  recalledTextMe: {
+    color: Colors.textMuted,
   },
   imageBubble: {
     width: 180,

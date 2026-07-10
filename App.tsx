@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, Animated,
   Platform, StatusBar, DeviceEventEmitter,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
+import FriendProfileScreen, { type FriendProfileParams } from './src/screens/FriendProfileScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import CameraSheet from './src/components/CameraSheet';
 import ChatScreen from './src/components/ChatScreen';
@@ -25,7 +27,13 @@ import PostSheet from './src/components/PostSheet';
 import MymoBot from './src/components/MymoBot';
 import { LocationPermSheet, EnableLocationModal } from './src/components/LocationPermSheet';
 import type { PostView } from './src/services/postApi';
-import { updateUserLocation, updateUserSettings } from './src/services/userApi';
+import { hideUserLocation, updateUserSettings } from './src/services/userApi';
+import {
+  clearLocationPrivacyPrefs,
+  getLocationPrivacyPrefs,
+  saveLocationPrivacyPrefs,
+} from './src/utils/locationPrivacyStorage';
+import { syncCurrentLocationToServer } from './src/utils/syncUserLocation';
 
 type Screen = 'auth' | 'app';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
@@ -37,6 +45,8 @@ type ChatSession = {
   sharePostId?: string;
   sharePlaceId?: string;
 } | null;
+
+type FriendProfileSession = FriendProfileParams | null;
 
 export default function App() {
   useEffect(() => {
@@ -72,7 +82,21 @@ function AppInner() {
       const { getStoredAuthSession } = await import('./src/services/authApi');
       try {
         const session = await getStoredAuthSession();
-        if (session) setScreen('app');
+        const prefs = await getLocationPrivacyPrefs();
+        const { status } = await Location.getForegroundPermissionsAsync();
+        const osGranted = status === 'granted';
+
+        if (session) {
+          setScreen('app');
+          setLocationGranted(osGranted);
+          if (prefs) {
+            setShareLocationOnMap(prefs.locationSharing);
+            setIncognito(prefs.incognito);
+            setPermissionAsked(true);
+          } else if (osGranted) {
+            setPermissionAsked(true);
+          }
+        }
       } catch {
         // ignore
       } finally {
@@ -83,12 +107,14 @@ function AppInner() {
   const [screen, setScreen] = useState<Screen>('auth');
   const [tab, setTab] = useState<Tab>('home');
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
+  const [shareLocationOnMap, setShareLocationOnMap] = useState(true);
   const [incognito, setIncognito] = useState(false);
   const [permissionAsked, setPermissionAsked] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [locationPromptOpen, setLocationPromptOpen] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [chatSession, setChatSession] = useState<ChatSession>(null);
+  const [friendProfile, setFriendProfile] = useState<FriendProfileSession>(null);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [notifPost, setNotifPost] = useState<PostView | null>(null);
@@ -124,36 +150,49 @@ function AppInner() {
     }
   }, [screen, permissionAsked]);
 
-  /** Sync privacy flags + clear server coords so friends stop seeing you on the map. */
-  const syncLocationPrivacy = (sharing: boolean, isAnonymous: boolean) => {
+  /** Sync privacy flags; re-push GPS when sharing is turned back on. */
+  const applyLocationPrivacy = (sharing: boolean, isAnonymous: boolean) => {
+    void saveLocationPrivacyPrefs({ locationSharing: sharing, incognito: isAnonymous });
     void updateUserSettings({
       isLocationSharing: sharing,
       isAnonymous,
-    }).catch(() => {});
+    }).catch(() => {
+      Toast.show({ type: 'error', text1: t('loc.settingsError') || 'Không cập nhật được cài đặt vị trí' });
+    });
+
     if (!sharing || isAnonymous) {
-      void updateUserLocation(null, null);
+      void hideUserLocation().catch(() => {});
+      return;
     }
+
+    void syncCurrentLocationToServer().catch(() => {});
   };
 
   const handleEnableLocation = () => {
     setLocationGranted(true);
+    setShareLocationOnMap(true);
     setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
-    syncLocationPrivacy(true, false);
+    applyLocationPrivacy(true, false);
     Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
   };
 
   const handleDenyLocation = () => {
     setLocationGranted(false);
+    setShareLocationOnMap(false);
     setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
-    syncLocationPrivacy(false, false);
+    applyLocationPrivacy(false, false);
     Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.offDesc') });
   };
 
-  const visibleOnMap = !!locationGranted && !incognito;
+  const visibleOnMap = !!locationGranted && shareLocationOnMap && !incognito;
+
+  const handleOpenFriendProfile = (params: FriendProfileParams) => {
+    setFriendProfile(params);
+  };
 
   const handleOpenChat = async (params: OpenChatParams & { sharePostId?: string; sharePlaceId?: string }) => {
     try {
@@ -182,6 +221,24 @@ function AppInner() {
 
   if (screen === 'auth') {
     return <AuthScreen onContinue={() => setScreen('app')} />;
+  }
+
+  // Friend profile full screen
+  if (friendProfile) {
+    const profileParams = friendProfile;
+    return (
+      <FriendProfileScreen
+        userId={profileParams.userId}
+        displayName={profileParams.displayName}
+        avatarUrl={profileParams.avatarUrl}
+        onClose={() => setFriendProfile(null)}
+        onMessage={() => {
+          const { userId, displayName, avatarUrl } = profileParams;
+          setFriendProfile(null);
+          handleOpenChat({ userId, title: displayName || t('friends.someone'), avatarUrl });
+        }}
+      />
+    );
   }
 
   // Chat screen takes full screen
@@ -237,10 +294,18 @@ function AppInner() {
             onFriendTap={setSelectedFriend}
             selectedFriend={selectedFriend}
             onCloseSheet={() => setSelectedFriend(null)}
-            onMessage={f => { setSelectedFriend(null); handleOpenChat({ userId: f.id, title: f.name }); }}
+            onMessage={f => { setSelectedFriend(null); handleOpenChat({ userId: f.id, title: f.name, avatarUrl: f.avatarUrl }); }}
+            onViewProfile={f => {
+              setSelectedFriend(null);
+              handleOpenFriendProfile({
+                userId: f.id,
+                displayName: f.name,
+                avatarUrl: f.avatarUrl,
+              });
+            }}
             onDisableIncognito={() => {
               setIncognito(false);
-              syncLocationPrivacy(!!locationGranted, false);
+              applyLocationPrivacy(shareLocationOnMap, false);
               Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
             }}
           />
@@ -249,39 +314,57 @@ function AppInner() {
           <FriendsScreen
             onFriendTap={setSelectedFriend}
             onOpenChat={handleOpenChat}
+            onViewProfile={handleOpenFriendProfile}
             onAdd={() => setAddFriendOpen(true)}
           />
         )}
         {tab === 'profile' && (
           <ProfileScreen
             locationGranted={!!locationGranted}
+            shareLocationOnMap={shareLocationOnMap}
             incognito={incognito}
             isActive={tab === 'profile'}
-            onToggleLocation={() => {
-              const next = !locationGranted;
-              setLocationGranted(next);
-              if (!next) {
-                setIncognito(false);
-                syncLocationPrivacy(false, false);
+            onToggleShareLocation={async () => {
+              const next = !shareLocationOnMap;
+
+              if (next) {
+                const { status } = await Location.getForegroundPermissionsAsync();
+                if (status !== 'granted') {
+                  setLocationPromptOpen(true);
+                  return;
+                }
+                setLocationGranted(true);
+              }
+
+              setShareLocationOnMap(next);
+              if (!next) setIncognito(false);
+              applyLocationPrivacy(next, next ? incognito : false);
+              if (next) {
+                Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
               } else {
-                setIncognito(false);
-                syncLocationPrivacy(true, false);
+                Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.hiddenFromFriends') });
               }
             }}
             onToggleIncognito={() => {
+              if (!locationGranted) {
+                setLocationPromptOpen(true);
+                return;
+              }
               setIncognito(v => {
                 const next = !v;
-                syncLocationPrivacy(!!locationGranted, next);
+                applyLocationPrivacy(shareLocationOnMap, next);
                 if (next) Toast.show({ type: 'info', text1: t('loc.incognitoOn'), text2: t('loc.incognitoOnDesc') });
                 else Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
                 return next;
               });
             }}
             onLogout={() => {
-              void updateUserLocation(null, null);
+              void hideUserLocation().catch(() => {});
+              void clearLocationPrivacyPrefs();
               setScreen('auth');
               setTab('home');
               setLocationGranted(null);
+              setShareLocationOnMap(true);
               setPermissionAsked(false);
               setIncognito(false);
               Toast.show({ type: 'info', text1: t('profile.loggedOut') });
