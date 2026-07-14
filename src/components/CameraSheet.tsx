@@ -7,7 +7,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import * as Location from 'expo-location';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import Toast from 'react-native-toast-message';
@@ -17,16 +16,18 @@ import { buildImageFormData } from '../utils/imageFormData';
 import { getNearbyPlaces, pickClosestPlace, PlaceResult } from '../services/placeApi';
 import { BEAUTY_FILTERS, getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
 import { pickRandomAlias } from '../utils/anonymousAlias';
+import { ensureLocationForPosting } from '../utils/ensureLocation';
 
 const CAPTION_MAX = 150;
 
 interface CameraSheetProps {
   locationGranted: boolean;
   onClose: () => void;
-  onRequestLocation: () => void;
+  /** Called when device location is successfully enabled from the camera flow. */
+  onLocationEnabled: () => void;
 }
 
-export default function CameraSheet({ locationGranted, onClose, onRequestLocation }: CameraSheetProps) {
+export default function CameraSheet({ locationGranted, onClose, onLocationEnabled }: CameraSheetProps) {
   const { t } = useI18n();
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -75,30 +76,22 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
     const resolvePlace = async () => {
       setResolvingPlace(true);
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
+        const loc = await ensureLocationForPosting();
+        if (!loc.ok) {
           if (isMounted) setResolvingPlace(false);
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-
         if (isMounted) {
-          setCurrentLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
+          setCurrentLocation(loc.coords);
         }
 
-        const places = await getNearbyPlaces(
-          position.coords.latitude,
-          position.coords.longitude,
-        );
-        const closest = pickClosestPlace(places);
-
-        if (isMounted) setNearestPlace(closest);
+        try {
+          const places = await getNearbyPlaces(loc.coords.latitude, loc.coords.longitude);
+          if (isMounted) setNearestPlace(pickClosestPlace(places));
+        } catch {
+          // Nearby places optional — coords are enough to post
+        }
       } catch (error) {
         if (isMounted) {
           Toast.show({
@@ -118,6 +111,30 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
       isMounted = false;
     };
   }, [locationGranted, t]);
+
+  const enableLocationFromCamera = async () => {
+    const loc = await ensureLocationForPosting();
+    if (!loc.ok) {
+      Toast.show({
+        type: 'error',
+        text1: t('cam.locationRequired') || 'Cần bật vị trí',
+        text2:
+          loc.reason === 'denied'
+            ? (t('cam.locationDenied') || 'Hãy cho phép vị trí trong trình duyệt/cài đặt máy.')
+            : (t('cam.locationRequiredDesc') || 'Không lấy được vị trí. Thử lại.'),
+      });
+      return;
+    }
+    setCurrentLocation(loc.coords);
+    onLocationEnabled();
+    try {
+      const places = await getNearbyPlaces(loc.coords.latitude, loc.coords.longitude);
+      setNearestPlace(pickClosestPlace(places));
+    } catch {
+      // optional
+    }
+    Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
+  };
 
   const close = () => {
     Animated.timing(slideAnim, {
@@ -170,11 +187,6 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
   };
 
   const handlePostNow = async () => {
-    if (!locationGranted) {
-      onRequestLocation();
-      return;
-    }
-
     if (!selectedImageUri) {
       Toast.show({
         type: 'error',
@@ -187,6 +199,35 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
     try {
       setPosting(true);
 
+      let latitude = currentLocation?.latitude ?? nearestPlace?.latitude;
+      let longitude = currentLocation?.longitude ?? nearestPlace?.longitude;
+
+      if (latitude === undefined || longitude === undefined || !locationGranted) {
+        const loc = await ensureLocationForPosting();
+        if (!loc.ok) {
+          Toast.show({
+            type: 'error',
+            text1: t('cam.locationRequired') || 'Cần bật vị trí để đăng bài',
+            text2:
+              loc.reason === 'denied'
+                ? (t('cam.locationDenied') || 'Hãy cho phép vị trí trong trình duyệt/cài đặt máy.')
+                : (t('cam.locationRequiredDesc') || 'Không lấy được tọa độ. Thử lại sau khi bật định vị.'),
+          });
+          setPosting(false);
+          return;
+        }
+        latitude = loc.coords.latitude;
+        longitude = loc.coords.longitude;
+        setCurrentLocation(loc.coords);
+        onLocationEnabled();
+        try {
+          const places = await getNearbyPlaces(latitude, longitude);
+          setNearestPlace(pickClosestPlace(places));
+        } catch {
+          // coords alone are enough to post
+        }
+      }
+
       const fileName = selectedImageUri.split('/').pop() || 'photo.jpg';
       const fileType = fileName.includes('.') ? `image/${fileName.split('.').pop()}` : 'image/jpeg';
       const formData = await buildImageFormData(selectedImageUri, fileName, fileType);
@@ -196,32 +237,15 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
         throw new Error('Media upload returned invalid id');
       }
       const mediaId = uploadResult.id;
-
-      let latitude = currentLocation?.latitude ?? nearestPlace?.latitude;
-      let longitude = currentLocation?.longitude ?? nearestPlace?.longitude;
       const placeId = nearestPlace?.id;
-
-      if (latitude === undefined || longitude === undefined) {
-        try {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            const position = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            });
-            latitude = position.coords.latitude;
-            longitude = position.coords.longitude;
-            setCurrentLocation({ latitude, longitude });
-          }
-        } catch {
-          // ignore; validate below
-        }
-      }
 
       const payload: Record<string, unknown> = {
         caption: caption.trim(),
         postType: 'Image',
         visibility,
         mediaIds: [mediaId],
+        latitude,
+        longitude,
       };
 
       if (visibility === 'Anonymous') {
@@ -230,21 +254,6 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
 
       if (placeId) {
         payload.placeId = placeId;
-      }
-
-      if (latitude !== undefined && longitude !== undefined) {
-        payload.latitude = latitude;
-        payload.longitude = longitude;
-      }
-
-      if (!payload.placeId && (payload.latitude === undefined || payload.longitude === undefined)) {
-        Toast.show({
-          type: 'error',
-          text1: t('cam.locationRequired') || 'Cần placeId hoặc tọa độ để đăng bài.',
-          text2: t('cam.locationRequiredDesc') || 'Vui lòng bật vị trí hoặc chọn địa điểm.',
-        });
-        setPosting(false);
-        return;
       }
 
       await createPost(payload);
@@ -279,12 +288,17 @@ export default function CameraSheet({ locationGranted, onClose, onRequestLocatio
           <TouchableOpacity onPress={close} style={styles.topBtn}>
             <Ionicons name="close" size={22} color={Colors.white} />
           </TouchableOpacity>
-          <View style={styles.locationBadge}>
+          <TouchableOpacity
+            onPress={locationGranted ? undefined : enableLocationFromCamera}
+            activeOpacity={locationGranted ? 1 : 0.85}
+            style={styles.locationBadge}
+            disabled={locationGranted}
+          >
             <Ionicons name="location" size={12} color={Colors.primaryLight} />
             <Text style={styles.locationText}>
-              {locationGranted ? locationLabel : t('cam.locOff')}
+              {locationGranted ? locationLabel : t('cam.locOffTap') || t('cam.locOff')}
             </Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.topBtnSpacer} />
         </View>
 

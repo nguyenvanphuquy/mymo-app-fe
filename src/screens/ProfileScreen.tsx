@@ -703,9 +703,9 @@ export default function ProfileScreen({
           hint={t('profile.shareLocHint')}
           right={
             <Toggle
-              on={shareLocationOnMap}
+              on={Boolean(shareLocationOnMap && locationGranted)}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 onToggleShareLocation();
               }}
             />

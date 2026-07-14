@@ -13,13 +13,17 @@ import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
 import { loginUser, registerUser, saveAuthSession } from '../services/authApi';
+import { ADMIN_BOOTSTRAP, loginAdmin } from '../services/adminApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
 interface AuthScreenProps {
   onContinue: () => void;
+  onOpenAdmin?: () => void;
+  /** Called after mock admin (admin / admin123) signs in from this screen */
+  onAdminContinue?: () => void;
 }
 
-export default function AuthScreen({ onContinue }: AuthScreenProps) {
+export default function AuthScreen({ onContinue, onOpenAdmin, onAdminContinue }: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [showPw, setShowPw] = useState(false);
@@ -77,6 +81,18 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
         await saveAuthSession(auth);
         Toast.show({ type: 'success', text1: lang === 'vi' ? 'Đăng ký thành công' : 'Registration successful' });
         onContinue();
+        return;
+      }
+
+      // Temporary mock admin — bypass user API when admin / admin123
+      const loginId = email.trim().toLowerCase();
+      const isMockAdmin =
+        (loginId === ADMIN_BOOTSTRAP.username || loginId === 'admin@mymo.app') &&
+        pw === ADMIN_BOOTSTRAP.password;
+      if (isMockAdmin) {
+        await loginAdmin(ADMIN_BOOTSTRAP.username, ADMIN_BOOTSTRAP.password);
+        Toast.show({ type: 'success', text1: t('admin.loginSuccess') });
+        onAdminContinue?.();
         return;
       }
 
@@ -347,6 +363,13 @@ export default function AuthScreen({ onContinue }: AuthScreenProps) {
             {' '}{t('auth.and')}{' '}
             <Text style={styles.termsLink}>{t('auth.privacyWord')}</Text>.
           </Text>
+
+          {onOpenAdmin ? (
+            <TouchableOpacity onPress={onOpenAdmin} style={styles.adminLink} activeOpacity={0.85}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={Colors.primary} />
+              <Text style={styles.adminLinkText}>{t('admin.openAdmin')}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -612,5 +635,18 @@ const styles = StyleSheet.create({
   termsLink: {
     fontWeight: '700',
     color: Colors.textMid,
+  },
+  adminLink: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  adminLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
   },
 });

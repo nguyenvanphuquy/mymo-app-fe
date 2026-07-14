@@ -4,12 +4,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
+import { watchWebGeolocationPermission } from '../utils/ensureLocation';
 
 interface LocationPermSheetProps {
-  onAllow: () => void;
+  onAllow: () => void | Promise<void>;
   onDeny: () => void;
 }
 
@@ -33,15 +33,7 @@ export function LocationPermSheet({ onAllow, onDeny }: LocationPermSheetProps) {
     if (loading) return;
     setLoading(true);
     try {
-      // Foreground only — while using the app (never background / always)
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        onAllow();
-      } else {
-        onDeny();
-      }
-    } catch {
-      onDeny();
+      await onAllow();
     } finally {
       setLoading(false);
     }
@@ -86,11 +78,13 @@ export function LocationPermSheet({ onAllow, onDeny }: LocationPermSheetProps) {
 }
 
 interface EnableLocationModalProps {
-  onAllow: () => void;
+  onAllow: () => void | Promise<void>;
   onCancel: () => void;
+  /** 'share' = map sharing; 'post' = posting a moment */
+  variant?: 'share' | 'post';
 }
 
-export function EnableLocationModal({ onAllow, onCancel }: EnableLocationModalProps) {
+export function EnableLocationModal({ onAllow, onCancel, variant = 'share' }: EnableLocationModalProps) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(false);
 
@@ -98,18 +92,14 @@ export function EnableLocationModal({ onAllow, onCancel }: EnableLocationModalPr
     if (loading) return;
     setLoading(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        onAllow();
-      } else {
-        onCancel();
-      }
-    } catch {
-      onCancel();
+      await onAllow();
     } finally {
       setLoading(false);
     }
   };
+
+  const title = variant === 'post' ? t('loc.postNeedTitle') : t('loc.shareNeedTitle');
+  const body = variant === 'post' ? t('loc.postNeedBody') : t('loc.shareNeedBody');
 
   return (
     <View style={styles.modalOverlay}>
@@ -118,8 +108,8 @@ export function EnableLocationModal({ onAllow, onCancel }: EnableLocationModalPr
         <LinearGradient colors={Gradients.primary} style={styles.modalIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <Ionicons name="location" size={24} color={Colors.white} />
         </LinearGradient>
-        <Text style={styles.modalTitle}>{t('loc.postNeedTitle')}</Text>
-        <Text style={styles.modalBody}>{t('loc.postNeedBody')}</Text>
+        <Text style={styles.modalTitle}>{title}</Text>
+        <Text style={styles.modalBody}>{body}</Text>
         <View style={styles.modalBtns}>
           <TouchableOpacity onPress={onCancel} style={styles.modalBtnCancel} disabled={loading}>
             <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
@@ -130,6 +120,76 @@ export function EnableLocationModal({ onAllow, onCancel }: EnableLocationModalPr
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <Text style={styles.btnAllowText}>{t('common.enable')}</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+interface LocationBlockedModalProps {
+  onRetry: () => void | Promise<void>;
+  onClose: () => void;
+}
+
+/** Shown when the browser has permanently blocked geolocation for this origin. */
+export function LocationBlockedModal({ onRetry, onClose }: LocationBlockedModalProps) {
+  const { t } = useI18n();
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    return watchWebGeolocationPermission((state) => {
+      if (state === 'granted') {
+        void (async () => {
+          setLoading(true);
+          try {
+            await onRetry();
+          } finally {
+            setLoading(false);
+          }
+        })();
+      }
+    });
+  }, [onRetry]);
+
+  const handleRetry = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await onRetry();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.modalOverlay}>
+      <View style={styles.dim} />
+      <View style={styles.modal}>
+        <LinearGradient colors={['#F59E0B', '#EA580C']} style={styles.modalIcon} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <Ionicons name="lock-closed" size={24} color={Colors.white} />
+        </LinearGradient>
+        <Text style={styles.modalTitle}>{t('loc.blockedTitle')}</Text>
+        <Text style={styles.modalBody}>{t('loc.blockedBody')}</Text>
+
+        <View style={styles.steps}>
+          <Text style={styles.stepText}>{t('loc.blockedStep1')}</Text>
+          <Text style={styles.stepText}>{t('loc.blockedStep2')}</Text>
+          <Text style={styles.stepText}>{t('loc.blockedStep3')}</Text>
+        </View>
+
+        <View style={styles.modalBtns}>
+          <TouchableOpacity onPress={onClose} style={styles.modalBtnCancel} disabled={loading}>
+            <Text style={styles.modalBtnCancelText}>{t('common.cancel')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleRetry} activeOpacity={0.85} style={styles.modalBtnAllow} disabled={loading}>
+            <LinearGradient colors={Gradients.primary} style={styles.modalBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              {loading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.btnAllowText}>{t('common.retry')}</Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
@@ -277,7 +337,23 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     lineHeight: 19,
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  steps: {
+    width: '100%',
+    backgroundColor: Colors.primaryTint,
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: Colors.primarySoft,
+  },
+  stepText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textDark,
+    lineHeight: 18,
   },
   modalBtns: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Animated,
   Platform, StatusBar, DeviceEventEmitter,
@@ -14,6 +14,8 @@ import { Colors, Gradients, Shadows } from './src/constants/colors';
 import type { Friend } from './src/constants/data';
 
 import AuthScreen from './src/screens/AuthScreen';
+import AdminLoginScreen from './src/screens/AdminLoginScreen';
+import AdminScreen from './src/screens/AdminScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
@@ -25,7 +27,11 @@ import type { OpenChatParams } from './src/components/ConversationsSection';
 import AddFriendSheet from './src/components/AddFriendSheet';
 import PostSheet from './src/components/PostSheet';
 import MymoBot from './src/components/MymoBot';
-import { LocationPermSheet, EnableLocationModal } from './src/components/LocationPermSheet';
+import {
+  LocationPermSheet,
+  EnableLocationModal,
+  LocationBlockedModal,
+} from './src/components/LocationPermSheet';
 import type { PostView } from './src/services/postApi';
 import { hideUserLocation, updateUserSettings } from './src/services/userApi';
 import {
@@ -33,9 +39,11 @@ import {
   getLocationPrivacyPrefs,
   saveLocationPrivacyPrefs,
 } from './src/utils/locationPrivacyStorage';
-import { syncCurrentLocationToServer } from './src/utils/syncUserLocation';
+import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
+import { webPermissionState } from './src/utils/ensureLocation';
+import type { AdminSession } from './src/services/adminApi';
 
-type Screen = 'auth' | 'app';
+type Screen = 'auth' | 'app' | 'admin-login' | 'admin';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
 
 type ChatSession = {
@@ -77,21 +85,36 @@ export default function App() {
 function AppInner() {
   const { t } = useI18n();
   const [checkingSession, setCheckingSession] = useState(true);
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
   useEffect(() => {
     (async () => {
       const { getStoredAuthSession } = await import('./src/services/authApi');
+      const { getAdminSession } = await import('./src/services/adminApi');
       try {
-        const session = await getStoredAuthSession();
+        const [session, admin] = await Promise.all([
+          getStoredAuthSession(),
+          getAdminSession(),
+        ]);
         const prefs = await getLocationPrivacyPrefs();
         const { status } = await Location.getForegroundPermissionsAsync();
-        const osGranted = status === 'granted';
+        let osGranted = status === 'granted';
+        if (Platform.OS === 'web') {
+          const webPerm = await webPermissionState();
+          // Prefer browser Permissions API — expo status can be stale on web
+          if (webPerm === 'granted') osGranted = true;
+          else if (webPerm === 'denied' || webPerm === 'prompt') osGranted = false;
+        }
 
-        if (session) {
+        if (admin) {
+          setAdminSession(admin);
+          setScreen('admin');
+        } else if (session) {
           setScreen('app');
           setLocationGranted(osGranted);
           if (prefs) {
-            setShareLocationOnMap(prefs.locationSharing);
-            setIncognito(prefs.incognito);
+            // Don't show sharing as ON if OS permission is missing
+            setShareLocationOnMap(Boolean(prefs.locationSharing && osGranted));
+            setIncognito(Boolean(prefs.incognito && prefs.locationSharing && osGranted));
             setPermissionAsked(true);
           } else if (osGranted) {
             setPermissionAsked(true);
@@ -112,6 +135,7 @@ function AppInner() {
   const [permissionAsked, setPermissionAsked] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [locationPromptOpen, setLocationPromptOpen] = useState(false);
+  const [locationBlockedOpen, setLocationBlockedOpen] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [chatSession, setChatSession] = useState<ChatSession>(null);
   const [friendProfile, setFriendProfile] = useState<FriendProfileSession>(null);
@@ -153,11 +177,19 @@ function AppInner() {
   /** Sync privacy flags; re-push GPS when sharing is turned back on. */
   const applyLocationPrivacy = (sharing: boolean, isAnonymous: boolean) => {
     void saveLocationPrivacyPrefs({ locationSharing: sharing, incognito: isAnonymous });
+    // Best-effort server sync — local toggle must work even if API/CORS fails
     void updateUserSettings({
       isLocationSharing: sharing,
       isAnonymous,
     }).catch(() => {
-      Toast.show({ type: 'error', text1: t('loc.settingsError') || 'Không cập nhật được cài đặt vị trí' });
+      // Keep quiet unless sharing was turned on (user expects friends to see them)
+      if (sharing && !isAnonymous) {
+        Toast.show({
+          type: 'info',
+          text1: t('loc.enabled'),
+          text2: t('loc.settingsError'),
+        });
+      }
     });
 
     if (!sharing || isAnonymous) {
@@ -168,15 +200,31 @@ function AppInner() {
     void syncCurrentLocationToServer().catch(() => {});
   };
 
-  const handleEnableLocation = () => {
+  const handleEnableLocation = useCallback(async (): Promise<boolean> => {
+    const result = await enableSharingAndSync();
+    if (!result.enabled) {
+      Toast.show({
+        type: 'error',
+        text1: t('loc.enableFailed'),
+        text2: result.reason === 'denied' ? t('cam.locationDenied') : t('loc.enableFailedDesc'),
+      });
+      if (result.reason === 'denied') {
+        setPermissionAsked(true);
+        setLocationBlockedOpen(true);
+        setLocationPromptOpen(false);
+      }
+      return false;
+    }
     setLocationGranted(true);
     setShareLocationOnMap(true);
     setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
+    setLocationBlockedOpen(false);
     applyLocationPrivacy(true, false);
     Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
-  };
+    return true;
+  }, [t]);
 
   const handleDenyLocation = () => {
     setLocationGranted(false);
@@ -184,6 +232,7 @@ function AppInner() {
     setIncognito(false);
     setPermissionAsked(true);
     setLocationPromptOpen(false);
+    setLocationBlockedOpen(false);
     applyLocationPrivacy(false, false);
     Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.offDesc') });
   };
@@ -219,8 +268,58 @@ function AppInner() {
     }
   };
 
+  if (screen === 'admin-login') {
+    return (
+      <AdminLoginScreen
+        onBack={() => setScreen('auth')}
+        onSuccess={async () => {
+          const { getAdminSession } = await import('./src/services/adminApi');
+          const session = await getAdminSession();
+          setAdminSession(session);
+          setScreen('admin');
+        }}
+      />
+    );
+  }
+
+  if (screen === 'admin') {
+    if (!adminSession) {
+      return (
+        <AdminLoginScreen
+          onBack={() => setScreen('auth')}
+          onSuccess={async () => {
+            const { getAdminSession } = await import('./src/services/adminApi');
+            const session = await getAdminSession();
+            setAdminSession(session);
+            setScreen('admin');
+          }}
+        />
+      );
+    }
+    return (
+      <AdminScreen
+        session={adminSession}
+        onLogout={() => {
+          setAdminSession(null);
+          setScreen('auth');
+        }}
+      />
+    );
+  }
+
   if (screen === 'auth') {
-    return <AuthScreen onContinue={() => setScreen('app')} />;
+    return (
+      <AuthScreen
+        onContinue={() => setScreen('app')}
+        onOpenAdmin={() => setScreen('admin-login')}
+        onAdminContinue={async () => {
+          const { getAdminSession } = await import('./src/services/adminApi');
+          const session = await getAdminSession();
+          setAdminSession(session);
+          setScreen('admin');
+        }}
+      />
+    );
   }
 
   // Friend profile full screen
@@ -328,31 +427,49 @@ function AppInner() {
               const next = !shareLocationOnMap;
 
               if (next) {
-                const { status } = await Location.getForegroundPermissionsAsync();
-                if (status !== 'granted') {
-                  setLocationPromptOpen(true);
+                const result = await enableSharingAndSync();
+                if (!result.enabled) {
+                  const denied = result.reason === 'denied';
+                  Toast.show({
+                    type: 'error',
+                    text1: t('loc.enableFailed'),
+                    text2: denied ? t('cam.locationDenied') : t('loc.enableFailedDesc'),
+                  });
+                  if (denied) setLocationBlockedOpen(true);
+                  else setLocationPromptOpen(true);
                   return;
                 }
                 setLocationGranted(true);
+                setPermissionAsked(true);
+                setShareLocationOnMap(true);
+                setIncognito(false);
+                setLocationBlockedOpen(false);
+                applyLocationPrivacy(true, false);
+                Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
+                return;
               }
 
-              setShareLocationOnMap(next);
-              if (!next) setIncognito(false);
-              applyLocationPrivacy(next, next ? incognito : false);
-              if (next) {
-                Toast.show({ type: 'success', text1: t('loc.enabled'), text2: t('loc.enabledDesc') });
-              } else {
-                Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.hiddenFromFriends') });
-              }
+              setShareLocationOnMap(false);
+              setIncognito(false);
+              applyLocationPrivacy(false, false);
+              Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.hiddenFromFriends') });
             }}
-            onToggleIncognito={() => {
-              if (!locationGranted) {
-                setLocationPromptOpen(true);
-                return;
+            onToggleIncognito={async () => {
+              if (!locationGranted || !shareLocationOnMap) {
+                const result = await enableSharingAndSync();
+                if (!result.enabled) {
+                  if (result.reason === 'denied') setLocationBlockedOpen(true);
+                  else setLocationPromptOpen(true);
+                  return;
+                }
+                setLocationGranted(true);
+                setShareLocationOnMap(true);
+                setPermissionAsked(true);
+                setLocationBlockedOpen(false);
               }
               setIncognito(v => {
                 const next = !v;
-                applyLocationPrivacy(shareLocationOnMap, next);
+                applyLocationPrivacy(true, next);
                 if (next) Toast.show({ type: 'info', text1: t('loc.incognitoOn'), text2: t('loc.incognitoOnDesc') });
                 else Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
                 return next;
@@ -391,17 +508,29 @@ function AppInner() {
         <CameraSheet
           locationGranted={!!locationGranted}
           onClose={() => setCameraOpen(false)}
-          onRequestLocation={() => { setCameraOpen(false); setLocationPromptOpen(true); }}
+          onLocationEnabled={() => {
+            setLocationGranted(true);
+            setPermissionAsked(true);
+            // Enabling location for posting does not force map sharing on
+          }}
         />
       )}
 
       {locationPromptOpen && (
         <EnableLocationModal
+          variant="share"
           onAllow={handleEnableLocation}
           onCancel={() => {
             setLocationPromptOpen(false);
-            Toast.show({ type: 'info', text1: t('loc.postDisabled'), text2: t('loc.postDisabledDesc') });
+            Toast.show({ type: 'info', text1: t('loc.off'), text2: t('loc.offDesc') });
           }}
+        />
+      )}
+
+      {locationBlockedOpen && (
+        <LocationBlockedModal
+          onRetry={handleEnableLocation}
+          onClose={() => setLocationBlockedOpen(false)}
         />
       )}
 
