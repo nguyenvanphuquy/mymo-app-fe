@@ -16,6 +16,8 @@ import type { Friend } from './src/constants/data';
 import AuthScreen from './src/screens/AuthScreen';
 import AdminLoginScreen from './src/screens/AdminLoginScreen';
 import AdminScreen from './src/screens/AdminScreen';
+import BusinessLoginScreen from './src/screens/BusinessLoginScreen';
+import BusinessApp from './src/screens/business/BusinessApp';
 import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
@@ -42,8 +44,9 @@ import {
 import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
 import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
+import type { BusinessSession } from './src/utils/businessStorage';
 
-type Screen = 'auth' | 'app' | 'admin-login' | 'admin';
+type Screen = 'auth' | 'app' | 'admin-login' | 'admin' | 'business-login' | 'business';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
 
 type ChatSession = {
@@ -86,14 +89,17 @@ function AppInner() {
   const { t } = useI18n();
   const [checkingSession, setCheckingSession] = useState(true);
   const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
+  const [businessSession, setBusinessSession] = useState<BusinessSession | null>(null);
   useEffect(() => {
     (async () => {
       const { getStoredAuthSession } = await import('./src/services/authApi');
       const { getAdminSession } = await import('./src/services/adminApi');
+      const { getBusinessSession } = await import('./src/utils/businessStorage');
       try {
-        const [session, admin] = await Promise.all([
+        const [session, admin, business] = await Promise.all([
           getStoredAuthSession(),
           getAdminSession(),
+          getBusinessSession(),
         ]);
         const prefs = await getLocationPrivacyPrefs();
         const { status } = await Location.getForegroundPermissionsAsync();
@@ -108,6 +114,9 @@ function AppInner() {
         if (admin) {
           setAdminSession(admin);
           setScreen('admin');
+        } else if (business) {
+          setBusinessSession(business);
+          setScreen('business');
         } else if (session) {
           setScreen('app');
           setLocationGranted(osGranted);
@@ -268,6 +277,45 @@ function AppInner() {
     }
   };
 
+  if (screen === 'business-login') {
+    return (
+      <BusinessLoginScreen
+        onBack={() => setScreen('auth')}
+        onSuccess={async () => {
+          const { getBusinessSession } = await import('./src/utils/businessStorage');
+          const biz = await getBusinessSession();
+          setBusinessSession(biz);
+          setScreen('business');
+        }}
+      />
+    );
+  }
+
+  if (screen === 'business') {
+    if (!businessSession) {
+      return (
+        <BusinessLoginScreen
+          onBack={() => setScreen('auth')}
+          onSuccess={async () => {
+            const { getBusinessSession } = await import('./src/utils/businessStorage');
+            const biz = await getBusinessSession();
+            setBusinessSession(biz);
+            setScreen('business');
+          }}
+        />
+      );
+    }
+    return (
+      <BusinessApp
+        session={businessSession}
+        onLogout={() => {
+          setBusinessSession(null);
+          setScreen('auth');
+        }}
+      />
+    );
+  }
+
   if (screen === 'admin-login') {
     return (
       <AdminLoginScreen
@@ -312,6 +360,7 @@ function AppInner() {
       <AuthScreen
         onContinue={() => setScreen('app')}
         onOpenAdmin={() => setScreen('admin-login')}
+        onOpenBusiness={() => setScreen('business-login')}
         onAdminContinue={async () => {
           const { getAdminSession } = await import('./src/services/adminApi');
           const session = await getAdminSession();

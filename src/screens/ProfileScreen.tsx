@@ -27,6 +27,8 @@ import PremiumScreen from './PremiumScreen';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
 import { getPremiumPlan, isPremiumActive, type PremiumPlanId } from '../utils/premiumStorage';
+import { getApplicationForUser, type BusinessApplication } from '../utils/businessStorage';
+import { getStoredAuthSession } from '../services/authApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -79,6 +81,7 @@ export default function ProfileScreen({
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumPlan, setPremiumPlan] = useState<PremiumPlanId>('free');
+  const [partnerApp, setPartnerApp] = useState<BusinessApplication | null>(null);
   const settingsRef = useRef<ScrollView>(null);
 
   const profileLink = profile ? `mymo.app/u/${profile.id}` : '';
@@ -143,7 +146,25 @@ export default function ProfileScreen({
 
   useEffect(() => {
     getPremiumPlan().then(setPremiumPlan).catch(() => {});
-  }, [premiumOpen]);
+    (async () => {
+      const session = await getStoredAuthSession().catch(() => null);
+      const uid = session?.userId || profile?.id;
+      if (!uid) return;
+      const app = await getApplicationForUser(uid).catch(() => null);
+      setPartnerApp(app);
+    })();
+  }, [premiumOpen, profile?.id]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('partner:updated', async () => {
+      const session = await getStoredAuthSession().catch(() => null);
+      const uid = session?.userId || profile?.id;
+      if (!uid) return;
+      const app = await getApplicationForUser(uid).catch(() => null);
+      setPartnerApp(app);
+    });
+    return () => sub.remove();
+  }, [profile?.id]);
 
   const copyProfileLink = async () => {
     if (!profileLink) return;
@@ -796,6 +817,67 @@ export default function ProfileScreen({
           onPress={() => Toast.show({ type: 'info', text1: t('profile.blocked'), text2: t('profile.blockedDesc') })}
         />
         <SettingRow
+          icon="storefront"
+          label={t('profile.partnerStatus')}
+          hint={
+            !partnerApp
+              ? undefined
+              : partnerApp.status === 'pending'
+                ? t('profile.partnerPendingHint')
+                : partnerApp.status === 'approved'
+                  ? t('profile.partnerApprovedHint')
+                  : t('profile.partnerRejectedHint')
+          }
+          right={
+            partnerApp ? (
+              <View style={[
+                styles.partnerPill,
+                partnerApp.status === 'approved' && styles.partnerPillOk,
+                partnerApp.status === 'rejected' && styles.partnerPillNo,
+              ]}>
+                <Text style={styles.partnerPillText}>
+                  {partnerApp.status === 'pending'
+                    ? t('premium.partnerPending')
+                    : partnerApp.status === 'approved'
+                      ? t('biz.badge')
+                      : t('premium.partnerRejected')}
+                </Text>
+              </View>
+            ) : (
+              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+            )
+          }
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPremiumOpen(true);
+          }}
+        />
+        {partnerApp?.status === 'approved' && partnerApp.issuedUsername ? (
+          <View style={styles.credBox}>
+            <Text style={styles.credLabel}>{t('profile.partnerUsername')}</Text>
+            <TouchableOpacity
+              onPress={async () => {
+                await Clipboard.setStringAsync(partnerApp.issuedUsername || '');
+                Toast.show({ type: 'success', text1: t('profile.partnerCopied') });
+              }}
+            >
+              <Text style={styles.credValue}>{partnerApp.issuedUsername}</Text>
+            </TouchableOpacity>
+            <Text style={styles.credLabel}>{t('profile.partnerPassword')}</Text>
+            <TouchableOpacity
+              onPress={async () => {
+                await Clipboard.setStringAsync(partnerApp.issuedPassword || '');
+                Toast.show({ type: 'success', text1: t('profile.partnerCopied') });
+              }}
+            >
+              <Text style={styles.credValue}>{partnerApp.issuedPassword}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {partnerApp?.status === 'rejected' && partnerApp.rejectReason ? (
+          <Text style={styles.rejectHint}>{partnerApp.rejectReason}</Text>
+        ) : null}
+        <SettingRow
           icon="sparkles"
           label={isPremiumActive(premiumPlan) ? t('profile.plusActive') : t('profile.getPlus')}
           right={
@@ -1432,6 +1514,36 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryTint,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  partnerPill: {
+    maxWidth: 140,
+    backgroundColor: Colors.primaryTint,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  partnerPillOk: { backgroundColor: 'rgba(16, 185, 129, 0.15)' },
+  partnerPillNo: { backgroundColor: '#FFE4E6' },
+  partnerPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  credBox: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: Colors.primaryTint,
+    borderRadius: 16,
+    padding: 12,
+    gap: 4,
+  },
+  credLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted },
+  credValue: { fontSize: 14, fontWeight: '800', color: Colors.primary, marginBottom: 6 },
+  rejectHint: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontSize: 12,
+    color: '#E11D48',
   },
   logoutBtn: {
     marginHorizontal: 16,

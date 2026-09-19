@@ -19,11 +19,12 @@ import { formatDateOnlyDisplay } from '../utils/dateOnly';
 interface AuthScreenProps {
   onContinue: () => void;
   onOpenAdmin?: () => void;
+  onOpenBusiness?: () => void;
   /** Called after mock admin (admin / admin123) signs in from this screen */
   onAdminContinue?: () => void;
 }
 
-export default function AuthScreen({ onContinue, onOpenAdmin, onAdminContinue }: AuthScreenProps) {
+export default function AuthScreen({ onContinue, onOpenAdmin, onOpenBusiness, onAdminContinue }: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [showPw, setShowPw] = useState(false);
@@ -106,6 +107,22 @@ export default function AuthScreen({ onContinue, onOpenAdmin, onAdminContinue }:
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleDemoContinue = async () => {
+    await saveAuthSession({
+      userId: 'demo-user-001',
+      username: 'mymo_demo',
+      email: 'demo@mymo.app',
+      accessToken: 'demo-access-token',
+      refreshToken: 'demo-refresh-token',
+    });
+    Toast.show({
+      type: 'info',
+      text1: t('auth.demoToast'),
+      text2: t('auth.demoToastDesc'),
+    });
+    onContinue();
   };
 
   const handleSocialPress = (provider: 'Google' | 'Apple' | 'Facebook') => {
@@ -363,6 +380,18 @@ export default function AuthScreen({ onContinue, onOpenAdmin, onAdminContinue }:
             {' '}{t('auth.and')}{' '}
             <Text style={styles.termsLink}>{t('auth.privacyWord')}</Text>.
           </Text>
+
+          <TouchableOpacity onPress={handleDemoContinue} style={styles.adminLink} activeOpacity={0.85}>
+            <Ionicons name="eye-outline" size={14} color={Colors.primary} />
+            <Text style={styles.adminLinkText}>{t('auth.demoEnter')}</Text>
+          </TouchableOpacity>
+
+          {onOpenBusiness ? (
+            <TouchableOpacity onPress={onOpenBusiness} style={styles.adminLink} activeOpacity={0.85}>
+              <Ionicons name="storefront-outline" size={14} color={Colors.primary} />
+              <Text style={styles.adminLinkText}>{t('auth.partnerLogin')}</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {onOpenAdmin ? (
             <TouchableOpacity onPress={onOpenAdmin} style={styles.adminLink} activeOpacity={0.85}>

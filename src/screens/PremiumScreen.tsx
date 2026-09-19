@@ -15,6 +15,7 @@ import {
   setPremiumPlan,
   type PremiumPlanId,
 } from '../utils/premiumStorage';
+import PartnerApplyWizard from './PartnerApplyWizard';
 
 interface PremiumScreenProps {
   onClose: () => void;
@@ -50,6 +51,13 @@ const FEATURE_KEYS = [
   'premium.feat.feed',
 ] as const;
 
+const PARTNER_FEATURE_KEYS = [
+  'premium.partnerFeat.places',
+  'premium.partnerFeat.events',
+  'premium.partnerFeat.analytics',
+  'premium.partnerFeat.brand',
+] as const;
+
 function formatVnd(amount: number, lang: string): string {
   if (amount === 0) return lang === 'vi' ? '0đ' : 'Free';
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(amount) + (lang === 'vi' ? 'đ' : ' VND');
@@ -58,6 +66,7 @@ function formatVnd(amount: number, lang: string): string {
 export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenProps) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
+  const [track, setTrack] = useState<'personal' | 'partner'>('personal');
   const [currentPlan, setCurrentPlan] = useState<PremiumPlanId>('free');
   const [selectedPlan, setSelectedPlan] = useState<PremiumPlanId>('yearly');
   const [loading, setLoading] = useState(true);
@@ -146,16 +155,35 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
         <View style={styles.backBtn} />
       </View>
 
+      <View style={styles.trackTabs}>
+        {(['personal', 'partner'] as const).map(item => (
+          <TouchableOpacity
+            key={item}
+            onPress={() => setTrack(item)}
+            style={[styles.trackTab, track === item && styles.trackTabActive]}
+            activeOpacity={0.85}
+          >
+            <Text style={[styles.trackTabText, track === item && styles.trackTabTextActive]}>
+              {item === 'personal' ? t('premium.tabPersonal') : t('premium.tabPartner')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + (track === 'personal' ? 100 : 32) }]}
       >
         <View style={styles.heroCard}>
           <LinearGradient colors={Gradients.primary} style={styles.heroGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <Text style={styles.heroEmoji}>✨</Text>
-            <Text style={styles.heroTitle}>{t('premium.heroTitle')}</Text>
-            <Text style={styles.heroSub}>{t('premium.heroSub')}</Text>
-            {currentPlan !== 'free' && (
+            <Text style={styles.heroTitle}>
+              {track === 'personal' ? t('premium.heroTitle') : t('premium.partnerHeroTitle')}
+            </Text>
+            <Text style={styles.heroSub}>
+              {track === 'personal' ? t('premium.heroSub') : t('premium.partnerHeroSub')}
+            </Text>
+            {track === 'personal' && currentPlan !== 'free' && (
               <View style={styles.activePill}>
                 <Ionicons name="checkmark-circle" size={14} color={Colors.white} />
                 <Text style={styles.activePillText}>
@@ -163,9 +191,32 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
                 </Text>
               </View>
             )}
+            {track === 'partner' && (
+              <View style={styles.activePill}>
+                <Ionicons name="storefront-outline" size={14} color={Colors.white} />
+                <Text style={styles.activePillText}>{t('premium.partnerPrice')}</Text>
+              </View>
+            )}
           </LinearGradient>
         </View>
 
+        {track === 'partner' ? (
+          <>
+            <Text style={styles.sectionLabel}>{t('premium.features')}</Text>
+            <View style={styles.featureCard}>
+              {PARTNER_FEATURE_KEYS.map((key, i) => (
+                <View key={key} style={[styles.featureRow, i < PARTNER_FEATURE_KEYS.length - 1 && styles.featureRowBorder]}>
+                  <LinearGradient colors={Gradients.primary} style={styles.featureIcon}>
+                    <Ionicons name="checkmark" size={12} color={Colors.white} />
+                  </LinearGradient>
+                  <Text style={styles.featureText}>{t(key)}</Text>
+                </View>
+              ))}
+            </View>
+            <PartnerApplyWizard onSubmitted={onClose} />
+          </>
+        ) : (
+          <>
         <Text style={styles.sectionLabel}>{t('premium.choosePlan')}</Text>
 
         {loading ? (
@@ -245,8 +296,12 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
         </View>
 
         <Text style={styles.footnote}>{t('premium.footnote')}</Text>
+          </>
+        )}
+        {/* personal vs partner tracks */}
       </ScrollView>
 
+      {track === 'personal' && (
       <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <TouchableOpacity
           onPress={handleSubscribe}
@@ -266,6 +321,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
           </LinearGradient>
         </TouchableOpacity>
       </View>
+      )}
     </View>
   );
 }
@@ -320,6 +376,34 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: Colors.textDark,
     letterSpacing: -0.3,
+  },
+  trackTabs: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 4,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    borderRadius: 16,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: Colors.primarySoft,
+  },
+  trackTab: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  trackTabActive: {
+    backgroundColor: Colors.white,
+    ...Shadows.soft,
+  },
+  trackTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  trackTabTextActive: {
+    color: Colors.primary,
   },
   scroll: {
     paddingHorizontal: 16,

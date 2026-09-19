@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Platform, ActivityIndicator, Switch,
+  ScrollView, Modal, Platform, ActivityIndicator, Switch, DeviceEventEmitter,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,8 +34,14 @@ import {
   updateAdminUser,
   updateRolePermissions,
 } from '../services/adminApi';
+import {
+  listApplications,
+  issueBusinessAccount,
+  rejectApplication,
+  type BusinessApplication,
+} from '../utils/businessStorage';
 
-type Tab = 'overview' | 'users' | 'roles' | 'myperms';
+type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'myperms';
 
 interface AdminScreenProps {
   session: AdminSession;
@@ -103,6 +109,10 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
 
   const [roleDraft, setRoleDraft] = useState<Record<string, Permission[]>>({});
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
+  const [partnerApps, setPartnerApps] = useState<BusinessApplication[]>([]);
+  const [rejectTarget, setRejectTarget] = useState<BusinessApplication | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [partnerBusyId, setPartnerBusyId] = useState<string | null>(null);
 
   const portalOk = canAccessAdminPortal(permissions);
   const canManage = canManageUsers(permissions);
@@ -141,14 +151,16 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [u, r, perms] = await Promise.all([
+      const [u, r, perms, apps] = await Promise.all([
         listAdminUsers(),
         listAdminRoles(),
         getSessionPermissions(session),
+        listApplications(),
       ]);
       setUsers(u);
       setRoles(r);
       setPermissions(perms);
+      setPartnerApps(apps);
       const draft: Record<string, Permission[]> = {};
       r.forEach(role => {
         draft[role.id] = [...role.permissions];
@@ -166,6 +178,59 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  const handleApprovePartner = async (app: BusinessApplication) => {
+    try {
+      setPartnerBusyId(app.id);
+      const { application, account } = await issueBusinessAccount(app);
+      try {
+        await createAdminUser({
+          username: account.username,
+          email: account.email,
+          displayName: account.displayName,
+          phone: account.phone,
+          roleId: 'business',
+          businessName: account.businessName,
+          password: account.password,
+          notes: `Issued from application ${app.id}`,
+        });
+      } catch {
+        // local venue account still issued even if mock admin store conflicts
+      }
+      DeviceEventEmitter.emit('partner:updated');
+      Toast.show({
+        type: 'success',
+        text1: t('admin.partnerApproved'),
+        text2: `${application.issuedUsername} / ${application.issuedPassword}`,
+      });
+      await load();
+    } catch (error) {
+      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
+    } finally {
+      setPartnerBusyId(null);
+    }
+  };
+
+  const handleRejectPartner = async () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      Toast.show({ type: 'error', text1: t('admin.partnerNeedReason') });
+      return;
+    }
+    try {
+      setPartnerBusyId(rejectTarget.id);
+      await rejectApplication(rejectTarget.id, rejectReason);
+      DeviceEventEmitter.emit('partner:updated');
+      Toast.show({ type: 'success', text1: t('admin.partnerRejected') });
+      setRejectTarget(null);
+      setRejectReason('');
+      await load();
+    } catch (error) {
+      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
+    } finally {
+      setPartnerBusyId(null);
+    }
+  };
 
   const filteredUsers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -343,6 +408,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const tabs: { id: Tab; icon: React.ComponentProps<typeof Ionicons>['name']; label: string }[] = [
     { id: 'overview', icon: 'grid-outline', label: t('admin.tabOverview') },
     { id: 'users', icon: 'people-outline', label: t('admin.tabUsers') },
+    { id: 'partners', icon: 'storefront-outline', label: t('admin.tabPartners') },
     { id: 'roles', icon: 'git-branch-outline', label: t('admin.tabActors') },
     { id: 'myperms', icon: 'shield-checkmark-outline', label: t('admin.tabMyPerms') },
   ];
@@ -634,6 +700,69 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                     );
                   })}
                 </>
+              )}
+            </>
+          )}
+
+          {tab === 'partners' && (
+            <>
+              <Text style={styles.sectionTitle}>{t('admin.tabPartners')}</Text>
+              {partnerApps.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="storefront-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.partnerEmpty')}</Text>
+                </View>
+              ) : (
+                partnerApps.map(app => (
+                  <View key={app.id} style={styles.userCard}>
+                    <View style={styles.userTop}>
+                      <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
+                        <Ionicons name="storefront" size={18} color={Colors.primary} />
+                      </View>
+                      <View style={styles.userMeta}>
+                        <Text style={styles.userName}>{app.displayName}</Text>
+                        <Text style={styles.userHandle}>{app.businessName}</Text>
+                        <Text style={styles.userEmail}>{app.applicantName} · {app.phone}</Text>
+                        <Text style={styles.businessTag}>{app.address}</Text>
+                      </View>
+                      {renderStatusPill(
+                        app.status === 'approved' ? 'active' : app.status === 'rejected' ? 'banned' : 'inactive',
+                      )}
+                    </View>
+                    {app.status === 'approved' && app.issuedUsername ? (
+                      <Text style={styles.detailItemText}>
+                        {t('admin.partnerIssued')}: {app.issuedUsername} / {app.issuedPassword}
+                      </Text>
+                    ) : null}
+                    {app.status === 'rejected' && app.rejectReason ? (
+                      <Text style={styles.detailItemText}>{app.rejectReason}</Text>
+                    ) : null}
+                    {app.status === 'pending' && canManage ? (
+                      <View style={styles.partnerActions}>
+                        <TouchableOpacity
+                          style={styles.approveBtn}
+                          disabled={partnerBusyId === app.id}
+                          onPress={() => handleApprovePartner(app)}
+                        >
+                          {partnerBusyId === app.id ? (
+                            <ActivityIndicator color={Colors.white} />
+                          ) : (
+                            <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.rejectBtn}
+                          onPress={() => {
+                            setRejectTarget(app);
+                            setRejectReason('');
+                          }}
+                        >
+                          <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                ))
               )}
             </>
           )}
@@ -1146,6 +1275,38 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={!!rejectTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('admin.partnerRejectReason')}</Text>
+            <TextInput
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              placeholder={t('admin.partnerRejectReason')}
+              placeholderTextColor={Colors.textMuted}
+              style={styles.rejectInput}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setRejectTarget(null)}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleRejectPartner}>
+                <Text style={styles.deleteBtnText}>{t('admin.partnerReject')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1397,6 +1558,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#059669',
+  },
+  partnerActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  approveBtn: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  approveBtnText: { color: Colors.white, fontWeight: '800', fontSize: 12 },
+  rejectBtn: {
+    flex: 1,
+    backgroundColor: '#FFE4E6',
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  rejectBtnText: { color: '#E11D48', fontWeight: '800', fontSize: 12 },
+  rejectInput: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: Colors.primarySoft,
+    borderRadius: 14,
+    padding: 12,
+    color: Colors.textDark,
+    marginTop: 10,
+    textAlignVertical: 'top',
   },
   statusPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   statusActive: { backgroundColor: 'rgba(16,185,129,0.12)' },
