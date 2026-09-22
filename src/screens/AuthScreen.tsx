@@ -12,7 +12,7 @@ import SparkleField from '../components/SparkleField';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
-import { loginUser, registerUser, saveAuthSession } from '../services/authApi';
+import { loginUser, registerUser, saveAuthSession, syncPortalFlagsForRole } from '../services/authApi';
 import { ADMIN_BOOTSTRAP, loginAdmin } from '../services/adminApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
@@ -22,9 +22,16 @@ interface AuthScreenProps {
   onOpenBusiness?: () => void;
   /** Called after mock admin (admin / admin123) signs in from this screen */
   onAdminContinue?: () => void;
+  onBusinessContinue?: () => void;
 }
 
-export default function AuthScreen({ onContinue, onOpenAdmin, onOpenBusiness, onAdminContinue }: AuthScreenProps) {
+export default function AuthScreen({
+  onContinue,
+  onOpenAdmin,
+  onOpenBusiness,
+  onAdminContinue,
+  onBusinessContinue,
+}: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [showPw, setShowPw] = useState(false);
@@ -99,8 +106,15 @@ export default function AuthScreen({ onContinue, onOpenAdmin, onOpenBusiness, on
 
       const auth = await loginUser({ email: email.trim(), password: pw });
       await saveAuthSession(auth);
+      const destination = await syncPortalFlagsForRole(auth);
       Toast.show({ type: 'success', text1: lang === 'vi' ? 'Đăng nhập thành công' : 'Login successful' });
-      onContinue();
+      if (destination === 'admin') {
+        onAdminContinue?.();
+      } else if (destination === 'business') {
+        onBusinessContinue?.();
+      } else {
+        onContinue();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unexpected error';
       Toast.show({ type: 'error', text1: message });

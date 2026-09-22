@@ -44,7 +44,7 @@ import {
 import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
 import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
-import type { BusinessSession } from './src/utils/businessStorage';
+import type { BusinessSession } from './src/services/businessApi';
 
 type Screen = 'auth' | 'app' | 'admin-login' | 'admin' | 'business-login' | 'business';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
@@ -94,7 +94,7 @@ function AppInner() {
     (async () => {
       const { getStoredAuthSession } = await import('./src/services/authApi');
       const { getAdminSession } = await import('./src/services/adminApi');
-      const { getBusinessSession } = await import('./src/utils/businessStorage');
+      const { getBusinessSession } = await import('./src/services/businessApi');
       try {
         const [session, admin, business] = await Promise.all([
           getStoredAuthSession(),
@@ -111,22 +111,33 @@ function AppInner() {
           else if (webPerm === 'denied' || webPerm === 'prompt') osGranted = false;
         }
 
-        if (admin) {
+        if (admin && !session) {
           setAdminSession(admin);
           setScreen('admin');
-        } else if (business) {
-          setBusinessSession(business);
-          setScreen('business');
         } else if (session) {
-          setScreen('app');
-          setLocationGranted(osGranted);
-          if (prefs) {
-            // Don't show sharing as ON if OS permission is missing
-            setShareLocationOnMap(Boolean(prefs.locationSharing && osGranted));
-            setIncognito(Boolean(prefs.incognito && prefs.locationSharing && osGranted));
-            setPermissionAsked(true);
-          } else if (osGranted) {
-            setPermissionAsked(true);
+          const { syncPortalFlagsForRole } = await import('./src/services/authApi');
+          const destination = await syncPortalFlagsForRole(session);
+          if (destination === 'admin') {
+            setAdminSession({
+              username: session.email,
+              roleId: 'admin',
+              loggedInAt: new Date().toISOString(),
+            });
+            setScreen('admin');
+          } else if (destination === 'business') {
+            const biz = business ?? (await getBusinessSession());
+            setBusinessSession(biz);
+            setScreen('business');
+          } else {
+            setScreen('app');
+            setLocationGranted(osGranted);
+            if (prefs) {
+              setShareLocationOnMap(Boolean(prefs.locationSharing && osGranted));
+              setIncognito(Boolean(prefs.incognito && prefs.locationSharing && osGranted));
+              setPermissionAsked(true);
+            } else if (osGranted) {
+              setPermissionAsked(true);
+            }
           }
         }
       } catch {
@@ -282,7 +293,7 @@ function AppInner() {
       <BusinessLoginScreen
         onBack={() => setScreen('auth')}
         onSuccess={async () => {
-          const { getBusinessSession } = await import('./src/utils/businessStorage');
+          const { getBusinessSession } = await import('./src/services/businessApi');
           const biz = await getBusinessSession();
           setBusinessSession(biz);
           setScreen('business');
@@ -297,7 +308,7 @@ function AppInner() {
         <BusinessLoginScreen
           onBack={() => setScreen('auth')}
           onSuccess={async () => {
-            const { getBusinessSession } = await import('./src/utils/businessStorage');
+            const { getBusinessSession } = await import('./src/services/businessApi');
             const biz = await getBusinessSession();
             setBusinessSession(biz);
             setScreen('business');
@@ -362,10 +373,25 @@ function AppInner() {
         onOpenAdmin={() => setScreen('admin-login')}
         onOpenBusiness={() => setScreen('business-login')}
         onAdminContinue={async () => {
-          const { getAdminSession } = await import('./src/services/adminApi');
-          const session = await getAdminSession();
-          setAdminSession(session);
+          const { getStoredAuthSession } = await import('./src/services/authApi');
+          const jwtSession = await getStoredAuthSession();
+          if (jwtSession?.role === 'Admin') {
+            setAdminSession({
+              username: jwtSession.email,
+              roleId: 'admin',
+              loggedInAt: new Date().toISOString(),
+            });
+          } else {
+            const { getAdminSession } = await import('./src/services/adminApi');
+            setAdminSession(await getAdminSession());
+          }
           setScreen('admin');
+        }}
+        onBusinessContinue={async () => {
+          const { getBusinessSession } = await import('./src/services/businessApi');
+          const biz = await getBusinessSession();
+          setBusinessSession(biz);
+          setScreen('business');
         }}
       />
     );

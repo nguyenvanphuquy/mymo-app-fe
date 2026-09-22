@@ -3,7 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ChatMessage } from './chatApi';
 import { MessageType } from './chatApi';
 
-const HUB_URL = 'https://beexe-production.up.railway.app/hubs/chat';
+import { CHAT_HUB_URL } from '../config/apiConfig';
+
+const HUB_URL = CHAT_HUB_URL;
 
 type MessageHandler = (message: ChatMessage) => void;
 type MessageDeletedHandler = (payload: { messageId: string }) => void;

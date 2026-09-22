@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'https://beexe-production.up.railway.app/api';
+import { API_URL } from '../config/apiConfig';
+
+const BASE_URL = API_URL;
 
 interface ApiResponse<T> {
   success: boolean;

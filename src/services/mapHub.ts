@@ -1,7 +1,9 @@
 import * as signalR from '@microsoft/signalr';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const HUB_URL = 'https://beexe-production.up.railway.app/hubs/map';
+import { MAP_HUB_URL } from '../config/apiConfig';
+
+const HUB_URL = MAP_HUB_URL;
 
 type MapPostCreatedHandler = (payload: Record<string, unknown>) => void;
 type MapPostDeletedHandler = (payload: { postId: string }) => void;

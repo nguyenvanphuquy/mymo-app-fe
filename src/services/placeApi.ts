@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const BASE_URL = 'https://beexe-production.up.railway.app/api';
+import { API_URL } from '../config/apiConfig';
+
+const BASE_URL = API_URL;
 
 interface ApiResponse<T> {
   success: boolean;
@@ -62,6 +64,8 @@ export interface PlaceSummary {
   thumbnailUrl?: string | null;
   averageRating?: number;
   reviewCount?: number;
+  checkInCount?: number;
+  distanceKm?: number;
   address?: string | null;
   city?: string | null;
 }
@@ -157,6 +161,8 @@ function normalizePlaceSummary(raw: Record<string, unknown>): PlaceSummary {
     thumbnailUrl: (raw.thumbnailUrl ?? raw.ThumbnailUrl ?? null) as string | null,
     averageRating: Number(raw.averageRating ?? raw.AverageRating ?? 0),
     reviewCount: Number(raw.reviewCount ?? raw.ReviewCount ?? 0),
+    checkInCount: Number(raw.checkInCount ?? raw.CheckInCount ?? 0),
+    distanceKm: Number(raw.distanceKm ?? raw.DistanceKm ?? 0),
     address: (raw.address ?? raw.Address ?? null) as string | null,
     city: (raw.city ?? raw.City ?? null) as string | null,
   };

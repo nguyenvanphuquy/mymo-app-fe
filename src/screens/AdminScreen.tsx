@@ -40,6 +40,13 @@ import {
   rejectApplication,
   type BusinessApplication,
 } from '../utils/businessStorage';
+import {
+  approvePlace,
+  isBackendAdminSession,
+  listPendingPlaces,
+  rejectPlace,
+  type AdminPlaceItem,
+} from '../services/adminPlacesApi';
 
 type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'myperms';
 
@@ -110,6 +117,8 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const [roleDraft, setRoleDraft] = useState<Record<string, Permission[]>>({});
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [partnerApps, setPartnerApps] = useState<BusinessApplication[]>([]);
+  const [pendingPlaces, setPendingPlaces] = useState<AdminPlaceItem[]>([]);
+  const [placeBusyId, setPlaceBusyId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<BusinessApplication | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [partnerBusyId, setPartnerBusyId] = useState<string | null>(null);
@@ -161,6 +170,15 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
       setRoles(r);
       setPermissions(perms);
       setPartnerApps(apps);
+      if (await isBackendAdminSession()) {
+        try {
+          setPendingPlaces(await listPendingPlaces());
+        } catch {
+          setPendingPlaces([]);
+        }
+      } else {
+        setPendingPlaces([]);
+      }
       const draft: Record<string, Permission[]> = {};
       r.forEach(role => {
         draft[role.id] = [...role.permissions];
@@ -706,6 +724,67 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
 
           {tab === 'partners' && (
             <>
+              {pendingPlaces.length > 0 ? (
+                <>
+                  <Text style={styles.sectionTitle}>Pending places (API)</Text>
+                  {pendingPlaces.map(place => (
+                    <View key={place.placeId} style={styles.userCard}>
+                      <View style={styles.userTop}>
+                        <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
+                          <Ionicons name="location" size={18} color={Colors.primary} />
+                        </View>
+                        <View style={styles.userMeta}>
+                          <Text style={styles.userName}>{place.name}</Text>
+                          <Text style={styles.userHandle}>{place.businessName}</Text>
+                          <Text style={styles.userEmail}>{place.address ?? '—'}</Text>
+                          <Text style={styles.businessTag}>{place.categoryName ?? place.status}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.partnerActions}>
+                        <TouchableOpacity
+                          style={styles.approveBtn}
+                          disabled={placeBusyId === place.placeId}
+                          onPress={async () => {
+                            try {
+                              setPlaceBusyId(place.placeId);
+                              await approvePlace(place.placeId);
+                              Toast.show({ type: 'success', text1: 'Place approved' });
+                              await load();
+                            } catch (e) {
+                              Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
+                            } finally {
+                              setPlaceBusyId(null);
+                            }
+                          }}
+                        >
+                          {placeBusyId === place.placeId ? (
+                            <ActivityIndicator color={Colors.white} />
+                          ) : (
+                            <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.rejectBtn}
+                          onPress={async () => {
+                            try {
+                              setPlaceBusyId(place.placeId);
+                              await rejectPlace(place.placeId);
+                              Toast.show({ type: 'info', text1: 'Place rejected' });
+                              await load();
+                            } catch (e) {
+                              Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
+                            } finally {
+                              setPlaceBusyId(null);
+                            }
+                          }}
+                        >
+                          <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : null}
               <Text style={styles.sectionTitle}>{t('admin.tabPartners')}</Text>
               {partnerApps.length === 0 ? (
                 <View style={styles.emptyCard}>

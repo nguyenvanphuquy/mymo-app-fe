@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Platform } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,26 +8,65 @@ import { useI18n } from '../../i18n';
 import MymoLogo from '../../components/MymoLogo';
 import SparkleField from '../../components/SparkleField';
 import {
-  BUSINESS_VIBES,
-  getBusinessAccount,
-  listPlaces,
+  getMyBusinesses,
+  getMyPlaces,
+  getPlaceAnalytics,
   type BusinessSession,
-} from '../../utils/businessStorage';
+} from '../../services/businessApi';
 
 export default function BusinessHomeScreen({ session }: { session: BusinessSession }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const [vibe, setVibe] = useState('chill');
+  const [businessName, setBusinessName] = useState('');
   const [placeCount, setPlaceCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [approvedCount, setApprovedCount] = useState(0);
+  const [totalCheckIns, setTotalCheckIns] = useState(0);
+  const [todayCheckIns, setTodayCheckIns] = useState(0);
+  const [weeklyCheckIns, setWeeklyCheckIns] = useState(0);
+  const [monthlyCheckIns, setMonthlyCheckIns] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const businesses = await getMyBusinesses();
+      if (businesses.length > 0) {
+        setBusinessName(businesses[0].name);
+      } else {
+        setBusinessName(session.displayName);
+      }
+
+      const places = await getMyPlaces();
+      setPlaceCount(places.length);
+      setPendingCount(places.filter(p => p.status === 'Pending').length);
+      setApprovedCount(places.filter(p => p.status === 'Approved').length);
+
+      let total = 0;
+      let today = 0;
+      let week = 0;
+      let month = 0;
+      for (const place of places) {
+        const analytics = await getPlaceAnalytics(place.placeId);
+        total += analytics.totalCheckIns;
+        today += analytics.todayCheckIns;
+        week += analytics.weeklyCheckIns;
+        month += analytics.monthlyCheckIns;
+      }
+      setTotalCheckIns(total);
+      setTodayCheckIns(today);
+      setWeeklyCheckIns(week);
+      setMonthlyCheckIns(month);
+    } catch {
+      setBusinessName(session.displayName);
+    } finally {
+      setLoading(false);
+    }
+  }, [session.displayName]);
 
   useEffect(() => {
-    getBusinessAccount(session.accountId).then(acc => {
-      if (acc) setVibe(acc.vibe);
-    });
-    listPlaces(session.accountId).then(p => setPlaceCount(p.length));
-  }, [session.accountId]);
-
-  const vibeMeta = BUSINESS_VIBES.find(v => v.id === vibe);
+    load();
+  }, [load]);
 
   return (
     <View style={styles.root}>
@@ -45,18 +84,29 @@ export default function BusinessHomeScreen({ session }: { session: BusinessSessi
           </View>
         </View>
         <Text style={styles.greeting}>{t('biz.home.greeting').replace('{name}', session.displayName)}</Text>
-        <Text style={styles.sub}>{t('biz.home.sub')}</Text>
+        <Text style={styles.sub}>{businessName || t('biz.home.sub')}</Text>
 
-        <View style={styles.stats}>
-          <Stat n="12" l={t('biz.home.moments')} />
-          <Stat n="4.8" l={t('biz.home.rating')} />
-          <Stat n={String(Math.max(placeCount * 18, 6))} l={t('biz.home.checkins')} />
-        </View>
-
-        <View style={styles.vibeCard}>
-          <Text style={styles.label}>{t('biz.home.vibe')}</Text>
-          <Text style={styles.vibeValue}>{vibeMeta?.emoji} {vibeMeta?.label ?? vibe}</Text>
-        </View>
+        {loading ? (
+          <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
+        ) : (
+          <>
+            <View style={styles.stats}>
+              <Stat n={String(placeCount)} l={t('biz.nav.places')} />
+              <Stat n={String(totalCheckIns)} l={t('biz.home.checkins')} />
+              <Stat n={String(approvedCount)} l="Approved" />
+            </View>
+            <View style={styles.stats}>
+              <Stat n={String(todayCheckIns)} l="Today" />
+              <Stat n={String(weeklyCheckIns)} l="Week" />
+              <Stat n={String(monthlyCheckIns)} l="Month" />
+            </View>
+            {pendingCount > 0 && (
+              <View style={styles.pendingCard}>
+                <Text style={styles.pendingText}>{pendingCount} place(s) pending admin approval</Text>
+              </View>
+            )}
+          </>
+        )}
 
         <Text style={styles.label}>{t('biz.home.recent')}</Text>
         <View style={styles.empty}>
@@ -99,14 +149,14 @@ const styles = StyleSheet.create({
   },
   statN: { color: Colors.white, fontSize: 20, fontWeight: '900' },
   statL: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, marginTop: 6 },
-  vibeCard: {
-    backgroundColor: Colors.white, borderRadius: 20, padding: 16, marginBottom: 18, ...Shadows.soft,
+  pendingCard: {
+    backgroundColor: '#FEF3C7', borderRadius: 14, padding: 12, marginBottom: 16,
   },
+  pendingText: { fontSize: 12, fontWeight: '700', color: '#92400E' },
   label: {
     fontSize: 11, fontWeight: '800', color: Colors.textMuted,
     textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8,
   },
-  vibeValue: { fontSize: 18, fontWeight: '800', color: Colors.textDark },
   empty: {
     backgroundColor: Colors.white, borderRadius: 22, padding: 24, alignItems: 'center', gap: 8, ...Shadows.soft,
   },

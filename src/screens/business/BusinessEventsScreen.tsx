@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
+import type { BusinessSession } from '../../services/businessApi';
 import {
   BUSINESS_VIBES,
   addEvent,
@@ -15,7 +16,6 @@ import {
   listPlaces,
   type BusinessEvent,
   type BusinessPlace,
-  type BusinessSession,
   type BusinessVibe,
 } from '../../utils/businessStorage';
 
@@ -41,11 +41,11 @@ export default function BusinessEventsScreen({
   const [placeId, setPlaceId] = useState('');
 
   const load = useCallback(async () => {
-    const [ev, pl] = await Promise.all([listEvents(session.accountId), listPlaces(session.accountId)]);
+    const [ev, pl] = await Promise.all([listEvents(session.userId), listPlaces(session.userId)]);
     setEvents(ev);
     setPlaces(pl);
     setPlaceId(prev => prev || pl[0]?.id || '');
-  }, [session.accountId]);
+  }, [session.userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -56,7 +56,7 @@ export default function BusinessEventsScreen({
     }
     await addEvent({
       id: `evt_${Date.now()}`,
-      accountId: session.accountId,
+      accountId: session.userId,
       title: title.trim(),
       startsAt: startsAt.trim(),
       vibe,

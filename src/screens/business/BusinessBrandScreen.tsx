@@ -5,11 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
-import {
-  getBusinessAccount,
-  type BusinessAccount,
-  type BusinessSession,
-} from '../../utils/businessStorage';
+import { getMyBusinesses, type BusinessDto, type BusinessSession } from '../../services/businessApi';
 
 export default function BusinessBrandScreen({
   session,
@@ -20,11 +16,11 @@ export default function BusinessBrandScreen({
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const [account, setAccount] = useState<BusinessAccount | null>(null);
+  const [business, setBusiness] = useState<BusinessDto | null>(null);
 
   useEffect(() => {
-    getBusinessAccount(session.accountId).then(setAccount);
-  }, [session.accountId]);
+    getMyBusinesses().then(list => setBusiness(list[0] ?? null));
+  }, []);
 
   return (
     <ScrollView
@@ -38,8 +34,8 @@ export default function BusinessBrandScreen({
         </View>
       </LinearGradient>
       <Text style={styles.name}>{session.displayName}</Text>
-      <Text style={styles.company}>{session.businessName}</Text>
-      {account?.verified ? (
+      <Text style={styles.company}>{business?.name ?? session.email}</Text>
+      {business?.verified ? (
         <View style={styles.verified}>
           <Ionicons name="checkmark-circle" size={14} color={Colors.activeGreen} />
           <Text style={styles.verifiedText}>{t('biz.brand.verified')}</Text>
@@ -47,10 +43,9 @@ export default function BusinessBrandScreen({
       ) : null}
 
       <View style={styles.card}>
-        <Row icon="call-outline" text={account?.phone || '—'} />
-        <Row icon="mail-outline" text={account?.email || '—'} />
-        <Row icon="location-outline" text={account?.address || '—'} />
-        <Row icon="pricetag-outline" text={account?.category || '—'} />
+        <Row icon="call-outline" text={business?.phone || '—'} />
+        <Row icon="mail-outline" text={business?.email || session.email} />
+        <Row icon="globe-outline" text={business?.website || '—'} />
       </View>
 
       <Text style={styles.hint}>{t('biz.brand.hint')}</Text>
@@ -61,10 +56,10 @@ export default function BusinessBrandScreen({
   );
 }
 
-function Row({ icon, text }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string }) {
+function Row({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
   return (
     <View style={styles.row}>
-      <Ionicons name={icon} size={16} color={Colors.primary} />
+      <Ionicons name={icon} size={18} color={Colors.primary} />
       <Text style={styles.rowText}>{text}</Text>
     </View>
   );
@@ -72,25 +67,19 @@ function Row({ icon, text }: { icon: React.ComponentProps<typeof Ionicons>['name
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.primaryTint },
-  cover: {
-    height: 120, borderRadius: 24, marginBottom: 36, alignItems: 'center', justifyContent: 'flex-end',
-  },
+  cover: { height: 120, borderRadius: 24, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: -24 },
   logo: {
-    width: 72, height: 72, borderRadius: 24, backgroundColor: Colors.white,
-    alignItems: 'center', justifyContent: 'center', marginBottom: -24, ...Shadows.float,
+    width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.white,
+    alignItems: 'center', justifyContent: 'center', marginBottom: -36, ...Shadows.soft,
   },
-  name: { marginTop: 32, fontSize: 24, fontWeight: '900', color: Colors.textDark, textAlign: 'center' },
+  name: { fontSize: 22, fontWeight: '900', color: Colors.textDark, marginTop: 44, textAlign: 'center' },
   company: { fontSize: 13, color: Colors.textMid, textAlign: 'center', marginTop: 4 },
-  verified: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 8,
-  },
-  verifiedText: { fontSize: 12, fontWeight: '800', color: Colors.activeGreen },
-  card: { backgroundColor: Colors.white, borderRadius: 22, padding: 16, marginTop: 20, ...Shadows.soft },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
-  rowText: { fontSize: 14, color: Colors.textDark, fontWeight: '600', flex: 1 },
-  hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 16 },
-  logout: {
-    marginTop: 16, borderRadius: 16, borderWidth: 1.5, borderColor: '#FFE3E8', paddingVertical: 14, alignItems: 'center',
-  },
-  logoutText: { color: '#E11D48', fontWeight: '800' },
+  verified: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 8 },
+  verifiedText: { fontSize: 12, fontWeight: '700', color: Colors.activeGreen },
+  card: { backgroundColor: Colors.white, borderRadius: 20, padding: 16, marginTop: 20, gap: 12, ...Shadows.soft },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowText: { fontSize: 14, color: Colors.textDark, flex: 1 },
+  hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 20, lineHeight: 18 },
+  logout: { marginTop: 24, padding: 14, borderRadius: 16, backgroundColor: Colors.primarySoft, alignItems: 'center' },
+  logoutText: { fontWeight: '800', color: Colors.primary },
 });

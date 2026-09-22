@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
-import { clearBusinessSession, type BusinessSession } from '../../utils/businessStorage';
+import { clearBusinessSession, type BusinessSession } from '../../services/businessApi';
 import BusinessHomeScreen from './BusinessHomeScreen';
 import BusinessPlacesScreen from './BusinessPlacesScreen';
 import BusinessEventsScreen from './BusinessEventsScreen';

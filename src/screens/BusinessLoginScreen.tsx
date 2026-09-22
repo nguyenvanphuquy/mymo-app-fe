@@ -10,7 +10,7 @@ import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import SparkleField from '../components/SparkleField';
 import MymoLogo from '../components/MymoLogo';
-import { loginBusiness } from '../utils/businessStorage';
+import { loginAsBusinessOwner } from '../services/businessApi';
 
 interface BusinessLoginScreenProps {
   onSuccess: () => void;
@@ -20,6 +20,7 @@ interface BusinessLoginScreenProps {
 export default function BusinessLoginScreen({ onSuccess, onBack }: BusinessLoginScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [username, setUsername] = useState('');
+  /** Business portal uses backend email + password (BusinessOwner role). */
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +32,7 @@ export default function BusinessLoginScreen({ onSuccess, onBack }: BusinessLogin
     }
     try {
       setSubmitting(true);
-      await loginBusiness(username, password);
+      await loginAsBusinessOwner(username.trim(), password);
       Toast.show({ type: 'success', text1: t('biz.loginCta') });
       onSuccess();
     } catch {

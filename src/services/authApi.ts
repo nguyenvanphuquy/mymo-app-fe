@@ -1,11 +1,46 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AUTH_API_URL } from '../config/apiConfig';
 
-const BASE_URL = 'https://beexe-production.up.railway.app/api/Auth';
+const BASE_URL = AUTH_API_URL;
+
+export const ADMIN_PORTAL_KEY = 'mymo.adminPortal';
+export const BUSINESS_PORTAL_KEY = 'mymo.businessPortal';
+const BUSINESS_SESSION_KEY = 'mymo.businessSession';
+
+export type PostLoginDestination = 'user' | 'admin' | 'business';
+
+/** Align AsyncStorage portal flags with JWT role (Admin / Business / User). */
+export async function syncPortalFlagsForRole(auth: AuthResponse): Promise<PostLoginDestination> {
+  const role = (auth.role ?? 'User').trim();
+
+  if (role === 'Admin') {
+    await AsyncStorage.setItem(ADMIN_PORTAL_KEY, '1');
+    await AsyncStorage.multiRemove([BUSINESS_PORTAL_KEY, BUSINESS_SESSION_KEY]);
+    return 'admin';
+  }
+
+  if (role === 'Business') {
+    await AsyncStorage.multiSet([
+      [BUSINESS_PORTAL_KEY, '1'],
+      [BUSINESS_SESSION_KEY, JSON.stringify({
+        userId: auth.userId,
+        email: auth.email,
+        displayName: auth.username,
+      })],
+    ]);
+    await AsyncStorage.removeItem(ADMIN_PORTAL_KEY);
+    return 'business';
+  }
+
+  await AsyncStorage.multiRemove([ADMIN_PORTAL_KEY, BUSINESS_PORTAL_KEY, BUSINESS_SESSION_KEY]);
+  return 'user';
+}
 
 export interface AuthResponse {
   userId: string;
   username: string;
   email: string;
+  role?: string;
   accessToken: string;
   refreshToken: string;
 }
@@ -61,7 +96,15 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
 }
 
 export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
-  return requestJson<AuthResponse>('/login', payload);
+  const raw = await requestJson<Record<string, unknown>>('/login', payload);
+  return {
+    userId: String(raw.userId ?? raw.UserId ?? ''),
+    username: String(raw.username ?? raw.Username ?? ''),
+    email: String(raw.email ?? raw.Email ?? ''),
+    role: String(raw.role ?? raw.Role ?? 'User'),
+    accessToken: String(raw.accessToken ?? raw.AccessToken ?? ''),
+    refreshToken: String(raw.refreshToken ?? raw.RefreshToken ?? ''),
+  };
 }
 
 export async function saveAuthSession(auth: AuthResponse): Promise<void> {
@@ -89,6 +132,7 @@ export async function getStoredAuthSession(): Promise<AuthResponse | null> {
       userId,
       username: String(parsed.username ?? parsed.Username ?? ''),
       email: String(parsed.email ?? parsed.Email ?? ''),
+      role: String(parsed.role ?? parsed.Role ?? 'User'),
       accessToken: String(parsed.accessToken ?? parsed.AccessToken ?? ''),
       refreshToken: String(parsed.refreshToken ?? parsed.RefreshToken ?? ''),
     };
