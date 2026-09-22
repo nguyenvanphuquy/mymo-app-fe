@@ -27,7 +27,8 @@ import PremiumScreen from './PremiumScreen';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
 import { getPremiumPlan, isPremiumActive, type PremiumPlanId } from '../utils/premiumStorage';
-import { getApplicationForUser, type BusinessApplication } from '../utils/businessStorage';
+import { getMyBusinessRegistration, type BusinessRegistrationDto } from '../services/businessRegistrationApi';
+import RegisterBusinessScreen from './RegisterBusinessScreen';
 import { getStoredAuthSession } from '../services/authApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -81,7 +82,8 @@ export default function ProfileScreen({
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [premiumOpen, setPremiumOpen] = useState(false);
   const [premiumPlan, setPremiumPlan] = useState<PremiumPlanId>('free');
-  const [partnerApp, setPartnerApp] = useState<BusinessApplication | null>(null);
+  const [businessReg, setBusinessReg] = useState<BusinessRegistrationDto | null>(null);
+  const [registerBusinessOpen, setRegisterBusinessOpen] = useState(false);
   const settingsRef = useRef<ScrollView>(null);
 
   const profileLink = profile ? `mymo.app/u/${profile.id}` : '';
@@ -150,21 +152,18 @@ export default function ProfileScreen({
       const session = await getStoredAuthSession().catch(() => null);
       const uid = session?.userId || profile?.id;
       if (!uid) return;
-      const app = await getApplicationForUser(uid).catch(() => null);
-      setPartnerApp(app);
+      const reg = await getMyBusinessRegistration().catch(() => null);
+      setBusinessReg(reg);
     })();
-  }, [premiumOpen, profile?.id]);
+  }, [premiumOpen, profile?.id, registerBusinessOpen]);
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('partner:updated', async () => {
-      const session = await getStoredAuthSession().catch(() => null);
-      const uid = session?.userId || profile?.id;
-      if (!uid) return;
-      const app = await getApplicationForUser(uid).catch(() => null);
-      setPartnerApp(app);
+    const sub = DeviceEventEmitter.addListener('business-reg:updated', async () => {
+      const reg = await getMyBusinessRegistration().catch(() => null);
+      setBusinessReg(reg);
     });
     return () => sub.remove();
-  }, [profile?.id]);
+  }, []);
 
   const copyProfileLink = async () => {
     if (!profileLink) return;
@@ -818,27 +817,27 @@ export default function ProfileScreen({
         />
         <SettingRow
           icon="storefront"
-          label={t('profile.partnerStatus')}
+          label={t('profile.registerBusiness')}
           hint={
-            !partnerApp
+            !businessReg
               ? undefined
-              : partnerApp.status === 'pending'
+              : businessReg.status === 'Pending'
                 ? t('profile.partnerPendingHint')
-                : partnerApp.status === 'approved'
+                : businessReg.status === 'Approved'
                   ? t('profile.partnerApprovedHint')
                   : t('profile.partnerRejectedHint')
           }
           right={
-            partnerApp ? (
+            businessReg ? (
               <View style={[
                 styles.partnerPill,
-                partnerApp.status === 'approved' && styles.partnerPillOk,
-                partnerApp.status === 'rejected' && styles.partnerPillNo,
+                businessReg.status === 'Approved' && styles.partnerPillOk,
+                businessReg.status === 'Rejected' && styles.partnerPillNo,
               ]}>
                 <Text style={styles.partnerPillText}>
-                  {partnerApp.status === 'pending'
+                  {businessReg.status === 'Pending'
                     ? t('premium.partnerPending')
-                    : partnerApp.status === 'approved'
+                    : businessReg.status === 'Approved'
                       ? t('biz.badge')
                       : t('premium.partnerRejected')}
                 </Text>
@@ -849,33 +848,11 @@ export default function ProfileScreen({
           }
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setPremiumOpen(true);
+            setRegisterBusinessOpen(true);
           }}
         />
-        {partnerApp?.status === 'approved' && partnerApp.issuedUsername ? (
-          <View style={styles.credBox}>
-            <Text style={styles.credLabel}>{t('profile.partnerUsername')}</Text>
-            <TouchableOpacity
-              onPress={async () => {
-                await Clipboard.setStringAsync(partnerApp.issuedUsername || '');
-                Toast.show({ type: 'success', text1: t('profile.partnerCopied') });
-              }}
-            >
-              <Text style={styles.credValue}>{partnerApp.issuedUsername}</Text>
-            </TouchableOpacity>
-            <Text style={styles.credLabel}>{t('profile.partnerPassword')}</Text>
-            <TouchableOpacity
-              onPress={async () => {
-                await Clipboard.setStringAsync(partnerApp.issuedPassword || '');
-                Toast.show({ type: 'success', text1: t('profile.partnerCopied') });
-              }}
-            >
-              <Text style={styles.credValue}>{partnerApp.issuedPassword}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        {partnerApp?.status === 'rejected' && partnerApp.rejectReason ? (
-          <Text style={styles.rejectHint}>{partnerApp.rejectReason}</Text>
+        {businessReg?.status === 'Rejected' && businessReg.rejectReason ? (
+          <Text style={styles.rejectHint}>{businessReg.rejectReason}</Text>
         ) : null}
         <SettingRow
           icon="sparkles"
@@ -918,6 +895,20 @@ export default function ProfileScreen({
         <PremiumScreen
           onClose={() => setPremiumOpen(false)}
           onPlanChanged={setPremiumPlan}
+        />
+      </Modal>
+
+      <Modal
+        visible={registerBusinessOpen}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setRegisterBusinessOpen(false)}
+      >
+        <RegisterBusinessScreen
+          onClose={() => {
+            setRegisterBusinessOpen(false);
+            DeviceEventEmitter.emit('business-reg:updated');
+          }}
         />
       </Modal>
     </ScrollView>

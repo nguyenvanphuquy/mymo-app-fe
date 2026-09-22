@@ -47,6 +47,12 @@ import {
   rejectPlace,
   type AdminPlaceItem,
 } from '../services/adminPlacesApi';
+import {
+  approveBusiness,
+  listPendingBusinesses,
+  rejectBusiness,
+  type AdminBusinessItem,
+} from '../services/adminBusinessesApi';
 
 type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'myperms';
 
@@ -118,10 +124,14 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
   const [partnerApps, setPartnerApps] = useState<BusinessApplication[]>([]);
   const [pendingPlaces, setPendingPlaces] = useState<AdminPlaceItem[]>([]);
+  const [pendingBusinesses, setPendingBusinesses] = useState<AdminBusinessItem[]>([]);
+  const [businessBusyId, setBusinessBusyId] = useState<string | null>(null);
+  const [rejectBusinessTarget, setRejectBusinessTarget] = useState<AdminBusinessItem | null>(null);
   const [placeBusyId, setPlaceBusyId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<BusinessApplication | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [partnerBusyId, setPartnerBusyId] = useState<string | null>(null);
+  const [partnerQueueModal, setPartnerQueueModal] = useState<'business' | 'place' | null>(null);
 
   const portalOk = canAccessAdminPortal(permissions);
   const canManage = canManageUsers(permissions);
@@ -176,8 +186,14 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
         } catch {
           setPendingPlaces([]);
         }
+        try {
+          setPendingBusinesses(await listPendingBusinesses());
+        } catch {
+          setPendingBusinesses([]);
+        }
       } else {
         setPendingPlaces([]);
+        setPendingBusinesses([]);
       }
       const draft: Record<string, Permission[]> = {};
       r.forEach(role => {
@@ -247,6 +263,26 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
       Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
     } finally {
       setPartnerBusyId(null);
+    }
+  };
+
+  const handleRejectBusinessReg = async () => {
+    if (!rejectBusinessTarget) return;
+    if (!rejectReason.trim()) {
+      Toast.show({ type: 'error', text1: t('admin.partnerNeedReason') });
+      return;
+    }
+    try {
+      setBusinessBusyId(rejectBusinessTarget.businessId);
+      await rejectBusiness(rejectBusinessTarget.businessId, rejectReason.trim());
+      Toast.show({ type: 'success', text1: t('admin.partnerRejected') });
+      setRejectBusinessTarget(null);
+      setRejectReason('');
+      await load();
+    } catch (error) {
+      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
+    } finally {
+      setBusinessBusyId(null);
     }
   };
 
@@ -724,68 +760,44 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
 
           {tab === 'partners' && (
             <>
-              {pendingPlaces.length > 0 ? (
-                <>
-                  <Text style={styles.sectionTitle}>Pending places (API)</Text>
-                  {pendingPlaces.map(place => (
-                    <View key={place.placeId} style={styles.userCard}>
-                      <View style={styles.userTop}>
-                        <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
-                          <Ionicons name="location" size={18} color={Colors.primary} />
-                        </View>
-                        <View style={styles.userMeta}>
-                          <Text style={styles.userName}>{place.name}</Text>
-                          <Text style={styles.userHandle}>{place.businessName}</Text>
-                          <Text style={styles.userEmail}>{place.address ?? '—'}</Text>
-                          <Text style={styles.businessTag}>{place.categoryName ?? place.status}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.partnerActions}>
-                        <TouchableOpacity
-                          style={styles.approveBtn}
-                          disabled={placeBusyId === place.placeId}
-                          onPress={async () => {
-                            try {
-                              setPlaceBusyId(place.placeId);
-                              await approvePlace(place.placeId);
-                              Toast.show({ type: 'success', text1: 'Place approved' });
-                              await load();
-                            } catch (e) {
-                              Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
-                            } finally {
-                              setPlaceBusyId(null);
-                            }
-                          }}
-                        >
-                          {placeBusyId === place.placeId ? (
-                            <ActivityIndicator color={Colors.white} />
-                          ) : (
-                            <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.rejectBtn}
-                          onPress={async () => {
-                            try {
-                              setPlaceBusyId(place.placeId);
-                              await rejectPlace(place.placeId);
-                              Toast.show({ type: 'info', text1: 'Place rejected' });
-                              await load();
-                            } catch (e) {
-                              Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
-                            } finally {
-                              setPlaceBusyId(null);
-                            }
-                          }}
-                        >
-                          <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </>
-              ) : null}
               <Text style={styles.sectionTitle}>{t('admin.tabPartners')}</Text>
+              <TouchableOpacity
+                style={styles.partnerQueueBtn}
+                activeOpacity={0.88}
+                onPress={() => setPartnerQueueModal('business')}
+              >
+                <View style={[styles.partnerQueueIcon, { backgroundColor: '#EDE9FE' }]}>
+                  <Ionicons name="briefcase-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.partnerQueueText}>
+                  <Text style={styles.partnerQueueTitle}>{t('admin.partnersBusinessBox')}</Text>
+                  <Text style={styles.partnerQueueSub} numberOfLines={1}>{t('admin.partnersTapToOpen')}</Text>
+                </View>
+                <View style={styles.partnerQueueBadge}>
+                  <Text style={styles.partnerQueueBadgeText}>{pendingBusinesses.length}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.partnerQueueBtn}
+                activeOpacity={0.88}
+                onPress={() => setPartnerQueueModal('place')}
+              >
+                <View style={[styles.partnerQueueIcon, { backgroundColor: '#DCFCE7' }]}>
+                  <Ionicons name="location-outline" size={22} color="#16A34A" />
+                </View>
+                <View style={styles.partnerQueueText}>
+                  <Text style={styles.partnerQueueTitle}>{t('admin.partnersPlaceBox')}</Text>
+                  <Text style={styles.partnerQueueSub} numberOfLines={1}>{t('admin.partnersTapToOpen')}</Text>
+                </View>
+                <View style={[styles.partnerQueueBadge, { backgroundColor: '#DCFCE7' }]}>
+                  <Text style={[styles.partnerQueueBadgeText, { color: '#16A34A' }]}>{pendingPlaces.length}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+
+              <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t('admin.partnersMockSection')}</Text>
               {partnerApps.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Ionicons name="storefront-outline" size={28} color={Colors.textMuted} />
@@ -1356,6 +1368,166 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
       </Modal>
 
       <Modal
+        visible={partnerQueueModal === 'business'}
+        animationType="slide"
+        onRequestClose={() => setPartnerQueueModal(null)}
+      >
+        <View style={[styles.queueModalRoot, { paddingTop: insets.top + 8 }]}>
+          <View style={styles.queueModalHeader}>
+            <TouchableOpacity onPress={() => setPartnerQueueModal(null)} hitSlop={12}>
+              <Ionicons name="close" size={26} color={Colors.textDark} />
+            </TouchableOpacity>
+            <Text style={styles.queueModalTitle}>{t('admin.partnersBusinessBox')}</Text>
+            <View style={{ width: 26 }} />
+          </View>
+          <Text style={styles.queueModalHint}>{t('admin.partnersBusinessBoxHint')}</Text>
+          <ScrollView contentContainerStyle={styles.queueModalScroll} showsVerticalScrollIndicator={false}>
+            {pendingBusinesses.length === 0 ? (
+              <View style={styles.partnerPanelEmpty}>
+                <Ionicons name="checkmark-done-outline" size={28} color={Colors.textMuted} />
+                <Text style={styles.partnerPanelEmptyText}>{t('admin.partnersBusinessEmpty')}</Text>
+              </View>
+            ) : (
+              pendingBusinesses.map(biz => (
+                <View key={biz.businessId} style={styles.userCard}>
+                  <View style={styles.userTop}>
+                    <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
+                      <Ionicons name="storefront" size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.userMeta}>
+                      <Text style={styles.userName}>{biz.name}</Text>
+                      <Text style={styles.userHandle}>{biz.ownerDisplayName ?? biz.ownerEmail}</Text>
+                      <Text style={styles.userEmail}>{biz.phone ?? '—'} · {biz.ownerEmail}</Text>
+                      <Text style={styles.businessTag}>{biz.address ?? '—'}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.partnerActions}>
+                    <TouchableOpacity
+                      style={styles.approveBtn}
+                      disabled={businessBusyId === biz.businessId}
+                      onPress={async () => {
+                        try {
+                          setBusinessBusyId(biz.businessId);
+                          await approveBusiness(biz.businessId);
+                          Toast.show({
+                            type: 'success',
+                            text1: 'Business approved',
+                            text2: 'Owner must log in again for Business role',
+                          });
+                          await load();
+                        } catch (e) {
+                          Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
+                        } finally {
+                          setBusinessBusyId(null);
+                        }
+                      }}
+                    >
+                      {businessBusyId === biz.businessId ? (
+                        <ActivityIndicator color={Colors.white} />
+                      ) : (
+                        <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.rejectBtn}
+                      onPress={() => {
+                        setRejectBusinessTarget(biz);
+                        setRejectReason('');
+                      }}
+                    >
+                      <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={partnerQueueModal === 'place'}
+        animationType="slide"
+        onRequestClose={() => setPartnerQueueModal(null)}
+      >
+        <View style={[styles.queueModalRoot, { paddingTop: insets.top + 8 }]}>
+          <View style={styles.queueModalHeader}>
+            <TouchableOpacity onPress={() => setPartnerQueueModal(null)} hitSlop={12}>
+              <Ionicons name="close" size={26} color={Colors.textDark} />
+            </TouchableOpacity>
+            <Text style={styles.queueModalTitle}>{t('admin.partnersPlaceBox')}</Text>
+            <View style={{ width: 26 }} />
+          </View>
+          <Text style={styles.queueModalHint}>{t('admin.partnersPlaceBoxHint')}</Text>
+          <ScrollView contentContainerStyle={styles.queueModalScroll} showsVerticalScrollIndicator={false}>
+            {pendingPlaces.length === 0 ? (
+              <View style={styles.partnerPanelEmpty}>
+                <Ionicons name="map-outline" size={28} color={Colors.textMuted} />
+                <Text style={styles.partnerPanelEmptyText}>{t('admin.partnersPlaceEmpty')}</Text>
+              </View>
+            ) : (
+              pendingPlaces.map(place => (
+                <View key={place.placeId} style={styles.userCard}>
+                  <View style={styles.userTop}>
+                    <View style={[styles.avatar, { backgroundColor: '#DCFCE7' }]}>
+                      <Ionicons name="location" size={18} color="#16A34A" />
+                    </View>
+                    <View style={styles.userMeta}>
+                      <Text style={styles.userName}>{place.name}</Text>
+                      <Text style={styles.userHandle}>{place.businessName}</Text>
+                      <Text style={styles.userEmail}>{place.address ?? '—'}</Text>
+                      <Text style={styles.businessTag}>{place.categoryName ?? place.status}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.partnerActions}>
+                    <TouchableOpacity
+                      style={styles.approveBtn}
+                      disabled={placeBusyId === place.placeId}
+                      onPress={async () => {
+                        try {
+                          setPlaceBusyId(place.placeId);
+                          await approvePlace(place.placeId);
+                          Toast.show({ type: 'success', text1: 'Place approved' });
+                          await load();
+                        } catch (e) {
+                          Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
+                        } finally {
+                          setPlaceBusyId(null);
+                        }
+                      }}
+                    >
+                      {placeBusyId === place.placeId ? (
+                        <ActivityIndicator color={Colors.white} />
+                      ) : (
+                        <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.rejectBtn}
+                      onPress={async () => {
+                        try {
+                          setPlaceBusyId(place.placeId);
+                          await rejectPlace(place.placeId);
+                          Toast.show({ type: 'info', text1: 'Place rejected' });
+                          await load();
+                        } catch (e) {
+                          Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Failed' });
+                        } finally {
+                          setPlaceBusyId(null);
+                        }
+                      }}
+                    >
+                      <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
         visible={!!rejectTarget}
         transparent
         animationType="fade"
@@ -1380,6 +1552,38 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                 <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.deleteBtn} onPress={handleRejectPartner}>
+                <Text style={styles.deleteBtnText}>{t('admin.partnerReject')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!rejectBusinessTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectBusinessTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('admin.partnerRejectReason')}</Text>
+            <TextInput
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              placeholder={t('admin.partnerRejectReason')}
+              placeholderTextColor={Colors.textMuted}
+              style={styles.rejectInput}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setRejectBusinessTarget(null)}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleRejectBusinessReg}>
                 <Text style={styles.deleteBtnText}>{t('admin.partnerReject')}</Text>
               </TouchableOpacity>
             </View>
@@ -1638,6 +1842,62 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#059669',
   },
+  partnerQueueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: Colors.primarySoft,
+    ...Shadows.soft,
+  },
+  partnerQueueIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnerQueueText: { flex: 1 },
+  partnerQueueTitle: { fontSize: 15, fontWeight: '800', color: Colors.textDark },
+  partnerQueueSub: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  partnerQueueBadge: {
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  partnerQueueBadgeText: { fontSize: 12, fontWeight: '900', color: Colors.primary },
+  queueModalRoot: { flex: 1, backgroundColor: Colors.primaryTint },
+  queueModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  queueModalTitle: { fontSize: 17, fontWeight: '900', color: Colors.textDark },
+  queueModalHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    lineHeight: 18,
+  },
+  queueModalScroll: { paddingHorizontal: 16, paddingBottom: 40, gap: 10 },
+  partnerPanelEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 10,
+  },
+  partnerPanelEmptyText: { fontSize: 13, color: Colors.textMuted, fontWeight: '600', textAlign: 'center' },
   partnerActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
   approveBtn: {
     flex: 1,

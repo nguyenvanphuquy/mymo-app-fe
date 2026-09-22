@@ -11,7 +11,10 @@ import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
 import {
   getPlaceDetail,
+  getPlaceMenu,
   getPlaceReviews,
+  formatMenuPriceVnd,
+  type PublicMenu,
   createReview,
   deleteReview,
   type PlaceDetail,
@@ -68,6 +71,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   const useNativeDriver = Platform.OS !== 'web';
 
   const [detail, setDetail] = useState<PlaceDetail | null>(null);
+  const [menu, setMenu] = useState<PublicMenu | null>(null);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,12 +102,14 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
     setLoading(true);
     setError(null);
     try {
-      const [placeData, reviewData] = await Promise.all([
+      const [placeData, reviewData, menuData] = await Promise.all([
         getPlaceDetail(placeId),
         getPlaceReviews(placeId).catch(() => [] as ReviewItem[]),
+        getPlaceMenu(placeId),
       ]);
       setDetail(placeData);
       setReviews(reviewData);
+      setMenu(menuData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load place');
     } finally {
@@ -176,6 +182,14 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   };
 
   const name = detail?.name || placeName || t('place.loading');
+  const galleryPhotos = detail?.photos?.length
+    ? detail.photos
+    : [];
+  const heroImageUrl = galleryPhotos.find(p => p.isPrimary)?.imageUrl
+    ?? galleryPhotos[0]?.imageUrl
+    ?? detail?.thumbnailUrl
+    ?? detail?.business?.logoUrl
+    ?? null;
 
   return (
     <Modal transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
@@ -216,13 +230,20 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               showsVerticalScrollIndicator={false}
             >
               {/* Hero */}
+              {heroImageUrl ? (
+                <Image source={{ uri: heroImageUrl }} style={styles.mainHeroImage} resizeMode="cover" />
+              ) : null}
+              {galleryPhotos.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryRow} contentContainerStyle={styles.galleryContent}>
+                  {galleryPhotos.map(photo => (
+                    <Image key={photo.id} source={{ uri: photo.imageUrl }} style={styles.galleryThumb} />
+                  ))}
+                </ScrollView>
+              ) : null}
               <View style={styles.hero}>
                 <View style={styles.heroThumb}>
-                  {detail.thumbnailUrl || detail.business?.logoUrl ? (
-                    <Image
-                      source={{ uri: detail.thumbnailUrl || detail.business?.logoUrl || '' }}
-                      style={styles.heroImage}
-                    />
+                  {heroImageUrl ? (
+                    <Image source={{ uri: heroImageUrl }} style={styles.heroImage} />
                   ) : (
                     <Ionicons name="location" size={28} color={Colors.primary} />
                   )}
@@ -285,6 +306,44 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                   <Text style={styles.infoText}>{detail.openingHours}</Text>
                 </View>
               )}
+              {menu && menu.items.length > 0 ? (
+                <View style={styles.menuBlock}>
+                  <Text style={styles.menuHeading}>{t('place.menu') ?? 'MENU'}</Text>
+                  <Text style={styles.menuTitle}>{menu.name}</Text>
+                  {(() => {
+                    const groups = new Map<string, typeof menu.items>();
+                    menu.items.forEach(item => {
+                      const key = item.categoryName?.trim() || (t('place.menuOther') ?? 'Other');
+                      if (!groups.has(key)) groups.set(key, []);
+                      groups.get(key)!.push(item);
+                    });
+                    return Array.from(groups.entries()).map(([cat, items]) => (
+                      <View key={cat} style={styles.menuCategory}>
+                        <Text style={styles.menuCategoryTitle}>{cat}</Text>
+                        {items.map(item => (
+                          <View key={item.id} style={styles.menuItemRow}>
+                            {item.imageUrl ? (
+                              <Image source={{ uri: item.imageUrl }} style={styles.menuItemImg} />
+                            ) : (
+                              <View style={styles.menuItemImgPlaceholder}>
+                                <Ionicons name="cafe-outline" size={18} color={Colors.primary} />
+                              </View>
+                            )}
+                            <View style={styles.menuItemText}>
+                              <Text style={styles.menuItemName}>{item.name}</Text>
+                              <Text style={styles.menuItemPrice}>{formatMenuPriceVnd(item.price)}</Text>
+                              {item.description ? (
+                                <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
+                              ) : null}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ));
+                  })()}
+                </View>
+              ) : null}
+
               {detail.description && (
                 <Text style={styles.description}>{detail.description}</Text>
               )}
@@ -487,6 +546,10 @@ const styles = StyleSheet.create({
     ...Shadows.soft,
   },
   heroImage: { width: 64, height: 64 },
+  mainHeroImage: { width: '100%', height: 180, borderRadius: 16, marginBottom: 10, backgroundColor: Colors.primarySoft },
+  galleryRow: { marginBottom: 12 },
+  galleryContent: { gap: 8, paddingHorizontal: 2 },
+  galleryThumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: Colors.primarySoft },
   heroInfo: { flex: 1 },
   placeName: {
     fontSize: 18,
@@ -539,6 +602,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoText: { flex: 1, fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
+  menuBlock: { marginTop: 12, marginBottom: 12, padding: 14, backgroundColor: Colors.primaryTint, borderRadius: 16 },
+  menuHeading: { fontSize: 11, fontWeight: '900', color: Colors.textMuted, letterSpacing: 1 },
+  menuTitle: { fontSize: 16, fontWeight: '900', color: Colors.textDark, marginBottom: 10 },
+  menuCategory: { marginBottom: 12 },
+  menuCategoryTitle: { fontSize: 14, fontWeight: '800', color: Colors.primary, marginBottom: 8 },
+  menuItemRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  menuItemImg: { width: 52, height: 52, borderRadius: 10, backgroundColor: Colors.white },
+  menuItemImgPlaceholder: {
+    width: 52, height: 52, borderRadius: 10, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center',
+  },
+  menuItemText: { flex: 1 },
+  menuItemName: { fontSize: 14, fontWeight: '800', color: Colors.textDark },
+  menuItemPrice: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginTop: 2 },
+  menuItemDesc: { fontSize: 11, color: Colors.textMuted, marginTop: 2, lineHeight: 15 },
   description: {
     fontSize: 13,
     color: Colors.textDark,

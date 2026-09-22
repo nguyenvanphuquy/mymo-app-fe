@@ -42,9 +42,22 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
   });
 
   const rawText = await response.text();
-  let data = rawText ? JSON.parse(rawText) : {};
+  let data: Record<string, unknown> = {};
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      data = { message: rawText };
+    }
+  }
   if (!response.ok) {
-    const message = data?.message ?? `Request failed (${response.status})`;
+    const message = String(
+      data?.message
+      ?? data?.title
+      ?? (response.status === 403 ? 'Forbidden — check Business role and approved business profile'
+        : response.status === 401 ? 'Please log in again'
+          : `Request failed (${response.status})`),
+    );
     throw new Error(message);
   }
   if (data && typeof data === 'object' && data.success === false) {
@@ -106,6 +119,7 @@ export interface BusinessDto {
   email?: string | null;
   website?: string | null;
   verified: boolean;
+  status?: string;
 }
 
 export interface BusinessPlaceDto {
@@ -114,9 +128,11 @@ export interface BusinessPlaceDto {
   name: string;
   description?: string | null;
   categoryId: string;
+  categoryName?: string | null;
   address?: string | null;
   latitude: number;
   longitude: number;
+  phone?: string | null;
   openingHours?: string | null;
   thumbnailUrl?: string | null;
   status: string;
@@ -142,6 +158,7 @@ function normalizeBusiness(raw: Record<string, unknown>): BusinessDto {
     email: (raw.email ?? raw.Email ?? null) as string | null,
     website: (raw.website ?? raw.Website ?? null) as string | null,
     verified: Boolean(raw.verified ?? raw.Verified ?? false),
+    status: String(raw.status ?? raw.Status ?? 'Approved'),
   };
 }
 
@@ -152,7 +169,9 @@ function normalizePlace(raw: Record<string, unknown>): BusinessPlaceDto {
     name: String(raw.name ?? raw.Name ?? ''),
     description: (raw.description ?? raw.Description ?? null) as string | null,
     categoryId: String(raw.categoryId ?? raw.CategoryId ?? ''),
+    categoryName: (raw.categoryName ?? raw.CategoryName ?? null) as string | null,
     address: (raw.address ?? raw.Address ?? null) as string | null,
+    phone: (raw.phone ?? raw.Phone ?? null) as string | null,
     latitude: Number(raw.latitude ?? raw.Latitude ?? 0),
     longitude: Number(raw.longitude ?? raw.Longitude ?? 0),
     openingHours: (raw.openingHours ?? raw.OpeningHours ?? null) as string | null,
@@ -186,19 +205,32 @@ export async function getMyPlaces(): Promise<BusinessPlaceDto[]> {
   return (res.data ?? []).map(p => normalizePlace(p));
 }
 
+export async function getMyPlaceById(placeId: string): Promise<BusinessPlaceDto> {
+  const res = await requestJson<Record<string, unknown>>(`/business/places/${placeId}`, 'GET');
+  return normalizePlace(res.data ?? {});
+}
+
 export async function createPlace(payload: {
-  businessId: string;
   name: string;
   categoryId: string;
   address: string;
   latitude: number;
   longitude: number;
   description?: string;
+  phone?: string;
   openingHours?: string;
   thumbnailUrl?: string;
 }): Promise<BusinessPlaceDto> {
-  const res = await requestJson<Record<string, unknown>>('/business/places', 'POST', payload);
-  return normalizePlace(res.data);
+  const body: Record<string, unknown> = { ...payload };
+  try {
+    const businesses = await getMyBusinesses();
+    const bizId = businesses[0]?.businessId;
+    if (bizId) body.businessId = bizId;
+  } catch {
+    // New API resolves business from JWT; ignore if /business/me is 404
+  }
+  const res = await requestJson<Record<string, unknown>>('/business/places', 'POST', body);
+  return normalizePlace((res.data ?? {}) as Record<string, unknown>);
 }
 
 export async function updatePlace(
@@ -210,6 +242,7 @@ export async function updatePlace(
     latitude: number;
     longitude: number;
     description?: string;
+    phone?: string;
     openingHours?: string;
     thumbnailUrl?: string;
   },

@@ -108,6 +108,13 @@ export interface PlaceRecentReview {
   user: PlaceDetailUser;
 }
 
+export interface PlacePhotoItem {
+  id: string;
+  imageUrl: string;
+  isPrimary: boolean;
+  displayOrder: number;
+}
+
 export interface PlaceDetail {
   placeId: string;
   name: string;
@@ -129,6 +136,7 @@ export interface PlaceDetail {
   business: PlaceDetailBusiness | null;
   recentPosts: PlaceRecentPost[];
   recentReviews: PlaceRecentReview[];
+  photos: PlacePhotoItem[];
 }
 
 export interface ReviewItem {
@@ -193,11 +201,21 @@ function normalizeRecentReview(raw: Record<string, unknown>): PlaceRecentReview 
   };
 }
 
+function normalizePlacePhoto(raw: Record<string, unknown>): PlacePhotoItem {
+  return {
+    id: String(raw.id ?? raw.Id ?? raw.placePhotoId ?? ''),
+    imageUrl: String(raw.imageUrl ?? raw.ImageUrl ?? ''),
+    isPrimary: Boolean(raw.isPrimary ?? raw.IsPrimary ?? false),
+    displayOrder: Number(raw.displayOrder ?? raw.DisplayOrder ?? 0),
+  };
+}
+
 function normalizePlaceDetail(raw: Record<string, unknown>): PlaceDetail {
   const categoryRaw = raw.category ?? raw.Category;
   const businessRaw = raw.business ?? raw.Business;
   const postsRaw = (raw.recentPosts ?? raw.RecentPosts ?? []) as Record<string, unknown>[];
   const reviewsRaw = (raw.recentReviews ?? raw.RecentReviews ?? []) as Record<string, unknown>[];
+  const photosRaw = (raw.photos ?? raw.Photos ?? []) as Record<string, unknown>[];
 
   return {
     placeId: String(raw.placeId ?? raw.PlaceId ?? ''),
@@ -233,6 +251,7 @@ function normalizePlaceDetail(raw: Record<string, unknown>): PlaceDetail {
       : null,
     recentPosts: postsRaw.map(normalizeRecentPost),
     recentReviews: reviewsRaw.map(normalizeRecentReview),
+    photos: photosRaw.map(normalizePlacePhoto).sort((a, b) => a.displayOrder - b.displayOrder),
   };
 }
 
@@ -261,6 +280,58 @@ export async function getNearbyPlaces(
   const query = `?Latitude=${latitude}&Longitude=${longitude}&RadiusKm=${radiusKm}`;
   const response = await requestJson<ApiResponse<Record<string, unknown>[]>>(`/places/nearby${query}`, 'GET');
   return (response.data ?? []).map(item => normalizePlaceSummary(item));
+}
+
+export interface PublicMenuItem {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  imageUrl: string | null;
+  categoryName: string | null;
+  displayOrder: number;
+}
+
+export interface PublicMenu {
+  id: string;
+  placeId: string;
+  name: string;
+  description: string | null;
+  items: PublicMenuItem[];
+}
+
+function normalizePublicMenuItem(raw: Record<string, unknown>): PublicMenuItem {
+  return {
+    id: String(raw.id ?? raw.Id ?? ''),
+    name: String(raw.name ?? raw.Name ?? ''),
+    description: (raw.description ?? raw.Description ?? null) as string | null,
+    price: Number(raw.price ?? raw.Price ?? 0),
+    imageUrl: (raw.imageUrl ?? raw.ImageUrl ?? null) as string | null,
+    categoryName: (raw.categoryName ?? raw.CategoryName ?? null) as string | null,
+    displayOrder: Number(raw.displayOrder ?? raw.DisplayOrder ?? 0),
+  };
+}
+
+export async function getPlaceMenu(placeId: string): Promise<PublicMenu | null> {
+  try {
+    const response = await requestJson<ApiResponse<Record<string, unknown>>>(`/places/${placeId}/menu`, 'GET');
+    if (!response.success || !response.data) return null;
+    const raw = response.data;
+    const itemsRaw = (raw.items ?? raw.Items ?? []) as Record<string, unknown>[];
+    return {
+      id: String(raw.id ?? raw.Id ?? ''),
+      placeId: String(raw.placeId ?? raw.PlaceId ?? placeId),
+      name: String(raw.name ?? raw.Name ?? ''),
+      description: (raw.description ?? raw.Description ?? null) as string | null,
+      items: itemsRaw.map(normalizePublicMenuItem).sort((a, b) => a.displayOrder - b.displayOrder),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function formatMenuPriceVnd(price: number): string {
+  return `${Math.round(price).toLocaleString('vi-VN')}₫`;
 }
 
 export async function getPlaceDetail(placeId: string): Promise<PlaceDetail> {
