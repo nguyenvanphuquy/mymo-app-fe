@@ -12,9 +12,10 @@ import BusinessPlaceDetailScreen from './BusinessPlaceDetailScreen';
 import BusinessPlaceFormScreen from './BusinessPlaceFormScreen';
 import BusinessPlacePhotosScreen from './BusinessPlacePhotosScreen';
 import BusinessMenuScreen from './BusinessMenuScreen';
+import BusinessPromotionsScreen from './BusinessPromotionsScreen';
 import { emptyPlaceForm, type BusinessPlaceFormValues } from './businessPlaceTypes';
 
-type PlacesView = 'list' | 'detail' | 'create' | 'edit' | 'photos' | 'menu';
+type PlacesView = 'list' | 'detail' | 'create' | 'edit' | 'photos' | 'menu' | 'promotions';
 
 export default function BusinessPlacesScreen({ session: _session }: { session: BusinessSession }) {
   const { t } = useI18n();
@@ -96,6 +97,16 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
     load();
   };
 
+  if (view === 'promotions' && selectedPlaceId) {
+    return (
+      <BusinessPromotionsScreen
+        placeId={selectedPlaceId}
+        placeName={photosPlaceName}
+        onBack={() => setView('detail')}
+      />
+    );
+  }
+
   if (view === 'menu' && selectedPlaceId) {
     return (
       <BusinessMenuScreen
@@ -131,6 +142,10 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
         onManageMenu={p => {
           setPhotosPlaceName(p.name);
           setView('menu');
+        }}
+        onManagePromotions={p => {
+          setPhotosPlaceName(p.name);
+          setView('promotions');
         }}
       />
     );

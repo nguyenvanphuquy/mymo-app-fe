@@ -330,6 +330,41 @@ export async function getPlaceMenu(placeId: string): Promise<PublicMenu | null> 
   }
 }
 
+export interface PublicPromotion {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  startAt: string;
+  endAt: string;
+  status: string;
+}
+
+function normalizePublicPromotion(raw: Record<string, unknown>): PublicPromotion {
+  return {
+    id: String(raw.id ?? raw.Id ?? ''),
+    title: String(raw.title ?? raw.Title ?? ''),
+    description: (raw.description ?? raw.Description ?? null) as string | null,
+    imageUrl: (raw.imageUrl ?? raw.ImageUrl ?? null) as string | null,
+    startAt: String(raw.startAt ?? raw.StartAt ?? ''),
+    endAt: String(raw.endAt ?? raw.EndAt ?? ''),
+    status: String(raw.status ?? raw.Status ?? ''),
+  };
+}
+
+export async function getPlacePromotions(placeId: string): Promise<PublicPromotion[]> {
+  try {
+    const response = await requestJson<ApiResponse<Record<string, unknown>[]>>(
+      `/places/${placeId}/promotions`,
+      'GET',
+    );
+    if (!response.success || !response.data) return [];
+    return response.data.map(item => normalizePublicPromotion(item as Record<string, unknown>));
+  } catch {
+    return [];
+  }
+}
+
 export function formatMenuPriceVnd(price: number): string {
   return `${Math.round(price).toLocaleString('vi-VN')}₫`;
 }

@@ -12,9 +12,11 @@ import { useI18n } from '../i18n';
 import {
   getPlaceDetail,
   getPlaceMenu,
+  getPlacePromotions,
   getPlaceReviews,
   formatMenuPriceVnd,
   type PublicMenu,
+  type PublicPromotion,
   createReview,
   deleteReview,
   type PlaceDetail,
@@ -23,6 +25,7 @@ import {
   type ReviewItem,
 } from '../services/placeApi';
 import { getStoredAuthSession } from '../services/authApi';
+import { formatPromotionRange } from '../services/businessPromotionApi';
 
 interface PlaceSheetProps {
   placeId: string;
@@ -72,6 +75,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
 
   const [detail, setDetail] = useState<PlaceDetail | null>(null);
   const [menu, setMenu] = useState<PublicMenu | null>(null);
+  const [promotions, setPromotions] = useState<PublicPromotion[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,14 +106,16 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
     setLoading(true);
     setError(null);
     try {
-      const [placeData, reviewData, menuData] = await Promise.all([
+      const [placeData, reviewData, menuData, promoData] = await Promise.all([
         getPlaceDetail(placeId),
         getPlaceReviews(placeId).catch(() => [] as ReviewItem[]),
         getPlaceMenu(placeId),
+        getPlacePromotions(placeId),
       ]);
       setDetail(placeData);
       setReviews(reviewData);
       setMenu(menuData);
+      setPromotions(promoData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load place');
     } finally {
@@ -341,6 +347,25 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                       </View>
                     ));
                   })()}
+                </View>
+              ) : null}
+
+              {promotions.length > 0 ? (
+                <View style={styles.menuBlock}>
+                  <Text style={styles.menuHeading}>{t('place.promotions') ?? 'PROMOTIONS'}</Text>
+                  {promotions.map(promo => (
+                    <View key={promo.id} style={styles.promoCard}>
+                      {promo.imageUrl ? (
+                        <Image source={{ uri: promo.imageUrl }} style={styles.promoImg} />
+                      ) : null}
+                      <Text style={styles.promoTitle}>{promo.title}</Text>
+                      {promo.description ? (
+                        <Text style={styles.promoDesc} numberOfLines={3}>{promo.description}</Text>
+                      ) : null}
+                      <Text style={styles.promoRange}>{formatPromotionRange(promo.startAt, promo.endAt)}</Text>
+                      <Text style={styles.promoStatus}>{promo.status}</Text>
+                    </View>
+                  ))}
                 </View>
               ) : null}
 
@@ -616,6 +641,12 @@ const styles = StyleSheet.create({
   menuItemName: { fontSize: 14, fontWeight: '800', color: Colors.textDark },
   menuItemPrice: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginTop: 2 },
   menuItemDesc: { fontSize: 11, color: Colors.textMuted, marginTop: 2, lineHeight: 15 },
+  promoCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 12, marginBottom: 10 },
+  promoImg: { width: '100%', height: 100, borderRadius: 10, marginBottom: 8, backgroundColor: Colors.primarySoft },
+  promoTitle: { fontSize: 15, fontWeight: '900', color: Colors.textDark },
+  promoDesc: { fontSize: 12, color: Colors.textMuted, marginTop: 4, lineHeight: 16 },
+  promoRange: { fontSize: 11, fontWeight: '700', color: Colors.textDark, marginTop: 6 },
+  promoStatus: { fontSize: 10, fontWeight: '800', color: Colors.primary, marginTop: 4 },
   description: {
     fontSize: 13,
     color: Colors.textDark,

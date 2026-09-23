@@ -20,12 +20,14 @@ export default function BusinessPlaceDetailScreen({
   onEdit,
   onManagePhotos,
   onManageMenu,
+  onManagePromotions,
 }: {
   placeId: string;
   onBack: () => void;
   onEdit: (place: BusinessPlaceDto) => void;
   onManagePhotos: (place: BusinessPlaceDto) => void;
   onManageMenu: (place: BusinessPlaceDto) => void;
+  onManagePromotions: (place: BusinessPlaceDto) => void;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -104,6 +106,10 @@ export default function BusinessPlaceDetailScreen({
         <TouchableOpacity style={styles.photosBtn} onPress={() => onManageMenu(place)} activeOpacity={0.88}>
           <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
           <Text style={styles.photosBtnText}>{t('biz.menu.manage') ?? 'Manage Menu'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.photosBtn} onPress={() => onManagePromotions(place)} activeOpacity={0.88}>
+          <Ionicons name="flame-outline" size={18} color={Colors.primary} />
+          <Text style={styles.photosBtnText}>{t('biz.promo.manage') ?? 'Promotions'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.editBtn} onPress={() => onEdit(place)} activeOpacity={0.88}>
           <Text style={styles.editBtnText}>{t('biz.places.edit')}</Text>

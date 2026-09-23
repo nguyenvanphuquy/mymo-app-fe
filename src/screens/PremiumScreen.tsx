@@ -16,6 +16,9 @@ import {
   type PremiumPlanId,
 } from '../utils/premiumStorage';
 import PartnerApplyWizard from './PartnerApplyWizard';
+import B2bPricingSection from '../components/b2b/B2bPricingSection';
+import B2bValueFunnel from '../components/b2b/B2bValueFunnel';
+import type { B2bPackageId } from '../constants/b2bPromotionPackages';
 
 interface PremiumScreenProps {
   onClose: () => void;
@@ -51,13 +54,6 @@ const FEATURE_KEYS = [
   'premium.feat.feed',
 ] as const;
 
-const PARTNER_FEATURE_KEYS = [
-  'premium.partnerFeat.places',
-  'premium.partnerFeat.events',
-  'premium.partnerFeat.analytics',
-  'premium.partnerFeat.brand',
-] as const;
-
 function formatVnd(amount: number, lang: string): string {
   if (amount === 0) return lang === 'vi' ? '0đ' : 'Free';
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(amount) + (lang === 'vi' ? 'đ' : ' VND');
@@ -71,6 +67,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
   const [selectedPlan, setSelectedPlan] = useState<PremiumPlanId>('yearly');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [partnerPkg, setPartnerPkg] = useState<B2bPackageId>('featured_venue');
 
   useEffect(() => {
     getPremiumPlan()
@@ -193,8 +190,8 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
             )}
             {track === 'partner' && (
               <View style={styles.activePill}>
-                <Ionicons name="storefront-outline" size={14} color={Colors.white} />
-                <Text style={styles.activePillText}>{t('premium.partnerPrice')}</Text>
+                <Ionicons name="megaphone-outline" size={14} color={Colors.white} />
+                <Text style={styles.activePillText}>{t('biz.b2b.streamLabel')}</Text>
               </View>
             )}
           </LinearGradient>
@@ -202,18 +199,18 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
 
         {track === 'partner' ? (
           <>
-            <Text style={styles.sectionLabel}>{t('premium.features')}</Text>
-            <View style={styles.featureCard}>
-              {PARTNER_FEATURE_KEYS.map((key, i) => (
-                <View key={key} style={[styles.featureRow, i < PARTNER_FEATURE_KEYS.length - 1 && styles.featureRowBorder]}>
-                  <LinearGradient colors={Gradients.primary} style={styles.featureIcon}>
-                    <Ionicons name="checkmark" size={12} color={Colors.white} />
-                  </LinearGradient>
-                  <Text style={styles.featureText}>{t(key)}</Text>
-                </View>
-              ))}
+            <View style={styles.partnerHeroMini}>
+              <Text style={styles.partnerHeroMiniTitle}>{t('biz.ads.heroTitle')}</Text>
+              <Text style={styles.partnerHeroMiniSub}>{t('biz.ads.heroSub')}</Text>
             </View>
+            <B2bPricingSection selectedId={partnerPkg} onSelect={setPartnerPkg} />
+            <View style={{ marginTop: 16 }}>
+              <B2bValueFunnel />
+            </View>
+            <Text style={styles.partnerWarn}>{t('premium.partnerWarn')}</Text>
+            <Text style={styles.sectionLabel}>{t('premium.partnerApplyTitle')}</Text>
             <PartnerApplyWizard onSubmitted={onClose} />
+            <Text style={styles.footnote}>{t('biz.ads.footer')}</Text>
           </>
         ) : (
           <>
@@ -598,6 +595,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textDark,
     lineHeight: 18,
+  },
+  partnerHeroMini: {
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#EEEAF5',
+  },
+  partnerHeroMiniTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: Colors.textDark,
+  },
+  partnerHeroMiniSub: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 6,
+    lineHeight: 19,
+  },
+  partnerWarn: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   footnote: {
     fontSize: 11,
