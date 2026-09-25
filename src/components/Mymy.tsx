@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
+import MymyChat from './MymyChat';
 
 const BOT_SIZE = 108;
 const EDGE = 10;
@@ -211,7 +213,7 @@ function Foot({
   );
 }
 
-export default function MymoBot({ visible = true }: Props) {
+export default function Mymy({ visible = true }: Props) {
   const insets = useSafeAreaInsets();
   const { width: winW, height: SH } = Dimensions.get('window');
   const SW = Platform.OS === 'web' ? Math.min(winW, 500) : winW;
@@ -243,6 +245,7 @@ export default function MymoBot({ visible = true }: Props) {
 
   const [mood, setMood] = useState<Mood>('idle');
   const [dragging, setDragging] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canDrag = useRef(false);
@@ -458,7 +461,8 @@ export default function MymoBot({ visible = true }: Props) {
           pos.flattenOffset();
 
           if (!wasDragging && Math.abs(g.dx) < 6 && Math.abs(g.dy) < 6) {
-            setMood((prev) => (prev === 'idle' ? (Math.random() > 0.5 ? 'dance' : 'smile') : 'idle'));
+            setMood('smile');
+            setChatOpen(true);
             blinkOnce('both');
             if (Platform.OS !== 'web') {
               Haptics.selectionAsync().catch(() => {});
@@ -560,6 +564,8 @@ export default function MymoBot({ visible = true }: Props) {
   });
 
   return (
+    <>
+    <MymyChat visible={chatOpen} onClose={() => setChatOpen(false)} />
     <Animated.View
       {...panResponder.panHandlers}
       style={[
@@ -571,8 +577,9 @@ export default function MymoBot({ visible = true }: Props) {
           zIndex: dragging ? 80 : 40,
         },
       ]}
-      accessibilityLabel="MYMO bot"
-      accessibilityRole="image"
+      accessibilityLabel="Trợ lý MyMy"
+      accessibilityRole="button"
+      accessibilityHint="Mở chat với Trợ lý MyMy"
     >
       <Animated.View
         style={[
@@ -629,10 +636,14 @@ export default function MymoBot({ visible = true }: Props) {
             <Arm side="right" size={BOT_SIZE} wave={rightArmWave} />
             <EyeLid box={LEFT_EYE} blink={leftBlink} size={BOT_SIZE} />
             <EyeLid box={RIGHT_EYE} blink={rightBlink} size={BOT_SIZE} />
+            <View style={styles.chatBadge} pointerEvents="none">
+              <Ionicons name="chatbubble-ellipses" size={13} color="#FFFFFF" />
+            </View>
           </Animated.View>
         </Animated.View>
       </Animated.View>
     </Animated.View>
+    </>
   );
 }
 
@@ -671,5 +682,19 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     backgroundColor: '#C9A8FF',
+  },
+  chatBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#7C5BFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    zIndex: 4,
   },
 });

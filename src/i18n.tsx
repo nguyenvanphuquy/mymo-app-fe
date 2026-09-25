@@ -651,6 +651,15 @@ const vi: Dict = {
   'place.showLess': 'Thu gọn',
   'place.retry': 'Thử lại',
 
+  'bot.name': 'Trợ lý MyMy',
+  'bot.greeting': 'Chào bạn, mình là Trợ lý MyMy! Mình ở đây để tám chuyện và giúp bạn dùng MYMO. Bạn muốn nói gì nào?',
+  'bot.subtitle': 'luôn ở đây với bạn',
+  'bot.placeholder': 'Nhắn cho Trợ lý MyMy...',
+  'bot.thinking': 'Trợ lý MyMy đang nghĩ...',
+  'bot.failed': 'Trợ lý MyMy chưa trả lời được. Thử lại nhé.',
+  'bot.suggestApp': 'MYMO dùng để làm gì?',
+  'bot.suggestPlace': 'Gợi ý chỗ đi chơi tối nay',
+
   'nav.home': 'Nhà',
   'nav.map': 'Bản đồ',
   'nav.friends': 'Bạn bè',
@@ -1527,6 +1536,15 @@ const en: Dict = {
   'place.seeAll': 'See all',
   'place.showLess': 'Show less',
   'place.retry': 'Retry',
+
+  'bot.name': 'MyMy Assistant',
+  'bot.greeting': 'Hi, I am MyMy Assistant! I am here to chat and help you use MYMO. What do you want to talk about?',
+  'bot.subtitle': 'right here with you',
+  'bot.placeholder': 'Message MyMy Assistant...',
+  'bot.thinking': 'MyMy Assistant is thinking...',
+  'bot.failed': 'MyMy Assistant could not reply. Try again.',
+  'bot.suggestApp': 'What is MYMO for?',
+  'bot.suggestPlace': 'Suggest somewhere fun tonight',
 
   'nav.home': 'Home',
   'nav.map': 'Map',

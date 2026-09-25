@@ -28,7 +28,7 @@ import ChatScreen from './src/components/ChatScreen';
 import type { OpenChatParams } from './src/components/ConversationsSection';
 import AddFriendSheet from './src/components/AddFriendSheet';
 import PostSheet from './src/components/PostSheet';
-import MymoBot from './src/components/MymoBot';
+import Mymy from './src/components/Mymy';
 import {
   LocationPermSheet,
   EnableLocationModal,
@@ -572,7 +572,7 @@ function AppInner() {
         onCamera={() => setCameraOpen(true)}
       />
 
-      <MymoBot visible={!cameraOpen} />
+      <Mymy visible={!cameraOpen} />
 
       {/* Modals & Sheets */}
       {(!permissionAsked || locationGranted === null) && screen === 'app' && (

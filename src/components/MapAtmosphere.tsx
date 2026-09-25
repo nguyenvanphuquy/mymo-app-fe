@@ -24,9 +24,10 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
     return () => anim.stop();
   }, [shimmer]);
 
+  const gloss = ui.gloss;
   const shimmerOpacity = shimmer.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [0.02, 0.08, 0.02],
+    outputRange: [0.02 * gloss, 0.09 * gloss, 0.02 * gloss],
   });
 
   return (
@@ -42,8 +43,8 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
         style={StyleSheet.absoluteFill}
       />
       <LinearGradient
-        colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0.02)', 'transparent']}
-        locations={[0, 0.25, 0.7]}
+        colors={[...ui.glossWash]}
+        locations={[0, 0.22, 0.62]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -62,6 +63,7 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
               height: orb.size,
               borderRadius: orb.size / 2,
               backgroundColor: orb.color,
+              opacity: ui.orbOpacity,
             },
           ]}
         />
@@ -102,7 +104,6 @@ const styles = StyleSheet.create({
   },
   orb: {
     position: 'absolute',
-    opacity: 0.38,
     ...Platform.select({
       web: {},
       default: {},

@@ -1,6 +1,24 @@
 import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
 
-export type MapTheme = 'purple' | 'yellow';
+export type MapTheme = 'purple' | 'yellow' | 'blue';
+
+export const MAP_THEME_ORDER: readonly MapTheme[] = ['purple', 'yellow', 'blue'];
+
+export function nextMapTheme(theme: MapTheme): MapTheme {
+  const index = MAP_THEME_ORDER.indexOf(theme);
+  return MAP_THEME_ORDER[(index + 1) % MAP_THEME_ORDER.length];
+}
+
+export function mapThemeLabel(theme: MapTheme): string {
+  switch (theme) {
+    case 'purple':
+      return 'Bản đồ Tím Pastel 💜';
+    case 'yellow':
+      return 'Bản đồ Nắng ấm ☀️';
+    case 'blue':
+      return 'Bản đồ Bright Blue 💙';
+  }
+}
 
 type OrbConfig = {
   top?: string;
@@ -69,6 +87,15 @@ export const MAP_THEME_UI = {
     chipInactiveBorder: 'rgba(200, 175, 255, 0.32)',
     searchBg: 'rgba(255,255,255,0.88)',
     locateGlow: 'rgba(200, 170, 255, 0.5)',
+    icon: '#7C5BFF',
+    weatherIcon: '#7C5BFF',
+    gloss: 1,
+    orbOpacity: 0.38,
+    glossWash: [
+      'rgba(255,255,255,0.16)',
+      'rgba(255,255,255,0.02)',
+      'transparent',
+    ] as const,
     orbs: [
       { top: '8%', right: '6%', size: 100, color: 'rgba(220, 195, 255, 0.22)' },
       { top: '38%', left: '4%', size: 80, color: 'rgba(190, 220, 255, 0.16)' },
@@ -94,10 +121,53 @@ export const MAP_THEME_UI = {
     chipInactiveBorder: 'rgba(240, 210, 130, 0.34)',
     searchBg: 'rgba(255, 253, 245, 0.9)',
     locateGlow: 'rgba(255, 210, 100, 0.52)',
+    icon: '#C89620',
+    weatherIcon: '#D4A020',
+    gloss: 1,
+    orbOpacity: 0.38,
+    glossWash: [
+      'rgba(255,255,255,0.16)',
+      'rgba(255,255,255,0.02)',
+      'transparent',
+    ] as const,
     orbs: [
       { top: '10%', right: '8%', size: 110, color: 'rgba(255, 225, 150, 0.2)' },
       { top: '42%', left: '6%', size: 78, color: 'rgba(255, 245, 200, 0.16)' },
       { top: '68%', right: '10%', size: 68, color: 'rgba(255, 200, 120, 0.12)' },
+    ] as OrbConfig[],
+  },
+  blue: {
+    atmosphere: [
+      'rgba(170, 230, 255, 0.28)',
+      'rgba(255,255,255,0.1)',
+      'rgba(40, 160, 255, 0.16)',
+    ] as const,
+    shimmer: [
+      'rgba(255,255,255,0.72)',
+      'rgba(90, 210, 255, 0.42)',
+      'rgba(255,255,255,0.12)',
+    ] as const,
+    sparkle: '#C8F2FF',
+    sparkleAccent: '#FFFFFF',
+    accent: ['#5AD4FF', '#1496FF'] as const,
+    chipActive: ['#4EC8FF', '#0A8CFF'] as const,
+    chipInactiveBg: 'rgba(244, 252, 255, 0.9)',
+    chipInactiveBorder: 'rgba(70, 190, 255, 0.42)',
+    searchBg: 'rgba(246, 253, 255, 0.92)',
+    locateGlow: 'rgba(40, 190, 255, 0.7)',
+    icon: '#0A8CFF',
+    weatherIcon: '#0A8CFF',
+    gloss: 2.4,
+    orbOpacity: 0.62,
+    glossWash: [
+      'rgba(255,255,255,0.46)',
+      'rgba(170, 230, 255, 0.16)',
+      'transparent',
+    ] as const,
+    orbs: [
+      { top: '6%', right: '4%', size: 130, color: 'rgba(255, 255, 255, 0.42)' },
+      { top: '28%', left: '2%', size: 100, color: 'rgba(120, 220, 255, 0.34)' },
+      { top: '58%', right: '8%', size: 88, color: 'rgba(40, 170, 255, 0.22)' },
     ] as OrbConfig[],
   },
 } as const;
@@ -179,6 +249,44 @@ const THEME_COLORS: Record<MapTheme, ThemeColors> = {
     naturalLabel: '#486838',
     waterLabel: '#286878',
   },
+  blue: {
+    background: '#E4F6FF',
+    landuse: '#C9EBFF',
+    park: '#B6F0DC',
+    parks: '#9EE6D0',
+    school: '#D2F0FF',
+    hospital: '#E4F4FF',
+    cemetery: '#D4E6F4',
+    commercial: '#BEE6FF',
+    industrial: '#B4D8F0',
+    residential: '#D6F3FF',
+    pitch: '#A8E8D0',
+    sand: '#F2E8D4',
+    wood: '#A4DCC4',
+    grass: '#B0E8D0',
+    parking: '#C8E8FA',
+    airport: '#B8DCFF',
+    landcover: '#B4E6F8',
+    water: '#1AA8FF',
+    waterStroke: '#FFFFFF',
+    waterway: '#3EC4FF',
+    building: '#F7FCFF',
+    buildingOutline: '#7ED4FF',
+    bridge: '#EAF8FF',
+    roadCase: '#8ED8FF',
+    road: '#FFFFFF',
+    roadStreet: '#FFFFFF',
+    roadService: '#F3FBFF',
+    roadMajor: '#E7F8FF',
+    roadHighway: '#D2F2FF',
+    roadLabel: '#123E6E',
+    placeLabel: '#0C3260',
+    addressLabel: '#1E4E82',
+    poiLabel: '#123E72',
+    poiIcon: '#0090FF',
+    naturalLabel: '#146858',
+    waterLabel: '#083868',
+  },
 };
 
 const roadWidth = (min: number, max: number) =>
@@ -226,6 +334,7 @@ const landcoverFillColor = (c: ThemeColors) =>
 
 export function getMymoMapStyle(theme: MapTheme): object {
   const c = THEME_COLORS[theme];
+  const glossyBlue = theme === 'blue';
 
   return {
     version: 8,
@@ -254,10 +363,41 @@ export function getMymoMapStyle(theme: MapTheme): object {
 
       // ── Water ─────────────────────────────────────────────────────────────
       { id: 'water', type: 'fill', source: 'composite', 'source-layer': 'water',
-        paint: { 'fill-color': c.water, 'fill-opacity': 0.88 } },
+        paint: { 'fill-color': c.water, 'fill-opacity': glossyBlue ? 1 : 0.88 } },
 
       { id: 'water-stroke', type: 'line', source: 'composite', 'source-layer': 'water',
-        paint: { 'line-color': c.waterStroke, 'line-width': 1.2, 'line-opacity': 0.5 } },
+        paint: {
+          'line-color': c.waterStroke,
+          'line-width': glossyBlue ? 2.6 : 1.2,
+          'line-opacity': glossyBlue ? 0.95 : 0.5,
+          'line-blur': glossyBlue ? 0.4 : 0,
+        } },
+
+      ...(glossyBlue ? [{
+        id: 'water-gloss',
+        type: 'line',
+        source: 'composite',
+        'source-layer': 'water',
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.4, 14, 3.2, 18, 5],
+          'line-opacity': 0.82,
+          'line-blur': 1.8,
+        },
+      }, {
+        id: 'waterway-gloss',
+        type: 'line',
+        source: 'composite',
+        'source-layer': 'waterway',
+        minzoom: 8,
+        filter: ['in', ['get', 'class'], ['literal', ['river', 'canal', 'stream', 'drain']]],
+        paint: {
+          'line-color': '#F4FCFF',
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.2, 14, 3.4, 18, 5.5],
+          'line-opacity': 0.9,
+          'line-blur': 0.8,
+        },
+      }] : []),
 
       { id: 'waterway', type: 'line', source: 'composite', 'source-layer': 'waterway', minzoom: 8,
         filter: ['in', ['get', 'class'], ['literal', ['river', 'canal', 'stream', 'drain']]],
@@ -293,7 +433,7 @@ export function getMymoMapStyle(theme: MapTheme): object {
       // ── Roads ─────────────────────────────────────────────────────────────
       { id: 'road-case', type: 'line', source: 'composite', 'source-layer': 'road', minzoom: 10,
         filter: ['==', ['geometry-type'], 'LineString'],
-        paint: { 'line-color': c.roadCase, 'line-width': roadWidth(0.8, 5.5), 'line-opacity': 0.45 } },
+        paint: { 'line-color': c.roadCase, 'line-width': roadWidth(0.8, 5.5), 'line-opacity': glossyBlue ? 0.82 : 0.45 } },
 
       { id: 'road-service', type: 'line', source: 'composite', 'source-layer': 'road', minzoom: 12,
         filter: ['in', ['get', 'class'], ['literal', ['service', 'service_drive', 'driveway', 'alley', 'parking_aisle']]],

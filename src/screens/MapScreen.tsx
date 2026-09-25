@@ -22,7 +22,7 @@ import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../ser
 import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
-import { getMymoMapStyle, MAP_THEME_UI, type MapTheme } from '../utils/mapStyles';
+import { getMymoMapStyle, MAP_THEME_UI, mapThemeLabel, nextMapTheme, type MapTheme } from '../utils/mapStyles';
 import MapAtmosphere from '../components/MapAtmosphere';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
@@ -533,7 +533,7 @@ export default function MapScreen({
         <View style={styles.searchBlock} pointerEvents="auto">
           <View style={styles.searchRow}>
             <View style={[styles.searchBox, { backgroundColor: themeUi.searchBg }]}>
-              <Ionicons name="search-outline" size={16} color={mapTheme === 'purple' ? Colors.primary : '#C89620'} />
+              <Ionicons name="search-outline" size={16} color={themeUi.icon} />
               <TextInput
                 value={searchText}
                 onChangeText={setSearchText}
@@ -555,11 +555,11 @@ export default function MapScreen({
             </View>
             <TouchableOpacity
               onPress={() => {
-                const nextTheme = mapTheme === 'purple' ? 'yellow' : 'purple';
+                const nextTheme = nextMapTheme(mapTheme);
                 setMapTheme(nextTheme);
                 Toast.show({
                   type: 'success',
-                  text1: nextTheme === 'purple' ? 'Bản đồ Tím Pastel 💜' : 'Bản đồ Nắng ấm ☀️',
+                  text1: mapThemeLabel(nextTheme),
                 });
               }}
               style={styles.mapBtn}
@@ -669,7 +669,7 @@ export default function MapScreen({
 
       <View style={styles.weatherWrap} pointerEvents="none">
         <View style={[styles.weatherCard, { backgroundColor: themeUi.searchBg }]}>
-          <Ionicons name="partly-sunny-outline" size={16} color={mapTheme === 'purple' ? Colors.primary : '#D4A020'} />
+          <Ionicons name="partly-sunny-outline" size={16} color={themeUi.weatherIcon} />
           <Text style={styles.weatherTemp}>28°</Text>
         </View>
         <View style={[styles.weatherSub, { backgroundColor: themeUi.chipInactiveBg, borderColor: themeUi.chipInactiveBorder }]}>
