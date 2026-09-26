@@ -22,7 +22,8 @@ interface AuthScreenProps {
   onOpenBusiness?: () => void;
   /** Called after mock admin (admin / admin123) signs in from this screen */
   onAdminContinue?: () => void;
-  onBusinessContinue?: () => void;
+  /** Business owner: pick user app vs business portal */
+  onPortalChoice?: () => void;
 }
 
 export default function AuthScreen({
@@ -30,7 +31,7 @@ export default function AuthScreen({
   onOpenAdmin,
   onOpenBusiness,
   onAdminContinue,
-  onBusinessContinue,
+  onPortalChoice,
 }: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -110,8 +111,8 @@ export default function AuthScreen({
       Toast.show({ type: 'success', text1: lang === 'vi' ? 'Đăng nhập thành công' : 'Login successful' });
       if (destination === 'admin') {
         onAdminContinue?.();
-      } else if (destination === 'business') {
-        onBusinessContinue?.();
+      } else if (destination === 'portal-choice') {
+        onPortalChoice?.();
       } else {
         onContinue();
       }

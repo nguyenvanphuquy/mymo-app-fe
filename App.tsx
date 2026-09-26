@@ -14,6 +14,7 @@ import { Colors, Gradients, Shadows } from './src/constants/colors';
 import type { Friend } from './src/constants/data';
 
 import AuthScreen from './src/screens/AuthScreen';
+import PortalChoiceScreen from './src/screens/PortalChoiceScreen';
 import AdminLoginScreen from './src/screens/AdminLoginScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import BusinessLoginScreen from './src/screens/BusinessLoginScreen';
@@ -46,7 +47,7 @@ import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
 import type { BusinessSession } from './src/services/businessApi';
 
-type Screen = 'auth' | 'app' | 'admin-login' | 'admin' | 'business-login' | 'business';
+type Screen = 'auth' | 'app' | 'portal-choice' | 'admin-login' | 'admin' | 'business-login' | 'business';
 type Tab = 'home' | 'map' | 'friends' | 'profile';
 
 type ChatSession = {
@@ -115,7 +116,7 @@ function AppInner() {
           setAdminSession(admin);
           setScreen('admin');
         } else if (session) {
-          const { syncPortalFlagsForRole } = await import('./src/services/authApi');
+          const { syncPortalFlagsForRole, getLastPortal } = await import('./src/services/authApi');
           const destination = await syncPortalFlagsForRole(session);
           if (destination === 'admin') {
             setAdminSession({
@@ -124,10 +125,25 @@ function AppInner() {
               loggedInAt: new Date().toISOString(),
             });
             setScreen('admin');
-          } else if (destination === 'business') {
-            const biz = business ?? (await getBusinessSession());
-            setBusinessSession(biz);
-            setScreen('business');
+          } else if (destination === 'portal-choice') {
+            const last = await getLastPortal();
+            if (last === 'business') {
+              const biz = business ?? (await getBusinessSession());
+              setBusinessSession(biz);
+              setScreen('business');
+            } else if (last === 'user') {
+              setScreen('app');
+              setLocationGranted(osGranted);
+              if (prefs) {
+                setShareLocationOnMap(Boolean(prefs.locationSharing && osGranted));
+                setIncognito(Boolean(prefs.incognito && prefs.locationSharing && osGranted));
+                setPermissionAsked(true);
+              } else if (osGranted) {
+                setPermissionAsked(true);
+              }
+            } else {
+              setScreen('portal-choice');
+            }
           } else {
             setScreen('app');
             setLocationGranted(osGranted);
@@ -263,6 +279,37 @@ function AppInner() {
     setFriendProfile(params);
   };
 
+  const enterUserApp = useCallback(async () => {
+    const { setLastPortal } = await import('./src/services/authApi');
+    await setLastPortal('user');
+    const prefs = await getLocationPrivacyPrefs();
+    const { status } = await Location.getForegroundPermissionsAsync();
+    let osGranted = status === 'granted';
+    if (Platform.OS === 'web') {
+      const webPerm = await webPermissionState();
+      if (webPerm === 'granted') osGranted = true;
+      else if (webPerm === 'denied' || webPerm === 'prompt') osGranted = false;
+    }
+    setScreen('app');
+    setLocationGranted(osGranted);
+    if (prefs) {
+      setShareLocationOnMap(Boolean(prefs.locationSharing && osGranted));
+      setIncognito(Boolean(prefs.incognito && prefs.locationSharing && osGranted));
+      setPermissionAsked(true);
+    } else if (osGranted) {
+      setPermissionAsked(true);
+    }
+  }, []);
+
+  const enterBusinessApp = useCallback(async () => {
+    const { setLastPortal } = await import('./src/services/authApi');
+    const { getBusinessSession } = await import('./src/services/businessApi');
+    await setLastPortal('business');
+    const biz = await getBusinessSession();
+    setBusinessSession(biz);
+    setScreen('business');
+  }, []);
+
   const handleOpenChat = async (params: OpenChatParams & { sharePostId?: string; sharePlaceId?: string }) => {
     try {
       const { createPrivateConversation } = await import('./src/services/chatApi');
@@ -288,16 +335,20 @@ function AppInner() {
     }
   };
 
+  if (screen === 'portal-choice') {
+    return (
+      <PortalChoiceScreen
+        onChooseUser={() => { void enterUserApp(); }}
+        onChooseBusiness={() => { void enterBusinessApp(); }}
+      />
+    );
+  }
+
   if (screen === 'business-login') {
     return (
       <BusinessLoginScreen
         onBack={() => setScreen('auth')}
-        onSuccess={async () => {
-          const { getBusinessSession } = await import('./src/services/businessApi');
-          const biz = await getBusinessSession();
-          setBusinessSession(biz);
-          setScreen('business');
-        }}
+        onSuccess={() => setScreen('portal-choice')}
       />
     );
   }
@@ -307,18 +358,14 @@ function AppInner() {
       return (
         <BusinessLoginScreen
           onBack={() => setScreen('auth')}
-          onSuccess={async () => {
-            const { getBusinessSession } = await import('./src/services/businessApi');
-            const biz = await getBusinessSession();
-            setBusinessSession(biz);
-            setScreen('business');
-          }}
+          onSuccess={() => setScreen('portal-choice')}
         />
       );
     }
     return (
       <BusinessApp
         session={businessSession}
+        onSwitchToUserApp={() => { void enterUserApp(); }}
         onLogout={() => {
           setBusinessSession(null);
           setScreen('auth');
@@ -387,12 +434,7 @@ function AppInner() {
           }
           setScreen('admin');
         }}
-        onBusinessContinue={async () => {
-          const { getBusinessSession } = await import('./src/services/businessApi');
-          const biz = await getBusinessSession();
-          setBusinessSession(biz);
-          setScreen('business');
-        }}
+        onPortalChoice={() => setScreen('portal-choice')}
       />
     );
   }
@@ -498,6 +540,7 @@ function AppInner() {
             shareLocationOnMap={shareLocationOnMap}
             incognito={incognito}
             isActive={tab === 'profile'}
+            onOpenBusinessPortal={() => { void enterBusinessApp(); }}
             onToggleShareLocation={async () => {
               const next = !shareLocationOnMap;
 

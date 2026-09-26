@@ -43,6 +43,7 @@ interface ProfileScreenProps {
   onToggleShareLocation: () => void;
   onToggleIncognito: () => void;
   onLogout: () => void;
+  onOpenBusinessPortal?: () => void;
 }
 
 const MOODS = [
@@ -55,7 +56,7 @@ const MOODS = [
 
 export default function ProfileScreen({
   locationGranted, shareLocationOnMap, incognito, isActive = true,
-  onToggleShareLocation, onToggleIncognito, onLogout,
+  onToggleShareLocation, onToggleIncognito, onLogout, onOpenBusinessPortal,
 }: ProfileScreenProps) {
   const { t, lang, setLang } = useI18n();
   const insets = useSafeAreaInsets();
@@ -84,6 +85,7 @@ export default function ProfileScreen({
   const [premiumPlan, setPremiumPlan] = useState<PremiumPlanId>('free');
   const [businessReg, setBusinessReg] = useState<BusinessRegistrationDto | null>(null);
   const [registerBusinessOpen, setRegisterBusinessOpen] = useState(false);
+  const [authRole, setAuthRole] = useState<string | null>(null);
   const settingsRef = useRef<ScrollView>(null);
 
   const profileLink = profile ? `mymo.app/u/${profile.id}` : '';
@@ -150,6 +152,7 @@ export default function ProfileScreen({
     getPremiumPlan().then(setPremiumPlan).catch(() => {});
     (async () => {
       const session = await getStoredAuthSession().catch(() => null);
+      setAuthRole(session?.role?.trim() ?? null);
       const uid = session?.userId || profile?.id;
       if (!uid) return;
       const reg = await getMyBusinessRegistration().catch(() => null);
@@ -815,6 +818,17 @@ export default function ProfileScreen({
           right={<Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
           onPress={() => Toast.show({ type: 'info', text1: t('profile.blocked'), text2: t('profile.blockedDesc') })}
         />
+        {authRole === 'Business' && onOpenBusinessPortal ? (
+          <SettingRow
+            icon="briefcase"
+            label={t('profile.openBusinessPortal')}
+            right={<Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onOpenBusinessPortal();
+            }}
+          />
+        ) : null}
         <SettingRow
           icon="storefront"
           label={t('profile.registerBusiness')}

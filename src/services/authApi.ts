@@ -6,8 +6,33 @@ const BASE_URL = AUTH_API_URL;
 export const ADMIN_PORTAL_KEY = 'mymo.adminPortal';
 export const BUSINESS_PORTAL_KEY = 'mymo.businessPortal';
 const BUSINESS_SESSION_KEY = 'mymo.businessSession';
+export const LAST_PORTAL_KEY = 'mymo.lastPortal';
 
-export type PostLoginDestination = 'user' | 'admin' | 'business';
+export type PortalChoice = 'user' | 'business';
+export type PostLoginDestination = 'user' | 'admin' | 'business' | 'portal-choice';
+
+export async function setLastPortal(portal: PortalChoice): Promise<void> {
+  await AsyncStorage.setItem(LAST_PORTAL_KEY, portal);
+}
+
+export async function getLastPortal(): Promise<PortalChoice | null> {
+  const value = await AsyncStorage.getItem(LAST_PORTAL_KEY);
+  if (value === 'user' || value === 'business') return value;
+  return null;
+}
+
+/** Persist business portal session data (same JWT as user app). */
+export async function prepareBusinessOwnerSession(auth: AuthResponse): Promise<void> {
+  await AsyncStorage.multiSet([
+    [BUSINESS_PORTAL_KEY, '1'],
+    [BUSINESS_SESSION_KEY, JSON.stringify({
+      userId: auth.userId,
+      email: auth.email,
+      displayName: auth.username,
+    })],
+  ]);
+  await AsyncStorage.removeItem(ADMIN_PORTAL_KEY);
+}
 
 /** Align AsyncStorage portal flags with JWT role (Admin / Business / User). */
 export async function syncPortalFlagsForRole(auth: AuthResponse): Promise<PostLoginDestination> {
@@ -15,24 +40,21 @@ export async function syncPortalFlagsForRole(auth: AuthResponse): Promise<PostLo
 
   if (role === 'Admin') {
     await AsyncStorage.setItem(ADMIN_PORTAL_KEY, '1');
-    await AsyncStorage.multiRemove([BUSINESS_PORTAL_KEY, BUSINESS_SESSION_KEY]);
+    await AsyncStorage.multiRemove([BUSINESS_PORTAL_KEY, BUSINESS_SESSION_KEY, LAST_PORTAL_KEY]);
     return 'admin';
   }
 
   if (role === 'Business') {
-    await AsyncStorage.multiSet([
-      [BUSINESS_PORTAL_KEY, '1'],
-      [BUSINESS_SESSION_KEY, JSON.stringify({
-        userId: auth.userId,
-        email: auth.email,
-        displayName: auth.username,
-      })],
-    ]);
-    await AsyncStorage.removeItem(ADMIN_PORTAL_KEY);
-    return 'business';
+    await prepareBusinessOwnerSession(auth);
+    return 'portal-choice';
   }
 
-  await AsyncStorage.multiRemove([ADMIN_PORTAL_KEY, BUSINESS_PORTAL_KEY, BUSINESS_SESSION_KEY]);
+  await AsyncStorage.multiRemove([
+    ADMIN_PORTAL_KEY,
+    BUSINESS_PORTAL_KEY,
+    BUSINESS_SESSION_KEY,
+    LAST_PORTAL_KEY,
+  ]);
   return 'user';
 }
 
@@ -116,7 +138,12 @@ export async function saveAuthSession(auth: AuthResponse): Promise<void> {
 }
 
 export async function clearAuthSession(): Promise<void> {
-  await AsyncStorage.multiRemove(['mymo.auth', 'mymo.accessToken', 'mymo.refreshToken']);
+  await AsyncStorage.multiRemove([
+    'mymo.auth',
+    'mymo.accessToken',
+    'mymo.refreshToken',
+    LAST_PORTAL_KEY,
+  ]);
 }
 
 export async function getStoredAuthSession(): Promise<AuthResponse | null> {

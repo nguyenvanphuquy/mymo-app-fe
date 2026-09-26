@@ -242,6 +242,16 @@ const vi: Dict = {
 
   'auth.partnerLogin': 'Đăng nhập đối tác',
 
+  'portalChoice.title': 'Chọn không gian làm việc',
+  'portalChoice.subtitle': 'Bạn có thể dùng app MyMo như người dùng hoặc quản lý cửa hàng.',
+  'portalChoice.userTitle': 'App MyMo',
+  'portalChoice.userDesc': 'Bản đồ, bạn bè, đăng khoảnh khắc',
+  'portalChoice.businessTitle': 'Quản lý cửa hàng',
+  'portalChoice.businessDesc': 'Địa điểm, sự kiện, quảng cáo B2B',
+  'portalChoice.openUserApp': 'Về app MyMo (người dùng)',
+
+  'profile.openBusinessPortal': 'Quản lý cửa hàng',
+
   'biz.badge': 'Đối tác',
   'biz.register.title': 'Đăng ký Business',
   'biz.register.businessName': 'Tên thương hiệu',
@@ -1127,6 +1137,16 @@ const en: Dict = {
   'profile.partnerCopied': 'Copied',
 
   'auth.partnerLogin': 'Partner login',
+
+  'portalChoice.title': 'Choose your workspace',
+  'portalChoice.subtitle': 'Use MyMo as a member or manage your business.',
+  'portalChoice.userTitle': 'MyMo app',
+  'portalChoice.userDesc': 'Map, friends, share moments',
+  'portalChoice.businessTitle': 'Store management',
+  'portalChoice.businessDesc': 'Places, events, B2B ads',
+  'portalChoice.openUserApp': 'Back to MyMo (member app)',
+
+  'profile.openBusinessPortal': 'Store management',
 
   'biz.badge': 'Partner',
   'biz.register.title': 'Register as Business',

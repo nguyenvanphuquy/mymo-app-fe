@@ -21,6 +21,7 @@ import {
 export default function BusinessBrandScreen({
   session,
   onLogout,
+  onSwitchToUserApp,
   onOpenAdvertising,
   onNavigateToPlaces,
   onNavigateToEvents,
@@ -31,6 +32,7 @@ export default function BusinessBrandScreen({
 }: {
   session: BusinessSession;
   onLogout: () => void;
+  onSwitchToUserApp?: () => void;
   onOpenAdvertising: () => void;
   onNavigateToPlaces?: () => void;
   onNavigateToEvents?: () => void;
@@ -228,6 +230,12 @@ export default function BusinessBrandScreen({
           )}
 
           <Text style={styles.hint}>{t('biz.brand.hint')}</Text>
+          {onSwitchToUserApp ? (
+            <TouchableOpacity onPress={onSwitchToUserApp} style={styles.userAppLink} activeOpacity={0.85}>
+              <Ionicons name="map-outline" size={18} color={Colors.primary} />
+              <Text style={styles.userAppLinkText}>{t('portalChoice.openUserApp')}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity onPress={onLogout} style={styles.logout} activeOpacity={0.85}>
             <Ionicons name="log-out-outline" size={18} color={Colors.primary} />
             <Text style={styles.logoutText}>{t('biz.brand.logout')}</Text>
@@ -551,6 +559,17 @@ const styles = StyleSheet.create({
   settingsRowLast: { borderBottomWidth: 0 },
   settingsLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.textDark },
   hint: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', marginTop: 24, lineHeight: 18 },
+  userAppLink: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryTint,
+  },
+  userAppLinkText: { fontSize: 14, fontWeight: '800', color: Colors.primary },
   logout: {
     marginTop: 16,
     flexDirection: 'row',

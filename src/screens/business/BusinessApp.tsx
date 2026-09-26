@@ -26,9 +26,11 @@ type BizTab = 'home' | 'places' | 'events' | 'brand';
 export default function BusinessApp({
   session,
   onLogout,
+  onSwitchToUserApp,
 }: {
   session: BusinessSession;
   onLogout: () => void;
+  onSwitchToUserApp?: () => void;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -110,6 +112,7 @@ export default function BusinessApp({
       <BusinessBrandScreen
         session={session}
         onLogout={handleLogout}
+        onSwitchToUserApp={onSwitchToUserApp}
         onOpenAdvertising={() => setOverlay('advertising')}
         onNavigateToPlaces={() => selectTab('places')}
         onNavigateToEvents={() => selectTab('events')}
