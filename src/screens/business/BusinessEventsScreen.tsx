@@ -24,6 +24,12 @@ function statusStyle(status: string) {
   return styles.statusExpired;
 }
 
+function promoStatusLabel(t: (k: string) => string, status: string): string {
+  if (status === 'Active') return t('biz.promo.statusActive');
+  if (status === 'Upcoming') return t('biz.promo.statusUpcoming');
+  return t('biz.promo.statusExpired');
+}
+
 export default function BusinessEventsScreen({
   session: _session,
   createOpen,
@@ -207,7 +213,7 @@ export default function BusinessEventsScreen({
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
             {(['all', 'Active', 'Upcoming', 'Expired'] as const).map(key => {
               const on = statusFilter === key;
-              const label = key === 'all' ? t('biz.events.filterAll') : key;
+              const label = key === 'all' ? t('biz.events.filterAll') : promoStatusLabel(t, key);
               return (
                 <TouchableOpacity
                   key={key}
@@ -252,7 +258,7 @@ export default function BusinessEventsScreen({
                 ) : null}
                 <Text style={styles.meta}>{formatPromotionRange(item.startAt, item.endAt)}</Text>
                 <View style={[styles.statusPill, statusStyle(item.status)]}>
-                  <Text style={styles.statusText}>{item.status}</Text>
+                  <Text style={styles.statusText}>{promoStatusLabel(t, item.status)}</Text>
                 </View>
                 <View style={styles.actions}>
                   <TouchableOpacity onPress={() => { setEditItem(item); setView('edit'); }}>
