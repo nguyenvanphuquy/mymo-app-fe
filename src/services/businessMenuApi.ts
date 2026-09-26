@@ -48,6 +48,17 @@ function normalizeItem(raw: Record<string, unknown>): MenuItemDto {
   };
 }
 
+export function sortMenuItems(items: MenuItemDto[]): MenuItemDto[] {
+  const byId = new Map<string, MenuItemDto>();
+  for (const item of items) {
+    if (!item.id) continue;
+    byId.set(item.id, item);
+  }
+  return [...byId.values()].sort(
+    (a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name),
+  );
+}
+
 function normalizeMenu(raw: Record<string, unknown>): BusinessMenuDto {
   const itemsRaw = (raw.items ?? raw.Items ?? []) as Record<string, unknown>[];
   return {
@@ -56,7 +67,7 @@ function normalizeMenu(raw: Record<string, unknown>): BusinessMenuDto {
     name: String(raw.name ?? raw.Name ?? ''),
     description: (raw.description ?? raw.Description ?? null) as string | null,
     isActive: Boolean(raw.isActive ?? raw.IsActive ?? true),
-    items: itemsRaw.map(normalizeItem),
+    items: sortMenuItems(itemsRaw.map(normalizeItem)),
   };
 }
 
@@ -70,7 +81,8 @@ async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error(String(parsed.message ?? `Request failed (${response.status})`));
   }
-  if (parsed.data !== undefined && parsed.data !== null) return parsed.data;
+  const payload = parsed.data ?? (parsed as Record<string, unknown>).Data;
+  if (payload !== undefined && payload !== null) return payload as T;
   return parsed as unknown as T;
 }
 
