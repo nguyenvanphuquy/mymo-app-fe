@@ -32,8 +32,35 @@ function normalizePhoto(raw: Record<string, unknown>): PlacePhotoDto {
 }
 
 function unwrapData<T>(data: Record<string, unknown>): T {
-  if ('data' in data && data.data != null) return data.data as T;
+  const payload = data.data ?? data.Data;
+  if (payload != null) return payload as T;
   return data as T;
+}
+
+function extractPhotoRecords(parsed: Record<string, unknown>): Record<string, unknown>[] {
+  const payload = parsed.data ?? parsed.Data ?? parsed;
+  if (Array.isArray(payload)) {
+    return payload.filter((x): x is Record<string, unknown> => x != null && typeof x === 'object');
+  }
+  if (payload && typeof payload === 'object') {
+    const inner = payload as Record<string, unknown>;
+    const list = inner.photos ?? inner.Photos ?? inner.items ?? inner.Items;
+    if (Array.isArray(list)) {
+      return list.filter((x): x is Record<string, unknown> => x != null && typeof x === 'object');
+    }
+  }
+  return [];
+}
+
+export function sortPlacePhotos(photos: PlacePhotoDto[]): PlacePhotoDto[] {
+  const byId = new Map<string, PlacePhotoDto>();
+  for (const p of photos) {
+    if (!p.id || !p.imageUrl) continue;
+    byId.set(p.id, p);
+  }
+  return [...byId.values()].sort(
+    (a, b) => a.displayOrder - b.displayOrder || a.id.localeCompare(b.id),
+  );
 }
 
 export async function getPlacePhotos(placeId: string): Promise<PlacePhotoDto[]> {
@@ -47,10 +74,10 @@ export async function getPlacePhotos(placeId: string): Promise<PlacePhotoDto[]> 
     try { parsed = JSON.parse(rawText) as Record<string, unknown>; } catch { parsed = { message: rawText }; }
   }
   if (!response.ok) {
-    throw new Error(String(parsed.message ?? `Request failed (${response.status})`));
+    throw new Error(String(parsed.message ?? parsed.Message ?? `Request failed (${response.status})`));
   }
-  const list = unwrapData<unknown[]>(parsed);
-  return (Array.isArray(list) ? list : []).map(item => normalizePhoto(item as Record<string, unknown>));
+  const list = extractPhotoRecords(parsed);
+  return sortPlacePhotos(list.map(item => normalizePhoto(item)));
 }
 
 export async function uploadPlacePhoto(placeId: string, formData: FormData): Promise<PlacePhotoDto> {
