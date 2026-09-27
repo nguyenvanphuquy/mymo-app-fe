@@ -417,8 +417,6 @@ function AppInner() {
     return (
       <AuthScreen
         onContinue={() => setScreen('app')}
-        onOpenAdmin={() => setScreen('admin-login')}
-        onOpenBusiness={() => setScreen('business-login')}
         onAdminContinue={async () => {
           const { getStoredAuthSession } = await import('./src/services/authApi');
           const jwtSession = await getStoredAuthSession();
@@ -690,6 +688,11 @@ function BottomNav({
   return (
     <View style={[styles.navWrap, { paddingBottom: insets.bottom + 8 }]}>
       <View style={styles.nav}>
+        <LinearGradient
+          colors={Gradients.sheen}
+          style={styles.navSheen}
+          pointerEvents="none"
+        />
         <NavItem
           item={navItems[0]}
           active={tab === navItems[0].id}
@@ -702,7 +705,8 @@ function BottomNav({
         />
 
         <TouchableOpacity onPress={onCamera} style={styles.cameraBtn} activeOpacity={0.88}>
-          <LinearGradient colors={Gradients.primary} style={styles.cameraBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <LinearGradient colors={Gradients.primary} style={styles.cameraBtnGrad} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
+            <View style={styles.cameraGloss} pointerEvents="none" />
             <Ionicons name="camera" size={26} color={Colors.white} />
           </LinearGradient>
           <View style={styles.cameraSparkle}>
@@ -745,13 +749,15 @@ function NavItem({
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity onPress={handlePress} style={styles.navItem}>
-        <View style={[styles.navIconWrap, active && styles.navIconWrapActive]}>
-          <Ionicons
-            name={(active ? item.iconActive : item.icon) as any}
-            size={22}
-            color={active ? Colors.primary : Colors.textMuted}
-          />
-        </View>
+        {active ? (
+          <LinearGradient colors={['#F7F2FF', '#E4D6FF']} style={[styles.navIconWrap, styles.navIconWrapActive]}>
+            <Ionicons name={item.iconActive as any} size={22} color={Colors.primary} />
+          </LinearGradient>
+        ) : (
+          <View style={styles.navIconWrap}>
+            <Ionicons name={item.icon as any} size={22} color={Colors.textMuted} />
+          </View>
+        )}
         <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
       </TouchableOpacity>
     </Animated.View>
@@ -772,7 +778,7 @@ const styles = StyleSheet.create({
         borderLeftWidth: 1,
         borderRightWidth: 1,
         borderColor: '#EBE8F5',
-        boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
+        boxShadow: '0 18px 50px rgba(124, 91, 255, 0.12)',
       },
       default: {},
     }),
@@ -792,12 +798,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     borderRadius: 28,
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
+    overflow: 'visible',
     ...Shadows.float,
+  },
+  navSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    height: 22,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   navItem: {
     width: 56,
@@ -813,7 +831,8 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   navIconWrapActive: {
-    backgroundColor: Colors.primaryTint,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   navLabel: {
     fontSize: 9,
@@ -840,6 +859,16 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  cameraGloss: {
+    position: 'absolute',
+    top: 5,
+    left: 12,
+    right: 12,
+    height: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   cameraSparkle: {
     position: 'absolute',

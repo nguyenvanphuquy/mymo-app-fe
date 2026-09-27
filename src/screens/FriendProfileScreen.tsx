@@ -16,9 +16,9 @@ import { filterActivePosts } from '../utils/postExpiration';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
+import { avatarUri } from '../constants/defaultAvatar';
 
 const FALLBACK_COVER = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&fit=crop';
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop';
 
 export interface FriendProfileParams {
   userId: string;
@@ -70,7 +70,7 @@ export default function FriendProfileScreen({
   }, [loadProfile]);
 
   const name = profile?.displayName || initialName || t('friends.someone');
-  const avatar = profile?.avatarUrl || initialAvatar || FALLBACK_AVATAR;
+  const avatar = avatarUri(profile?.avatarUrl || initialAvatar);
   const cover = profile?.coverUrl || FALLBACK_COVER;
 
   const stats = [

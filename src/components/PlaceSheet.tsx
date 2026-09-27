@@ -9,6 +9,7 @@ import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
+import { avatarUri } from '../constants/defaultAvatar';
 import {
   getPlaceDetail,
   getPlaceMenu,
@@ -426,11 +427,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                       <View key={review.reviewId} style={styles.reviewCard}>
                         <View style={styles.reviewHeader}>
                           <View style={styles.reviewAvatar}>
-                            {review.user.avatarUrl ? (
-                              <Image source={{ uri: review.user.avatarUrl }} style={styles.reviewAvatarImg} />
-                            ) : (
-                              <Ionicons name="person" size={12} color={Colors.primary} />
-                            )}
+                            <Image source={{ uri: avatarUri(review.user.avatarUrl) }} style={styles.reviewAvatarImg} />
                           </View>
                           <View style={styles.reviewMeta}>
                             <Text style={styles.reviewName}>{displayName(review.user)}</Text>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../constants/colors';
@@ -13,6 +13,7 @@ import {
   type BlockedUser,
 } from '../services/friendsApi';
 import Toast from 'react-native-toast-message';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface BlockedUsersSheetProps {
   visible: boolean;
@@ -80,9 +81,7 @@ export default function BlockedUsersSheet({ visible, onClose, onChanged }: Block
               contentContainerStyle={styles.list}
               renderItem={({ item }) => (
                 <View style={styles.row}>
-                  <View style={styles.avatar}>
-                    <Ionicons name="person" size={18} color={Colors.primary} />
-                  </View>
+                  <Image source={{ uri: avatarUri(item.avatarUrl) }} style={styles.avatar} />
                   <View style={styles.info}>
                     <Text style={styles.name}>{item.displayName}</Text>
                     <Text style={styles.username}>@{item.username}</Text>

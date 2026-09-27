@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { FriendSummary } from '../services/friendsApi';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface FriendSuggestionsSectionProps {
   suggestions: FriendSummary[];
@@ -28,13 +29,7 @@ export default function FriendSuggestionsSection({ suggestions, onAdd }: FriendS
       {suggestions.slice(0, 5).map(user => (
         <View key={user.userId} style={styles.card}>
           <View style={styles.userRow}>
-            {user.avatarUrl ? (
-              <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Ionicons name="person" size={18} color={Colors.primary} />
-              </View>
-            )}
+            <Image source={{ uri: avatarUri(user.avatarUrl) }} style={styles.avatar} />
             <View style={styles.info}>
               <Text style={styles.name}>{user.displayName}</Text>
               <Text style={styles.sub}>

@@ -23,6 +23,7 @@ import { getMyPosts, toPostView, type FeedPost, type PostView } from '../service
 import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
+import { avatarUri } from '../constants/defaultAvatar';
 import PremiumScreen from './PremiumScreen';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
@@ -386,7 +387,7 @@ export default function ProfileScreen({
             activeOpacity={0.9}
           >
             <Image
-              source={{ uri: profile?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' }}
+              source={{ uri: avatarUri(profile?.avatarUrl) }}
               style={styles.avatarImg}
             />
             {uploadingAvatar ? (

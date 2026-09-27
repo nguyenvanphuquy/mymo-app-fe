@@ -305,20 +305,19 @@ export default function Mymy({ visible = true }: Props) {
 
     const loops = [
       // Keep only the most visible channels — fewer JS/native animations
-      driftLoop(sway, 0.5, -0.45, 3000, 3300),
-      driftLoop(bob, -0.55, 0.4, 2600, 2900),
-      driftLoop(breathe, 1.015, 0.99, 3400, 3600),
-      driftLoop(leftArm, 0.4, -0.3, 2400, 2800),
-      driftLoop(rightArm, -0.35, 0.45, 2800, 2500),
-      driftLoop(sparkle, 0.75, 0.3, 3000, 3400),
+      driftLoop(sway, 0.32, -0.32, 5200, 5600),
+      driftLoop(bob, -0.4, 0.32, 4400, 4800),
+      driftLoop(breathe, 1.012, 0.992, 4200, 4500),
+      driftLoop(tilt, 0.25, -0.2, 6100, 6400),
+      driftLoop(leftArm, 0.28, -0.22, 3600, 4000),
+      driftLoop(rightArm, -0.22, 0.3, 3900, 3600),
+      driftLoop(sparkle, 0.7, 0.35, 3600, 4000),
     ];
     idleLoops.current = loops;
     loops.forEach((l) => l.start());
 
-    // Soft static feet — no continuous kick loops
     leftFoot.setValue(0);
     rightFoot.setValue(0);
-    tilt.setValue(0);
 
     return () => {
       loops.forEach((l) => l.stop());
@@ -363,27 +362,29 @@ export default function Mymy({ visible = true }: Props) {
     clearMoodTimers();
 
     if (mood === 'idle') {
-      springTo(energy, 0, 10, 22);
-      springTo(joy, 0, 10, 22);
+      springTo(energy, 0, 12, 18);
+      springTo(joy, 0, 12, 18);
       return undefined;
     }
 
     if (mood === 'dance') {
-      springTo(energy, 1, 7, 40);
-      springTo(joy, 0.35, 8, 30);
+      springTo(energy, 1, 8, 32);
+      springTo(joy, 0.35, 9, 24);
       const back = setTimeout(() => {
         springTo(energy, 0, 10, 20);
         setMood('idle');
       }, 4200 + Math.random() * 1200);
       moodTimers.current.push(back);
     } else if (mood === 'smile') {
-      springTo(joy, 1, 7, 36);
-      springTo(energy, 0.25, 9, 28);
+      springTo(joy, 1, 8, 26);
+      springTo(energy, 0.18, 10, 22);
+      const wink = setTimeout(() => blinkOnce('both'), 220);
+      moodTimers.current.push(wink);
       const back = setTimeout(() => {
-        springTo(joy, 0, 10, 22);
-        springTo(energy, 0, 10, 22);
+        springTo(joy, 0, 12, 16);
+        springTo(energy, 0, 12, 16);
         setMood('idle');
-      }, 3200 + Math.random() * 1000);
+      }, 2800 + Math.random() * 900);
       moodTimers.current.push(back);
     }
 
@@ -396,7 +397,7 @@ export default function Mymy({ visible = true }: Props) {
     const id = setInterval(() => {
       setMood((prev) => {
         if (prev !== 'idle') return prev;
-        return Math.random() > 0.55 ? 'dance' : 'smile';
+        return Math.random() > 0.72 ? 'dance' : 'smile';
       });
     }, 9000 + Math.random() * 5000);
     return () => clearInterval(id);
@@ -524,13 +525,13 @@ export default function Mymy({ visible = true }: Props) {
   });
   const idleBobY = bob.interpolate({
     inputRange: [-1, 1],
-    outputRange: [-3.2, 2.2],
+    outputRange: [-2.1, 1.5],
   });
   const totalBobY = Animated.add(idleBobY, Animated.add(energyBobExtra, joyBobExtra));
 
   const idleRotate = sway.interpolate({
     inputRange: [-1, 1],
-    outputRange: ['-5deg', '5deg'],
+    outputRange: ['-2.6deg', '2.6deg'],
   });
   const tiltRotate = tilt.interpolate({
     inputRange: [-1, 1],

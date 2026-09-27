@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { SentFriendRequest } from '../services/friendsApi';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface SentRequestsSectionProps {
   requests: SentFriendRequest[];
@@ -30,13 +31,7 @@ export default function SentRequestsSection({ requests, onCancel }: SentRequests
       {requests.map(request => (
         <View key={request.userId} style={styles.card}>
           <View style={styles.userRow}>
-            {request.avatarUrl ? (
-              <Image source={{ uri: request.avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Ionicons name="person" size={18} color={Colors.primary} />
-              </View>
-            )}
+            <Image source={{ uri: avatarUri(request.avatarUrl) }} style={styles.avatar} />
             <View style={styles.info}>
               <Text style={styles.name}>{request.displayName}</Text>
               <Text style={styles.sub}>{t('friends.pendingSent')}</Text>

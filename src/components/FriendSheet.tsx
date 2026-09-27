@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  Platform, DeviceEventEmitter, ActivityIndicator,
+  Platform, DeviceEventEmitter, ActivityIndicator, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { useI18n } from '../i18n';
 import type { Friend } from '../constants/data';
 import { removeFriend, blockFriend } from '../services/friendsApi';
 import Toast from 'react-native-toast-message';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface FriendSheetProps {
   friend: Friend;
@@ -96,7 +97,10 @@ export default function FriendSheet({ friend, onClose, onMessage, onViewProfile 
 
         <View style={styles.header}>
           <View style={[styles.avatar, { backgroundColor: friend.color, ...Shadows.glow }]}>
-            <Text style={styles.avatarEmoji}>{friend.emoji}</Text>
+            <Image
+              source={{ uri: avatarUri((friend as Friend & { avatarUrl?: string | null }).avatarUrl) }}
+              style={styles.avatarImage}
+            />
             {friend.status === 'active' && <View style={styles.dot} />}
           </View>
           <View style={styles.headerInfo}>
@@ -280,6 +284,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: Colors.white,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 64,
+    height: 64,
   },
   avatarEmoji: {
     fontSize: 28,

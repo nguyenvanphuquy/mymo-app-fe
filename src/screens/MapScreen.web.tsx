@@ -27,10 +27,12 @@ import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
 import { getMymoMapStyle, MAP_THEME_UI, mapThemeLabel, nextMapTheme, type MapTheme } from '../utils/mapStyles';
 import MapAtmosphere from '../components/MapAtmosphere';
+import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
 import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
+import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
@@ -72,15 +74,11 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
     position:relative; overflow:hidden;
   `;
 
-  if (friend.avatarUrl) {
-    const img = document.createElement('img');
-    img.src = friend.avatarUrl;
-    img.alt = friend.name;
-    img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
-    ring.appendChild(img);
-  } else {
-    ring.textContent = friend.emoji;
-  }
+  const img = document.createElement('img');
+  img.src = avatarUri(friend.avatarUrl);
+  img.alt = friend.name;
+  img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+  ring.appendChild(img);
 
   if (friend.status === 'active') {
     const dot = document.createElement('div');
@@ -746,6 +744,14 @@ export default function MapScreen({
       <View nativeID={MAP_CONTAINER_ID} style={styles.map} />
 
       <MapAtmosphere theme={mapTheme} />
+      <MapWeather
+        lat={userCoords?.lat ?? DEFAULT_CENTER[1]}
+        lng={userCoords?.lng ?? DEFAULT_CENTER[0]}
+        cardBg={themeUi.searchBg}
+        chipBg={themeUi.chipInactiveBg}
+        chipBorder={themeUi.chipInactiveBorder}
+        iconColor={themeUi.weatherIcon}
+      />
 
       {/* ── Incognito ghost overlay ── */}
       {locationGranted && incognito && (
@@ -891,16 +897,6 @@ export default function MapScreen({
         />
       </View>
 
-      <View style={styles.weatherWrap} pointerEvents="none">
-        <View style={[styles.weatherCard, { backgroundColor: themeUi.searchBg }]}>
-          <Ionicons name="partly-sunny-outline" size={16} color={themeUi.weatherIcon} />
-          <Text style={styles.weatherTemp}>28°</Text>
-        </View>
-        <View style={[styles.weatherSub, { backgroundColor: themeUi.chipInactiveBg, borderColor: themeUi.chipInactiveBorder }]}>
-          <Text style={styles.weatherSubText}>{t('map.weatherNice')}</Text>
-        </View>
-      </View>
-
       {/* ── Bottom friend chips ── */}
       <View style={styles.chipWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -911,11 +907,7 @@ export default function MapScreen({
               style={styles.chip}
             >
               <View style={[styles.chipAvatar, { backgroundColor: f.color }]}>
-                {f.avatarUrl ? (
-                  <Image source={{ uri: f.avatarUrl }} style={styles.chipAvatarImg} />
-                ) : (
-                  <Text style={styles.chipEmoji}>{f.emoji}</Text>
-                )}
+                <Image source={{ uri: avatarUri(f.avatarUrl) }} style={styles.chipAvatarImg} />
               </View>
               <View>
                 <Text style={styles.chipName}>{f.name}</Text>
@@ -1139,42 +1131,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: Colors.white,
-  },
-  weatherWrap: {
-    position: 'absolute',
-    left: 16,
-    bottom: 158,
-    gap: 8,
-    zIndex: 2,
-  },
-  weatherCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.65)',
-    ...Shadows.soft,
-  },
-  weatherTemp: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: Colors.textDark,
-  },
-  weatherSub: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  weatherSubText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMid,
   },
   chipWrap: {
     position: 'absolute',

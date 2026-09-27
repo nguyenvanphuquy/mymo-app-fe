@@ -10,6 +10,7 @@ import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
+import { avatarUri } from '../constants/defaultAvatar';
 import {
   getPostById,
   likePost,
@@ -69,16 +70,11 @@ function CommentRow({
   const isOwner = currentUserId === comment.userId;
   const isNested = depth > 0;
   const avatarSize = depth === 0 ? 28 : depth === 1 ? 22 : 18;
-  const iconSize = depth === 0 ? 12 : depth === 1 ? 10 : 9;
 
   return (
     <View style={[styles.commentRow, isNested && styles.replyRow]}>
       <View style={[styles.commentAvatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
-        {comment.user.avatarUrl ? (
-          <Image source={{ uri: comment.user.avatarUrl }} style={styles.commentAvatarImage} />
-        ) : (
-          <Ionicons name="person" size={iconSize} color={Colors.primary} />
-        )}
+        <Image source={{ uri: avatarUri(comment.user.avatarUrl) }} style={styles.commentAvatarImage} />
       </View>
       <View style={styles.commentBody}>
         <View style={styles.commentMeta}>
@@ -355,14 +351,10 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
 
           <View style={styles.header}>
             <View style={styles.avatar}>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              {isAnonymous ? (
+                <Ionicons name="eye-off-outline" size={16} color={Colors.primary} />
               ) : (
-                <Ionicons
-                  name={isAnonymous ? 'eye-off-outline' : 'person'}
-                  size={16}
-                  color={Colors.primary}
-                />
+                <Image source={{ uri: avatarUri(avatarUrl) }} style={styles.avatarImage} />
               )}
             </View>
             <View style={styles.headerInfo}>

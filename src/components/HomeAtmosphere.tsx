@@ -48,7 +48,7 @@ export default function HomeAtmosphere() {
   return (
     <View style={[StyleSheet.absoluteFill, styles.wrap]} pointerEvents="none">
       <LinearGradient
-        colors={['#F8F0FF', '#FFF5FA', '#F5F8FF', '#FFFBF5']}
+        colors={['#FBF8FF', '#FFF6FB', '#F3F7FF', '#FFFFFF']}
         locations={[0, 0.35, 0.7, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -76,7 +76,7 @@ export default function HomeAtmosphere() {
       </Animated.View>
 
       <LinearGradient
-        colors={['rgba(255,255,255,0.5)', 'transparent', 'rgba(232, 216, 255, 0.15)']}
+        colors={['rgba(255,255,255,0.72)', 'transparent', 'rgba(220, 206, 255, 0.12)']}
         locations={[0, 0.45, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}

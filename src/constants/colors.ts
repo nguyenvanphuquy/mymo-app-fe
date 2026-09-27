@@ -5,9 +5,9 @@ export const Colors = {
   // Brand primaries
   primary: '#7C5BFF',
   primaryDark: '#5A3FD4',
-  primaryLight: '#9C7CFF',
-  primarySoft: '#E8DFFF',
-  primaryTint: '#F6F2FF',
+  primaryLight: '#B9A4FF',
+  primarySoft: '#E7DEFF',
+  primaryTint: '#F8F5FF',
 
   // Gradient stops
   gradientStart: '#9C7CFF',
@@ -25,9 +25,9 @@ export const Colors = {
   // UI
   white: '#FFFFFF',
   black: '#000000',
-  background: '#F6F2FF',
+  background: '#F7F4FF',
   surface: '#FFFFFF',
-  border: '#E8DFFF',
+  border: '#E6DCFF',
 
   // Status
   activeGreen: '#10B981',
@@ -38,8 +38,8 @@ export const Colors = {
   overlay: 'rgba(0,0,0,0.45)',
   overlayLight: 'rgba(255,255,255,0.85)',
   glassDark: 'rgba(30,15,60,0.7)',
-  glassLight: 'rgba(255,255,255,0.75)',
-  glassLightStrong: 'rgba(255,255,255,0.92)',
+  glassLight: 'rgba(255,255,255,0.62)',
+  glassLightStrong: 'rgba(255,255,255,0.86)',
 
   // Map
   mapBase1: '#F6F2FF',
@@ -61,15 +61,16 @@ export const Colors = {
 };
 
 export const Gradients = {
-  primary: ['#9C7CFF', '#7C5BFF'] as const,
-  hero: ['#F0EAFF', '#D8C8FF', '#BFA2FF'] as const,
-  dark: ['#3A2470', '#7C5BFF', '#BFA2FF'] as const,
-  warm: ['#FFB8E0', '#BFA2FF', '#7CC4FF'] as const,
+  primary: ['#CDBBFF', '#7C5BFF'] as const,
+  hero: ['#FBF8FF', '#E7DCFF', '#C9B4FF'] as const,
+  dark: ['#3A2470', '#7C5BFF', '#CDBBFF'] as const,
+  warm: ['#FFD0EA', '#D4C2FF', '#9AD4FF'] as const,
+  sheen: ['rgba(255,255,255,0.72)', 'rgba(255,255,255,0)'] as const,
 };
 
 export const Shadows = {
   soft: Platform.select({
-    web: { boxShadow: '0 2px 8px rgba(124, 91, 255, 0.12)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.95) inset, 0 10px 24px rgba(124, 91, 255, 0.14)' },
     default: {
       shadowColor: '#7C5BFF',
       shadowOffset: { width: 0, height: 2 },
@@ -79,7 +80,7 @@ export const Shadows = {
     },
   }),
   float: Platform.select({
-    web: { boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,1) inset, 0 16px 40px rgba(124, 91, 255, 0.16)' },
     default: {
       shadowColor: '#7C5BFF',
       shadowOffset: { width: 0, height: 8 },
@@ -89,7 +90,7 @@ export const Shadows = {
     },
   }),
   glow: Platform.select({
-    web: { boxShadow: '0 4px 16px rgba(124, 91, 255, 0.4)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.65) inset, 0 8px 22px rgba(124, 91, 255, 0.42)' },
     default: {
       shadowColor: '#7C5BFF',
       shadowOffset: { width: 0, height: 4 },

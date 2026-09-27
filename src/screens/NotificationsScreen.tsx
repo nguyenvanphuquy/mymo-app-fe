@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
+import { avatarUri } from '../constants/defaultAvatar';
 import {
   getFriendRequests,
   acceptFriend,
@@ -434,7 +435,6 @@ function NotifItem({
   onReject: () => void;
 }) {
   const { t } = useI18n();
-  const fallbackAvatar = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
   const isTappable = (item.type === 'chat' && !!item.conversationId)
     || (isActivityType(item.type) && !!item.postId);
   const showBody = item.body && (item.type === 'like' || item.type === 'comment' || item.type === 'chat' || item.type === 'info' || item.isGrouped);
@@ -447,11 +447,11 @@ function NotifItem({
           {item.isGrouped && item.senders && item.senders.length > 1 ? (
             <View style={styles.avatarStack}>
               <Image
-                source={{ uri: item.senders[1]?.avatarUrl || fallbackAvatar }}
+                source={{ uri: avatarUri(item.senders[1]?.avatarUrl) }}
                 style={[styles.avatarImg, styles.avatarStackBack]}
               />
               <Image
-                source={{ uri: item.senders[0]?.avatarUrl || fallbackAvatar }}
+                source={{ uri: avatarUri(item.senders[0]?.avatarUrl) }}
                 style={[styles.avatarImg, styles.avatarStackFront]}
               />
               {extraCount > 0 && (
@@ -462,7 +462,7 @@ function NotifItem({
             </View>
           ) : (
             <Image
-              source={{ uri: item.avatarUrl || fallbackAvatar }}
+              source={{ uri: avatarUri(item.avatarUrl) }}
               style={styles.avatarImg}
             />
           )}

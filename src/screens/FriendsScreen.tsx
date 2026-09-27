@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { Friend } from '../constants/data';
+import { avatarUri } from '../constants/defaultAvatar';
 import {
   getFriends,
   getFriendSuggestions,
@@ -76,7 +77,7 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, 
     const hash = item.userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const x = 20 + (hash % 60);
     const y = 20 + ((hash >> 3) % 60);
-    const avatar = item.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop';
+    const avatar = avatarUri(item.avatarUrl);
 
     return {
       id: item.userId,
@@ -225,7 +226,7 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, 
       <View style={[styles.header, { paddingTop: Math.max(12, insets.top) }]}>
         {/* User avatar on the left */}
         <Image
-          source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop' }}
+          source={{ uri: avatarUri(currentUser?.avatar) }}
           style={styles.headerAvatar}
         />
         <Text style={styles.headerTitle}>{t('friends.title')}</Text>

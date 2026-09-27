@@ -23,6 +23,7 @@ import {
   type NotificationItem,
 } from '../services/notificationsApi';
 import { groupNotifications } from '../utils/notificationGrouping';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface DropdownItem {
   id: string;
@@ -48,8 +49,6 @@ interface NotificationDropdownProps {
   onOpenPost?: (postId: string) => void;
   onOpenChat?: (conversationId: string, title: string, avatarUrl?: string | null) => void;
 }
-
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
 function isActivityType(type: DropdownItem['type']): boolean {
   return type === 'like' || type === 'comment';
@@ -326,7 +325,7 @@ export default function NotificationDropdown({
                     disabled={!isTappable}
                   >
                     <Image
-                      source={{ uri: item.avatarUrl || FALLBACK_AVATAR }}
+                      source={{ uri: avatarUri(item.avatarUrl) }}
                       style={styles.avatar}
                     />
                     <View style={styles.rowCopy}>

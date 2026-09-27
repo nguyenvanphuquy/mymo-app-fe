@@ -15,6 +15,7 @@ import FriendMomentsSection from '../components/FriendMomentsSection';
 import NotificationDropdown from '../components/NotificationDropdown';
 import HomeAtmosphere from '../components/HomeAtmosphere';
 import MymoLogo from '../components/MymoLogo';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface HomeScreenProps {
   isActive?: boolean;
@@ -36,7 +37,6 @@ const VIBES = [
   { id: 'workout', label: 'Workout', icon: 'barbell-outline' as const, grad: ['#C8E4FF', '#93C8FD'] as const, color: '#2563EB', emoji: '💪' },
 ] as const;
 
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop';
 const FALLBACK_PLACE = 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=400&fit=crop';
 
 function getGreetingKey(): string {
@@ -198,7 +198,7 @@ export default function HomeScreen({
             <TouchableOpacity onPress={onGoProfile} activeOpacity={0.85}>
               <LinearGradient colors={['#C9A8FF', '#FF9EC8', '#9C7CFF']} style={styles.avatarRing}>
                 <Image
-                  source={{ uri: avatarUrl || FALLBACK_AVATAR }}
+                  source={{ uri: avatarUri(avatarUrl) }}
                   style={styles.avatar}
                 />
               </LinearGradient>

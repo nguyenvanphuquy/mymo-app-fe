@@ -7,6 +7,7 @@ import { DeviceEventEmitter } from 'react-native';
 import { Colors } from '../constants/colors';
 import { useI18n } from '../i18n';
 import { getConversations, type ConversationSummary } from '../services/chatApi';
+import { avatarUri } from '../constants/defaultAvatar';
 
 export interface OpenChatParams {
   conversationId?: string;
@@ -18,8 +19,6 @@ export interface OpenChatParams {
 interface ConversationsSectionProps {
   onOpenChat: (params: OpenChatParams) => void;
 }
-
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
 function formatTime(iso?: string | null, nowLabel = 'now'): string {
   if (!iso) return '';
@@ -88,7 +87,7 @@ export default function ConversationsSection({ onOpenChat }: ConversationsSectio
           >
             <View style={styles.avatarWrap}>
               <Image
-                source={{ uri: conv.conversationAvatar || FALLBACK_AVATAR }}
+                source={{ uri: avatarUri(conv.conversationAvatar) }}
                 style={styles.avatar}
               />
               {conv.unreadCount > 0 && (

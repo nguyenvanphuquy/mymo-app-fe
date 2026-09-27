@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { PendingFriendRequest } from '../services/friendsApi';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface FriendRequestsSectionProps {
   requests: PendingFriendRequest[];
@@ -38,13 +39,7 @@ export default function FriendRequestsSection({
       {requests.map(request => (
         <View key={request.userId} style={styles.card}>
           <View style={styles.userRow}>
-            {request.avatarUrl ? (
-              <Image source={{ uri: request.avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Ionicons name="person" size={18} color={Colors.primary} />
-              </View>
-            )}
+            <Image source={{ uri: avatarUri(request.avatarUrl) }} style={styles.avatar} />
             <View style={styles.info}>
               <Text style={styles.name}>{request.displayName}</Text>
               <Text style={styles.sub}>{t('notif.text.request')}</Text>

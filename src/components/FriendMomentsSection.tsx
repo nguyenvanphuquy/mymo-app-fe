@@ -20,6 +20,7 @@ import {
   type UserMomentGroup,
 } from '../utils/friendMomentsGrouping';
 import { filterActivePosts } from '../utils/postExpiration';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface CurrentUser {
   userId: string;
@@ -32,8 +33,6 @@ interface FriendMomentsSectionProps {
   currentUser?: CurrentUser | null;
   hideTitle?: boolean;
 }
-
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
 function mergeFeedPosts(friendsFeed: FeedPost[], ownPosts: FeedPost[]): FeedPost[] {
   const seen = new Set(friendsFeed.map(post => post.postId));
@@ -142,7 +141,7 @@ export default function FriendMomentsSection({
       >
         {visibleGroups.map(group => {
           const thumb = getGroupThumbnail(group);
-          const avatar = group.avatarUrl || FALLBACK_AVATAR;
+          const avatar = avatarUri(group.avatarUrl);
 
           return (
             <TouchableOpacity

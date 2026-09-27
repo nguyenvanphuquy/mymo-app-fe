@@ -32,6 +32,7 @@ import {
 import { uploadMedia } from '../services/mediaApi';
 import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import { getStoredAuthSession } from '../services/authApi';
+import { avatarUri } from '../constants/defaultAvatar';
 
 export interface ChatScreenProps {
   conversationId: string;
@@ -41,8 +42,6 @@ export interface ChatScreenProps {
   sharePlaceId?: string;
   onClose: () => void;
 }
-
-const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop';
 
 function sortMessagesChronologically(items: ChatMessage[]): ChatMessage[] {
   return [...items].sort(
@@ -406,7 +405,7 @@ export default function ChatScreen({
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color={Colors.primary} />
         </TouchableOpacity>
-        <Image source={{ uri: avatarUrl || FALLBACK_AVATAR }} style={styles.headerAvatar} />
+        <Image source={{ uri: avatarUri(avatarUrl) }} style={styles.headerAvatar} />
         <View style={styles.headerInfo}>
           <Text style={styles.headerName}>{title}</Text>
           <Text style={styles.statusText}>

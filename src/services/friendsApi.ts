@@ -42,6 +42,7 @@ export interface BlockedUser {
   userId: string;
   username: string;
   displayName: string;
+  avatarUrl: string | null;
 }
 
 export interface FriendStatusResponse {
@@ -86,6 +87,7 @@ function normalizeBlockedUser(raw: Record<string, unknown>): BlockedUser {
     userId: String(raw.userId || raw.UserId || ''),
     username: String(raw.username || raw.Username || ''),
     displayName: String(raw.displayName || raw.DisplayName || raw.username || 'User'),
+    avatarUrl: (raw.avatarUrl ?? raw.AvatarUrl ?? null) as string | null,
   };
 }
 

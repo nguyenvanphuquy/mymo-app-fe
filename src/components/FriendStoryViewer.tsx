@@ -10,6 +10,7 @@ import { APP_MAX_WIDTH, useAppContentWidth } from '../constants/layout';
 import PostSheet from './PostSheet';
 import { getPostThumbnail, toPostView } from '../services/postApi';
 import type { UserMomentGroup } from '../utils/friendMomentsGrouping';
+import { avatarUri } from '../constants/defaultAvatar';
 
 interface FriendStoryViewerProps {
   group: UserMomentGroup | null;
@@ -126,7 +127,7 @@ export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerP
               <View style={styles.userRow}>
                 <Image
                   source={{
-                    uri: group.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&h=120&fit=crop',
+                    uri: avatarUri(group.avatarUrl),
                   }}
                   style={styles.userAvatar}
                 />

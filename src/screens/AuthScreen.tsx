@@ -18,8 +18,6 @@ import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
 interface AuthScreenProps {
   onContinue: () => void;
-  onOpenAdmin?: () => void;
-  onOpenBusiness?: () => void;
   /** Called after mock admin (admin / admin123) signs in from this screen */
   onAdminContinue?: () => void;
   /** Business owner: pick user app vs business portal */
@@ -28,8 +26,6 @@ interface AuthScreenProps {
 
 export default function AuthScreen({
   onContinue,
-  onOpenAdmin,
-  onOpenBusiness,
   onAdminContinue,
   onPortalChoice,
 }: AuthScreenProps) {
@@ -124,22 +120,6 @@ export default function AuthScreen({
     }
   };
 
-  const handleDemoContinue = async () => {
-    await saveAuthSession({
-      userId: 'demo-user-001',
-      username: 'mymo_demo',
-      email: 'demo@mymo.app',
-      accessToken: 'demo-access-token',
-      refreshToken: 'demo-refresh-token',
-    });
-    Toast.show({
-      type: 'info',
-      text1: t('auth.demoToast'),
-      text2: t('auth.demoToastDesc'),
-    });
-    onContinue();
-  };
-
   const handleSocialPress = (provider: 'Google' | 'Apple' | 'Facebook') => {
     Toast.show({
       type: 'info',
@@ -155,12 +135,13 @@ export default function AuthScreen({
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <LinearGradient
-          colors={['#F0EAFF', '#DDD0FF', '#BFA2FF']}
+          colors={[...Gradients.hero]}
           style={styles.heroGrad}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
           <SparkleField count={Platform.OS === 'web' ? 6 : 10} />
+          <LinearGradient colors={Gradients.sheen} style={styles.heroSheen} pointerEvents="none" />
 
           {/* Blob decorations */}
           <View style={styles.blob1} />
@@ -395,25 +376,6 @@ export default function AuthScreen({
             {' '}{t('auth.and')}{' '}
             <Text style={styles.termsLink}>{t('auth.privacyWord')}</Text>.
           </Text>
-
-          <TouchableOpacity onPress={handleDemoContinue} style={styles.adminLink} activeOpacity={0.85}>
-            <Ionicons name="eye-outline" size={14} color={Colors.primary} />
-            <Text style={styles.adminLinkText}>{t('auth.demoEnter')}</Text>
-          </TouchableOpacity>
-
-          {onOpenBusiness ? (
-            <TouchableOpacity onPress={onOpenBusiness} style={styles.adminLink} activeOpacity={0.85}>
-              <Ionicons name="storefront-outline" size={14} color={Colors.primary} />
-              <Text style={styles.adminLinkText}>{t('auth.partnerLogin')}</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {onOpenAdmin ? (
-            <TouchableOpacity onPress={onOpenAdmin} style={styles.adminLink} activeOpacity={0.85}>
-              <Ionicons name="shield-checkmark-outline" size={14} color={Colors.primary} />
-              <Text style={styles.adminLinkText}>{t('admin.openAdmin')}</Text>
-            </TouchableOpacity>
-          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -449,7 +411,7 @@ const styles = StyleSheet.create({
         borderLeftWidth: 1,
         borderRightWidth: 1,
         borderColor: '#EBE8F5',
-        boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
+        boxShadow: '0 18px 50px rgba(124, 91, 255, 0.12)',
       },
       default: {},
     }),
@@ -461,6 +423,13 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     minHeight: 360,
     overflow: 'hidden',
+  },
+  heroSheen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
   },
   blob1: {
     position: 'absolute',
@@ -520,12 +489,14 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
     marginHorizontal: 24,
     marginTop: -24,
     borderRadius: 28,
     padding: 20,
     marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.95)',
     ...Shadows.float,
   },
   tabs: {
@@ -679,18 +650,5 @@ const styles = StyleSheet.create({
   termsLink: {
     fontWeight: '700',
     color: Colors.textMid,
-  },
-  adminLink: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-  },
-  adminLinkText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.primary,
   },
 });
