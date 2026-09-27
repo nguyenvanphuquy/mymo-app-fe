@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
   Platform, Image, ActivityIndicator, ScrollView, TextInput,
@@ -87,6 +87,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -127,6 +128,10 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [placeId]);
 
   const close = () => {
     Animated.timing(slideAnim, {
@@ -189,14 +194,21 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   };
 
   const name = detail?.name || placeName || t('place.loading');
-  const galleryPhotos = detail?.photos?.length
-    ? detail.photos
-    : [];
-  const heroImageUrl = galleryPhotos.find(p => p.isPrimary)?.imageUrl
-    ?? galleryPhotos[0]?.imageUrl
-    ?? detail?.thumbnailUrl
-    ?? detail?.business?.logoUrl
-    ?? null;
+
+  const galleryPhotos = useMemo(() => {
+    const fromDetail = detail?.photos?.filter(p => p.imageUrl) ?? [];
+    if (fromDetail.length) return fromDetail;
+    const fallback = detail?.thumbnailUrl ?? detail?.business?.logoUrl;
+    if (fallback) {
+      return [{ id: 'thumb', imageUrl: fallback, isPrimary: true, displayOrder: 0 }];
+    }
+    return [];
+  }, [detail]);
+
+  const safePhotoIndex = galleryPhotos.length
+    ? Math.min(photoIndex, galleryPhotos.length - 1)
+    : 0;
+  const activePhotoUrl = galleryPhotos[safePhotoIndex]?.imageUrl ?? null;
 
   return (
     <Modal transparent animationType="fade" statusBarTranslucent onRequestClose={close}>
@@ -236,39 +248,63 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {/* Hero */}
-              {heroImageUrl ? (
-                <Image source={{ uri: heroImageUrl }} style={styles.mainHeroImage} resizeMode="cover" />
-              ) : null}
-              {galleryPhotos.length > 1 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryRow} contentContainerStyle={styles.galleryContent}>
-                  {galleryPhotos.map(photo => (
-                    <Image key={photo.id} source={{ uri: photo.imageUrl }} style={styles.galleryThumb} />
-                  ))}
-                </ScrollView>
-              ) : null}
+              {/* Gallery + title */}
+              <View style={styles.galleryWrap}>
+                {activePhotoUrl ? (
+                  <Image source={{ uri: activePhotoUrl }} style={styles.mainHeroImage} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.mainHeroImage, styles.mainHeroPlaceholder]}>
+                    <Ionicons name="storefront-outline" size={40} color={Colors.primary} />
+                  </View>
+                )}
+                {galleryPhotos.length > 1 ? (
+                  <>
+                    <View style={styles.photoCounter}>
+                      <Text style={styles.photoCounterText}>
+                        {safePhotoIndex + 1}/{galleryPhotos.length}
+                      </Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.galleryRow}
+                      contentContainerStyle={styles.galleryContent}
+                    >
+                      {galleryPhotos.map((photo, idx) => {
+                        const selected = idx === safePhotoIndex;
+                        return (
+                          <TouchableOpacity
+                            key={`${photo.id}-${idx}`}
+                            onPress={() => setPhotoIndex(idx)}
+                            activeOpacity={0.9}
+                            style={[styles.galleryThumbWrap, selected && styles.galleryThumbWrapOn]}
+                          >
+                            <Image source={{ uri: photo.imageUrl }} style={styles.galleryThumb} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </>
+                ) : null}
+              </View>
+
               <View style={styles.hero}>
-                <View style={styles.heroThumb}>
-                  {heroImageUrl ? (
-                    <Image source={{ uri: heroImageUrl }} style={styles.heroImage} />
-                  ) : (
-                    <Ionicons name="location" size={28} color={Colors.primary} />
-                  )}
-                </View>
                 <View style={styles.heroInfo}>
                   <Text style={styles.placeName}>{name}</Text>
-                  {detail.category && (
+                  {detail.category ? (
                     <View style={styles.categoryRow}>
                       <Ionicons name="pricetag-outline" size={12} color={Colors.primary} />
                       <Text style={styles.categoryText}>{detail.category.name}</Text>
                     </View>
-                  )}
-                  {detail.business?.verified && (
+                  ) : null}
+                  {detail.business?.verified ? (
                     <View style={styles.verifiedRow}>
                       <Ionicons name="checkmark-circle" size={13} color="#10B981" />
-                      <Text style={styles.verifiedText}>{detail.business.name}</Text>
+                      <Text style={styles.verifiedText}>
+                        {detail.business.name} · {t('place.verifiedPartner')}
+                      </Text>
                     </View>
-                  )}
+                  ) : null}
                 </View>
                 <TouchableOpacity onPress={close} style={styles.closeBtn}>
                   <Ionicons name="close" size={18} color={Colors.textMuted} />
@@ -315,12 +351,18 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               )}
               {menu && menu.items.length > 0 ? (
                 <View style={styles.menuBlock}>
-                  <Text style={styles.menuHeading}>{t('place.menu') ?? 'MENU'}</Text>
-                  <Text style={styles.menuTitle}>{menu.name}</Text>
+                  <View style={styles.menuBlockHead}>
+                    <Ionicons name="restaurant-outline" size={18} color={Colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.menuHeading}>{t('place.menu')}</Text>
+                      <Text style={styles.menuTitle}>{menu.name}</Text>
+                    </View>
+                    <Text style={styles.menuCount}>{menu.items.length}</Text>
+                  </View>
                   {(() => {
                     const groups = new Map<string, typeof menu.items>();
                     menu.items.forEach(item => {
-                      const key = item.categoryName?.trim() || (t('place.menuOther') ?? 'Other');
+                      const key = item.categoryName?.trim() || t('place.menuOther');
                       if (!groups.has(key)) groups.set(key, []);
                       groups.get(key)!.push(item);
                     });
@@ -328,12 +370,12 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                       <View key={cat} style={styles.menuCategory}>
                         <Text style={styles.menuCategoryTitle}>{cat}</Text>
                         {items.map(item => (
-                          <View key={item.id} style={styles.menuItemRow}>
+                          <View key={item.id} style={styles.menuItemCard}>
                             {item.imageUrl ? (
                               <Image source={{ uri: item.imageUrl }} style={styles.menuItemImg} />
                             ) : (
                               <View style={styles.menuItemImgPlaceholder}>
-                                <Ionicons name="cafe-outline" size={18} color={Colors.primary} />
+                                <Ionicons name="cafe-outline" size={20} color={Colors.primary} />
                               </View>
                             )}
                             <View style={styles.menuItemText}>
@@ -353,7 +395,10 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
 
               {promotions.length > 0 ? (
                 <View style={styles.menuBlock}>
-                  <Text style={styles.menuHeading}>{t('place.promotions') ?? 'PROMOTIONS'}</Text>
+                  <View style={styles.menuBlockHead}>
+                    <Ionicons name="megaphone-outline" size={18} color={Colors.primary} />
+                    <Text style={[styles.menuHeading, { flex: 1, marginBottom: 0 }]}>{t('place.promotions')}</Text>
+                  </View>
                   {promotions.map(promo => (
                     <View key={promo.id} style={styles.promoCard}>
                       {promo.imageUrl ? (
@@ -408,7 +453,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               {/* Reviews */}
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>{t('place.reviews')}</Text>
+                  <Text style={styles.sectionTitle}>{t('place.reviewsHeading')}</Text>
                   {reviews.length > (detail.recentReviews?.length ?? 0) && (
                     <TouchableOpacity onPress={() => setShowAllReviews(v => !v)}>
                       <Text style={styles.seeAllText}>
@@ -551,27 +596,35 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryTint,
   },
   retryText: { fontSize: 12, fontWeight: '700', color: Colors.primary },
+  galleryWrap: { marginHorizontal: -20, marginBottom: 12 },
+  mainHeroImage: { width: '100%', height: 200, backgroundColor: Colors.primarySoft },
+  mainHeroPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  photoCounter: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  photoCounterText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
+  galleryRow: { marginTop: -4 },
+  galleryContent: { gap: 8, paddingHorizontal: 20, paddingVertical: 10 },
+  galleryThumbWrap: {
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  galleryThumbWrapOn: { borderColor: Colors.primary },
+  galleryThumb: { width: 64, height: 64, backgroundColor: Colors.primarySoft },
   hero: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
     marginBottom: 14,
   },
-  heroThumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
-    backgroundColor: Colors.primaryTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-    ...Shadows.soft,
-  },
-  heroImage: { width: 64, height: 64 },
-  mainHeroImage: { width: '100%', height: 180, borderRadius: 16, marginBottom: 10, backgroundColor: Colors.primarySoft },
-  galleryRow: { marginBottom: 12 },
-  galleryContent: { gap: 8, paddingHorizontal: 2 },
-  galleryThumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: Colors.primarySoft },
   heroInfo: { flex: 1 },
   placeName: {
     fontSize: 18,
@@ -624,15 +677,28 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoText: { flex: 1, fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
-  menuBlock: { marginTop: 12, marginBottom: 12, padding: 14, backgroundColor: Colors.primaryTint, borderRadius: 16 },
-  menuHeading: { fontSize: 11, fontWeight: '900', color: Colors.textMuted, letterSpacing: 1 },
-  menuTitle: { fontSize: 16, fontWeight: '900', color: Colors.textDark, marginBottom: 10 },
-  menuCategory: { marginBottom: 12 },
-  menuCategoryTitle: { fontSize: 14, fontWeight: '800', color: Colors.primary, marginBottom: 8 },
-  menuItemRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  menuItemImg: { width: 52, height: 52, borderRadius: 10, backgroundColor: Colors.white },
+  menuBlock: {
+    marginTop: 12, marginBottom: 12, padding: 14,
+    backgroundColor: Colors.primaryTint, borderRadius: 18,
+    borderWidth: 1, borderColor: Colors.primarySoft,
+  },
+  menuBlockHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  menuHeading: { fontSize: 11, fontWeight: '900', color: Colors.textMuted, letterSpacing: 0.8 },
+  menuTitle: { fontSize: 16, fontWeight: '900', color: Colors.textDark, marginTop: 2 },
+  menuCount: {
+    fontSize: 12, fontWeight: '900', color: Colors.primary,
+    backgroundColor: Colors.white, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+  },
+  menuCategory: { marginBottom: 8 },
+  menuCategoryTitle: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginBottom: 8 },
+  menuItemCard: {
+    flexDirection: 'row', gap: 12, marginBottom: 8, padding: 10,
+    backgroundColor: Colors.white, borderRadius: 14, ...Shadows.soft,
+  },
+  menuItemImg: { width: 56, height: 56, borderRadius: 12, backgroundColor: Colors.primarySoft },
   menuItemImgPlaceholder: {
-    width: 52, height: 52, borderRadius: 10, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center',
+    width: 56, height: 56, borderRadius: 12, backgroundColor: Colors.primaryTint,
+    alignItems: 'center', justifyContent: 'center',
   },
   menuItemText: { flex: 1 },
   menuItemName: { fontSize: 14, fontWeight: '800', color: Colors.textDark },

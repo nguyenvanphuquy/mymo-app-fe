@@ -50,15 +50,28 @@ async function parseResponse<T>(response: Response): Promise<T> {
     try { parsed = JSON.parse(text) as ApiEnvelope<T> & Record<string, unknown>; }
     catch { parsed = { message: text }; }
   }
-  if (!response.ok) throw new Error(String(parsed.message ?? `Request failed (${response.status})`));
-  if (parsed.data !== undefined && parsed.data !== null) return parsed.data;
+  if (!response.ok) throw new Error(String(parsed.message ?? parsed.Message ?? `Request failed (${response.status})`));
+  const payload = parsed.data ?? (parsed as Record<string, unknown>).Data;
+  if (payload !== undefined && payload !== null) return payload as T;
   return parsed as unknown as T;
+}
+
+export function sortPromotions(items: PromotionDto[]): PromotionDto[] {
+  const byId = new Map<string, PromotionDto>();
+  for (const p of items) {
+    if (!p.id) continue;
+    byId.set(p.id, p);
+  }
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime(),
+  );
 }
 
 export async function getPlacePromotions(placeId: string): Promise<PromotionDto[]> {
   const res = await fetch(`${API_URL}/business/places/${placeId}/promotions`, { method: 'GET', headers: await headers() });
   const data = await parseResponse<unknown[]>(res);
-  return (Array.isArray(data) ? data : []).map(item => normalize(item as Record<string, unknown>));
+  const list = Array.isArray(data) ? data : [];
+  return sortPromotions(list.map(item => normalize(item as Record<string, unknown>)));
 }
 
 export type PromotionWithPlace = PromotionDto & { placeName: string };

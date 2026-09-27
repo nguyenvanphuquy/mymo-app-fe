@@ -251,8 +251,20 @@ function normalizePlaceDetail(raw: Record<string, unknown>): PlaceDetail {
       : null,
     recentPosts: postsRaw.map(normalizeRecentPost),
     recentReviews: reviewsRaw.map(normalizeRecentReview),
-    photos: photosRaw.map(normalizePlacePhoto).sort((a, b) => a.displayOrder - b.displayOrder),
+    photos: dedupePlacePhotos(photosRaw.map(normalizePlacePhoto)),
   };
+}
+
+function dedupePlacePhotos(photos: PlacePhotoItem[]): PlacePhotoItem[] {
+  const byKey = new Map<string, PlacePhotoItem>();
+  for (const p of photos) {
+    if (!p.imageUrl) continue;
+    const key = p.id || p.imageUrl;
+    byKey.set(key, p);
+  }
+  return [...byKey.values()].sort(
+    (a, b) => a.displayOrder - b.displayOrder || a.id.localeCompare(b.id),
+  );
 }
 
 function normalizeReview(raw: Record<string, unknown>): ReviewItem {
@@ -314,16 +326,44 @@ function normalizePublicMenuItem(raw: Record<string, unknown>): PublicMenuItem {
 
 export async function getPlaceMenu(placeId: string): Promise<PublicMenu | null> {
   try {
-    const response = await requestJson<ApiResponse<Record<string, unknown>>>(`/places/${placeId}/menu`, 'GET');
-    if (!response.success || !response.data) return null;
-    const raw = response.data;
+    const token = await getAuthToken();
+    const headers: Record<string, string> = { Accept: '*/*' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const response = await fetch(`${BASE_URL}/places/${placeId}/menu`, { method: 'GET', headers });
+    if (response.status === 404) return null;
+
+    const rawText = await response.text();
+    let parsed: ApiResponse<Record<string, unknown>> & Record<string, unknown> = {
+      success: false,
+      message: '',
+      data: {},
+      errorCode: null,
+    };
+    if (rawText) {
+      try {
+        parsed = JSON.parse(rawText) as ApiResponse<Record<string, unknown>> & Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    }
+    if (!response.ok || parsed.success === false) return null;
+
+    const raw = (parsed.data ?? parsed.Data ?? {}) as Record<string, unknown>;
     const itemsRaw = (raw.items ?? raw.Items ?? []) as Record<string, unknown>[];
+    const items = itemsRaw
+      .map(normalizePublicMenuItem)
+      .filter(i => i.id && i.name)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+
+    if (!items.length && !raw.id && !raw.Id) return null;
+
     return {
       id: String(raw.id ?? raw.Id ?? ''),
       placeId: String(raw.placeId ?? raw.PlaceId ?? placeId),
       name: String(raw.name ?? raw.Name ?? ''),
       description: (raw.description ?? raw.Description ?? null) as string | null,
-      items: itemsRaw.map(normalizePublicMenuItem).sort((a, b) => a.displayOrder - b.displayOrder),
+      items,
     };
   } catch {
     return null;
