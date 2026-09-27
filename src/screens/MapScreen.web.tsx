@@ -522,11 +522,18 @@ export default function MapScreen({
     map.on('moveend', syncZoom);
     syncZoom();
 
+    let alive = true;
+    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     map.on('load', () => {
-      // Force resize to ensure correct canvas sizing
+      if (!alive) return;
       map.resize();
-      setTimeout(() => {
-        map.resize();
+      resizeTimer = setTimeout(() => {
+        if (!alive) return;
+        try {
+          map.resize();
+        } catch {
+          /* Map was removed before the delayed resize. */
+        }
       }, 150);
 
       // ── My location marker ──────────────────────────────────────────────
@@ -551,6 +558,8 @@ export default function MapScreen({
     });
 
     return () => {
+      alive = false;
+      if (resizeTimer) clearTimeout(resizeTimer);
       map.off('zoom', syncZoom);
       map.off('moveend', syncZoom);
       map.remove();

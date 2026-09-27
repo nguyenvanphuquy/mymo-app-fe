@@ -329,9 +329,6 @@ const landuseFillColor = (c: ThemeColors) =>
     c.landuse,
   ];
 
-const landcoverFillColor = (c: ThemeColors) =>
-  ['match', ['get', 'class'], 'wood', c.wood, 'grass', c.grass, 'scrub', c.grass, 'snow', '#F8F8FF', c.landcover];
-
 export function getMymoMapStyle(theme: MapTheme): object {
   const c = THEME_COLORS[theme];
   const glossyBlue = theme === 'blue';
@@ -350,9 +347,6 @@ export function getMymoMapStyle(theme: MapTheme): object {
     layers: [
       // ── Base ──────────────────────────────────────────────────────────────
       { id: 'background', type: 'background', paint: { 'background-color': c.background } },
-
-      { id: 'landcover', type: 'fill', source: 'composite', 'source-layer': 'landcover', minzoom: 5,
-        paint: { 'fill-color': landcoverFillColor(c), 'fill-opacity': 0.75 } },
 
       { id: 'landuse', type: 'fill', source: 'composite', 'source-layer': 'landuse', minzoom: 5,
         paint: { 'fill-color': landuseFillColor(c), 'fill-opacity': 0.88 } },
