@@ -27,6 +27,15 @@ import {
 } from '../services/placeApi';
 import { getStoredAuthSession } from '../services/authApi';
 import { formatPromotionRange } from '../services/businessPromotionApi';
+import {
+  CHECK_IN_MAX_DISTANCE_M,
+  createCheckIn,
+  distanceMeters,
+  getMyCheckIns,
+  type CheckInItem,
+  type CheckInMood,
+} from '../services/checkInApi';
+import { ensureLocationForPosting } from '../utils/ensureLocation';
 
 interface PlaceSheetProps {
   placeId: string;
@@ -68,6 +77,14 @@ function displayName(user: { displayName: string | null; userId: string }): stri
   return user.displayName || 'User';
 }
 
+const CHECK_IN_MOODS: { value: CheckInMood; emoji: string; labelKey: string }[] = [
+  { value: 'Happy', emoji: '😊', labelKey: 'place.mood.happy' },
+  { value: 'Excited', emoji: '🔥', labelKey: 'place.mood.excited' },
+  { value: 'Chill', emoji: '🍵', labelKey: 'place.mood.chill' },
+  { value: 'Sad', emoji: '😢', labelKey: 'place.mood.sad' },
+  { value: 'Angry', emoji: '😤', labelKey: 'place.mood.angry' },
+];
+
 export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: PlaceSheetProps) {
   const { t } = useI18n();
   const appWidth = useAppContentWidth();
@@ -88,6 +105,9 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [checkInSubmitting, setCheckInSubmitting] = useState(false);
+  const [checkInMood, setCheckInMood] = useState<CheckInMood | null>(null);
+  const [lastCheckIn, setLastCheckIn] = useState<CheckInItem | null>(null);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -131,7 +151,22 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
 
   useEffect(() => {
     setPhotoIndex(0);
+    setCheckInMood(null);
+    setLastCheckIn(null);
   }, [placeId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setLastCheckIn(null);
+      return;
+    }
+    getMyCheckIns()
+      .then(list => {
+        const atPlace = list.find(c => c.placeId === placeId);
+        setLastCheckIn(atPlace ?? null);
+      })
+      .catch(() => setLastCheckIn(null));
+  }, [currentUserId, placeId]);
 
   const close = () => {
     Animated.timing(slideAnim, {
@@ -177,6 +212,55 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitCheckIn = async () => {
+    if (checkInSubmitting || !detail) return;
+    if (!currentUserId) {
+      Toast.show({ type: 'error', text1: t('place.loginToCheckIn') });
+      return;
+    }
+
+    setCheckInSubmitting(true);
+    try {
+      const loc = await ensureLocationForPosting();
+      if (!loc.ok) {
+        const text1 =
+          loc.reason === 'denied' ? t('cam.locationDenied') : t('cam.locationRequired');
+        Toast.show({ type: 'error', text1, text2: t('cam.locationRequiredDesc') });
+        return;
+      }
+
+      const meters = distanceMeters(
+        loc.coords.latitude,
+        loc.coords.longitude,
+        detail.latitude,
+        detail.longitude,
+      );
+      if (meters > CHECK_IN_MAX_DISTANCE_M) {
+        Toast.show({ type: 'error', text1: t('place.checkInTooFar') });
+        return;
+      }
+
+      const created = await createCheckIn({
+        placeId,
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        mood: checkInMood ?? undefined,
+      });
+      setLastCheckIn(created);
+      setDetail(prev => (prev ? { ...prev, checkInCount: prev.checkInCount + 1 } : prev));
+      Toast.show({ type: 'success', text1: t('place.checkInSuccess') });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('place.checkInError');
+      if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
+        Toast.show({ type: 'error', text1: t('place.loginToCheckIn') });
+      } else {
+        Toast.show({ type: 'error', text1: message });
+      }
+    } finally {
+      setCheckInSubmitting(false);
     }
   };
 
@@ -330,6 +414,49 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                   <Text style={styles.statValue}>{detail.postCount}</Text>
                   <Text style={styles.statLabel}>{t('place.posts')}</Text>
                 </View>
+              </View>
+
+              <View style={styles.checkInBlock}>
+                <Text style={styles.checkInMoodLabel}>{t('place.checkInMood')}</Text>
+                <View style={styles.checkInMoodRow}>
+                  {CHECK_IN_MOODS.map(m => {
+                    const selected = checkInMood === m.value;
+                    return (
+                      <TouchableOpacity
+                        key={m.value}
+                        style={[styles.checkInMoodChip, selected && styles.checkInMoodChipOn]}
+                        onPress={() => setCheckInMood(selected ? null : m.value)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.checkInMoodEmoji}>{m.emoji}</Text>
+                        <Text style={[styles.checkInMoodText, selected && styles.checkInMoodTextOn]}>
+                          {t(m.labelKey)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity
+                  style={[styles.checkInBtn, checkInSubmitting && styles.submitBtnDisabled]}
+                  onPress={submitCheckIn}
+                  disabled={checkInSubmitting}
+                  activeOpacity={0.9}
+                >
+                  {checkInSubmitting ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="footsteps" size={18} color={Colors.white} />
+                      <Text style={styles.checkInBtnText}>{t('place.checkInHere')}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {lastCheckIn?.createdAt ? (
+                  <Text style={styles.lastCheckInText}>
+                    {t('place.lastCheckIn')}:{' '}
+                    {new Date(lastCheckIn.createdAt).toLocaleString()}
+                  </Text>
+                ) : null}
               </View>
 
               {/* Address & hours */}
@@ -670,6 +797,61 @@ const styles = StyleSheet.create({
   statBlock: { flex: 1, alignItems: 'center' },
   statValue: { fontSize: 18, fontWeight: '800', color: Colors.textDark },
   statLabel: { fontSize: 10, color: Colors.textMuted, marginTop: 2 },
+  checkInBlock: {
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primarySoft,
+    ...Shadows.soft,
+  },
+  checkInMoodLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    marginBottom: 8,
+  },
+  checkInMoodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  checkInMoodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: Colors.primaryTint,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  checkInMoodChipOn: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
+  },
+  checkInMoodEmoji: { fontSize: 14 },
+  checkInMoodText: { fontSize: 11, fontWeight: '700', color: Colors.textMuted },
+  checkInMoodTextOn: { color: Colors.primary },
+  checkInBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.activeGreen,
+    borderRadius: 20,
+    paddingVertical: 13,
+  },
+  checkInBtnText: { fontSize: 14, fontWeight: '800', color: Colors.white },
+  lastCheckInText: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 10,
+    textAlign: 'center',
+  },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
