@@ -304,6 +304,10 @@ export function canManageActors(permissions: Permission[]): boolean {
   return hasPermission(permissions, 'admin.actors.manage') || hasPermission(permissions, 'admin.portal');
 }
 
+export function canManageReports(permissions: Permission[]): boolean {
+  return hasPermission(permissions, 'admin.reports.manage') || hasPermission(permissions, 'admin.portal');
+}
+
 export function canAccessAdminPortal(permissions: Permission[]): boolean {
   return hasPermission(permissions, 'admin.portal');
 }

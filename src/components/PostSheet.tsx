@@ -16,6 +16,7 @@ import {
   likePost,
   unlikePost,
   deletePost,
+  reportPost,
   type PostDetail,
   type PostView,
 } from '../services/postApi';
@@ -50,6 +51,13 @@ function formatCaption(caption: string | null | undefined, t: (key: string) => s
 function displayUserName(user: Comment['user']): string {
   return user.displayName || user.username || 'User';
 }
+
+const REPORT_PRESET_KEYS = [
+  'post.reportReason.spam',
+  'post.reportReason.harassment',
+  'post.reportReason.inappropriate',
+  'post.reportReason.other',
+] as const;
 
 function CommentRow({
   comment,
@@ -131,6 +139,10 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   const [commentCount, setCommentCount] = useState(post.commentCount);
   const [recalling, setRecalling] = useState(false);
   const [recallConfirmOpen, setRecallConfirmOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportPreset, setReportPreset] = useState<string | null>(null);
+  const [reportDetail, setReportDetail] = useState('');
+  const [reporting, setReporting] = useState(false);
 
   const contentPad = 24;
   const mediaSize = appWidth - contentPad * 2;
@@ -298,6 +310,38 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   }, [commentText, submittingComment, replyTo, post.postId, loadComments, t]);
 
   const isPostOwner = isOwnPost || sameUserId(currentUserId, detail?.owner?.userId);
+
+  const submitReport = useCallback(async () => {
+    if (reporting) return;
+    if (!currentUserId) {
+      Toast.show({ type: 'error', text1: t('post.loginToReport') });
+      return;
+    }
+    const presetText = reportPreset ? t(reportPreset as Parameters<typeof t>[0]) : '';
+    const reason = [presetText, reportDetail.trim()].filter(Boolean).join(' — ');
+    if (!reason.trim()) {
+      Toast.show({ type: 'error', text1: t('post.reportReasonRequired') });
+      return;
+    }
+
+    setReporting(true);
+    try {
+      await reportPost(post.postId, reason);
+      setReportOpen(false);
+      setReportPreset(null);
+      setReportDetail('');
+      Toast.show({ type: 'success', text1: t('post.reportSuccess') });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('post.reportError');
+      if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
+        Toast.show({ type: 'error', text1: t('post.loginToReport') });
+      } else {
+        Toast.show({ type: 'error', text1: message });
+      }
+    } finally {
+      setReporting(false);
+    }
+  }, [reporting, currentUserId, reportPreset, reportDetail, post.postId, t]);
 
   const performRecall = useCallback(async () => {
     if (recalling) return;
@@ -474,6 +518,17 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                   </TouchableOpacity>
                 )}
 
+                {!isPostOwner && (
+                  <TouchableOpacity
+                    onPress={() => setReportOpen(true)}
+                    style={styles.reportBtn}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="flag-outline" size={16} color={Colors.textMuted} />
+                    <Text style={styles.reportBtnText}>{t('post.report')}</Text>
+                  </TouchableOpacity>
+                )}
+
                 {showComments && (
                   <View style={styles.commentsSection}>
                     <Text style={styles.commentsTitle}>{t('post.comments')}</Text>
@@ -570,6 +625,65 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                 <ActivityIndicator size="small" color={Colors.white} />
               ) : (
                 <Text style={styles.confirmDeleteText}>{t('post.recallConfirm')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    <Modal
+      visible={reportOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setReportOpen(false)}
+    >
+      <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmCard, styles.reportCard]}>
+          <Text style={styles.confirmTitle}>{t('post.reportTitle')}</Text>
+          <Text style={styles.reportDesc}>{t('post.reportDesc')}</Text>
+          <View style={styles.reportPresetRow}>
+            {REPORT_PRESET_KEYS.map(key => {
+              const selected = reportPreset === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.reportPresetChip, selected && styles.reportPresetChipOn]}
+                  onPress={() => setReportPreset(selected ? null : key)}
+                >
+                  <Text style={[styles.reportPresetText, selected && styles.reportPresetTextOn]}>
+                    {t(key)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TextInput
+            style={styles.reportInput}
+            placeholder={t('post.reportCustomPlaceholder')}
+            placeholderTextColor={Colors.textMuted}
+            value={reportDetail}
+            onChangeText={setReportDetail}
+            multiline
+            maxLength={1000}
+          />
+          <View style={styles.confirmActions}>
+            <TouchableOpacity
+              style={styles.confirmCancelBtn}
+              onPress={() => setReportOpen(false)}
+              disabled={reporting}
+            >
+              <Text style={styles.confirmCancelText}>{t('post.recallCancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.confirmDeleteBtn}
+              onPress={submitReport}
+              disabled={reporting}
+            >
+              {reporting ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Text style={styles.confirmDeleteText}>{t('post.reportSubmit')}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -754,6 +868,66 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  reportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 8,
+  },
+  reportBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  reportCard: {
+    maxWidth: 400,
+  },
+  reportDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.textMuted,
+    marginBottom: 12,
+  },
+  reportPresetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  reportPresetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryTint,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  reportPresetChipOn: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
+  },
+  reportPresetText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  reportPresetTextOn: {
+    color: Colors.primary,
+  },
+  reportInput: {
+    minHeight: 72,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryTint,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'web' ? 10 : 8,
+    fontSize: 13,
+    color: Colors.textDark,
+    textAlignVertical: 'top',
+    marginBottom: 16,
   },
   confirmOverlay: {
     flex: 1,

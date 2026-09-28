@@ -335,6 +335,17 @@ export async function deletePost(postId: string): Promise<void> {
   }
 }
 
+export async function reportPost(postId: string, reason: string): Promise<void> {
+  const response = await requestJson<ApiResponse<boolean>>(
+    `/posts/${postId}/report`,
+    'POST',
+    { reason: reason.trim() },
+  );
+  if (!response.success) {
+    throw new Error(response.message || 'Unable to report post');
+  }
+}
+
 export function getPostThumbnail(post: FeedPost | NearbyPost): string | null {
   if ('thumbnailUrl' in post && post.thumbnailUrl) return post.thumbnailUrl;
   const media = 'media' in post ? post.media?.[0] : null;
@@ -471,6 +482,7 @@ export default {
   likePost,
   unlikePost,
   deletePost,
+  reportPost,
   getNearbyPosts,
   getFriendsFeed,
   getFeed,

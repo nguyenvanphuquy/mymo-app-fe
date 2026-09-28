@@ -23,6 +23,7 @@ import {
   PermissionGroupId,
   canAccessAdminPortal,
   canManageActors,
+  canManageReports,
   canManageUsers,
   clearAdminSession,
   createAdminUser,
@@ -53,8 +54,15 @@ import {
   rejectBusiness,
   type AdminBusinessItem,
 } from '../services/adminBusinessesApi';
+import {
+  listAdminReports,
+  updateAdminReportStatus,
+  type AdminReportItem,
+  type ReportStatus,
+  type ReportTargetType,
+} from '../services/adminReportsApi';
 
-type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'myperms';
+type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'reports' | 'myperms';
 
 interface AdminScreenProps {
   session: AdminSession;
@@ -132,6 +140,10 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const [rejectReason, setRejectReason] = useState('');
   const [partnerBusyId, setPartnerBusyId] = useState<string | null>(null);
   const [partnerQueueModal, setPartnerQueueModal] = useState<'business' | 'place' | null>(null);
+  const [reports, setReports] = useState<AdminReportItem[]>([]);
+  const [reportFilter, setReportFilter] = useState<'all' | 'Pending'>('Pending');
+  const [reportBusyId, setReportBusyId] = useState<string | null>(null);
+  const [reportsBackend, setReportsBackend] = useState(false);
 
   const portalOk = canAccessAdminPortal(permissions);
   const canManage = canManageUsers(permissions);
@@ -142,6 +154,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const canBan = canManage;
   const canViewRoles = portalOk || canManageActors(permissions);
   const canManageRoles = canManageActors(permissions);
+  const canViewReports = canManageReports(permissions);
 
   const roleMap = useMemo(() => {
     const m = new Map<string, AdminRole>();
@@ -180,7 +193,9 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
       setRoles(r);
       setPermissions(perms);
       setPartnerApps(apps);
-      if (await isBackendAdminSession()) {
+      const backendAdmin = await isBackendAdminSession();
+      setReportsBackend(backendAdmin);
+      if (backendAdmin) {
         try {
           setPendingPlaces(await listPendingPlaces());
         } catch {
@@ -191,9 +206,15 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
         } catch {
           setPendingBusinesses([]);
         }
+        try {
+          setReports(await listAdminReports());
+        } catch {
+          setReports([]);
+        }
       } else {
         setPendingPlaces([]);
         setPendingBusinesses([]);
+        setReports([]);
       }
       const draft: Record<string, Permission[]> = {};
       r.forEach(role => {
@@ -455,6 +476,54 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     return t('admin.banned');
   };
 
+  const pendingReportCount = useMemo(
+    () => reports.filter(r => r.status === 'Pending').length,
+    [reports],
+  );
+
+  const filteredReports = useMemo(() => {
+    if (reportFilter === 'all') return reports;
+    return reports.filter(r => r.status === reportFilter);
+  }, [reports, reportFilter]);
+
+  const reportStatusLabel = (status: ReportStatus) => {
+    const map: Record<ReportStatus, string> = {
+      Pending: t('admin.reportsStatusPending'),
+      Reviewed: t('admin.reportsStatusReviewed'),
+      Resolved: t('admin.reportsStatusResolved'),
+      Dismissed: t('admin.reportsStatusDismissed'),
+    };
+    return map[status] ?? status;
+  };
+
+  const reportTargetLabel = (targetType: ReportTargetType) => {
+    const map: Record<ReportTargetType, string> = {
+      Post: t('admin.reportsTargetPost'),
+      User: t('admin.reportsTargetUser'),
+      Comment: t('admin.reportsTargetComment'),
+      Place: t('admin.reportsTargetPlace'),
+      Review: t('admin.reportsTargetReview'),
+    };
+    return map[targetType] ?? targetType;
+  };
+
+  const handleReportStatus = async (reportId: string, status: ReportStatus) => {
+    if (reportBusyId) return;
+    setReportBusyId(reportId);
+    try {
+      const updated = await updateAdminReportStatus(reportId, status);
+      setReports(prev => prev.map(r => (r.reportId === reportId ? updated : r)));
+      Toast.show({ type: 'success', text1: t('admin.reportsUpdated') });
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.reportsUpdateError'),
+      });
+    } finally {
+      setReportBusyId(null);
+    }
+  };
+
   const permLabel = (p: Permission) => t(`admin.perm.${p}`);
   const permDesc = (p: Permission) => t(`admin.permDesc.${p}`);
   const groupLabel = (g: PermissionGroupId) => t(`admin.group.${g}`);
@@ -463,6 +532,9 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     { id: 'overview', icon: 'grid-outline', label: t('admin.tabOverview') },
     { id: 'users', icon: 'people-outline', label: t('admin.tabUsers') },
     { id: 'partners', icon: 'storefront-outline', label: t('admin.tabPartners') },
+    ...(canViewReports
+      ? [{ id: 'reports' as Tab, icon: 'flag-outline' as const, label: t('admin.tabReports') }]
+      : []),
     { id: 'roles', icon: 'git-branch-outline', label: t('admin.tabActors') },
     { id: 'myperms', icon: 'shield-checkmark-outline', label: t('admin.tabMyPerms') },
   ];
@@ -753,6 +825,106 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                       </TouchableOpacity>
                     );
                   })}
+                </>
+              )}
+            </>
+          )}
+
+          {tab === 'reports' && (
+            <>
+              {!canViewReports ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="lock-closed-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.noPermission')}</Text>
+                </View>
+              ) : !reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.reportsBackendOnly')}</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={[styles.chipsRow, { marginBottom: 12 }]}>
+                    <TouchableOpacity
+                      style={[styles.chip, reportFilter === 'Pending' && styles.chipActive]}
+                      onPress={() => setReportFilter('Pending')}
+                    >
+                      <Text style={[styles.chipText, reportFilter === 'Pending' && styles.chipTextActive]}>
+                        {t('admin.reportsFilterPending')} ({pendingReportCount})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.chip, reportFilter === 'all' && styles.chipActive]}
+                      onPress={() => setReportFilter('all')}
+                    >
+                      <Text style={[styles.chipText, reportFilter === 'all' && styles.chipTextActive]}>
+                        {t('admin.reportsFilterAll')} ({reports.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {filteredReports.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Ionicons name="flag-outline" size={28} color={Colors.textMuted} />
+                      <Text style={styles.emptyTitle}>{t('admin.reportsEmpty')}</Text>
+                    </View>
+                  ) : (
+                    filteredReports.map(report => (
+                      <View key={report.reportId} style={styles.userCard}>
+                        <View style={styles.userTop}>
+                          <View style={[styles.avatar, { backgroundColor: '#FEE2E2' }]}>
+                            <Ionicons name="flag" size={18} color="#EF4444" />
+                          </View>
+                          <View style={styles.userMeta}>
+                            <Text style={styles.userName}>
+                              {reportTargetLabel(report.targetType)} · {reportStatusLabel(report.status)}
+                            </Text>
+                            <Text style={styles.userHandle} numberOfLines={2}>
+                              {report.targetSummary || report.targetId}
+                            </Text>
+                            <Text style={styles.userEmail}>
+                              {t('admin.reportsReporter')}: {report.reporterDisplayName || report.reporterId}
+                            </Text>
+                            <Text style={styles.detailItemText}>
+                              {t('admin.reportsReason')}: {report.reason}
+                            </Text>
+                            <Text style={styles.userEmail}>{formatDate(report.createdAt, lang)}</Text>
+                          </View>
+                        </View>
+                        {report.status !== 'Resolved' && report.status !== 'Dismissed' ? (
+                          <View style={styles.partnerActions}>
+                            {report.status === 'Pending' ? (
+                              <TouchableOpacity
+                                style={styles.approveBtn}
+                                disabled={reportBusyId === report.reportId}
+                                onPress={() => handleReportStatus(report.reportId, 'Reviewed')}
+                              >
+                                {reportBusyId === report.reportId ? (
+                                  <ActivityIndicator color={Colors.white} />
+                                ) : (
+                                  <Text style={styles.approveBtnText}>{t('admin.reportsMarkReviewed')}</Text>
+                                )}
+                              </TouchableOpacity>
+                            ) : null}
+                            <TouchableOpacity
+                              style={styles.approveBtn}
+                              disabled={reportBusyId === report.reportId}
+                              onPress={() => handleReportStatus(report.reportId, 'Resolved')}
+                            >
+                              <Text style={styles.approveBtnText}>{t('admin.reportsResolve')}</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.rejectBtn}
+                              disabled={reportBusyId === report.reportId}
+                              onPress={() => handleReportStatus(report.reportId, 'Dismissed')}
+                            >
+                              <Text style={styles.rejectBtnText}>{t('admin.reportsDismiss')}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : null}
+                      </View>
+                    ))
+                  )}
                 </>
               )}
             </>
