@@ -18,18 +18,15 @@ import {
   getPackageById,
   type B2bPackageId,
 } from '../../constants/b2bPromotionPackages';
-import { buildDemoCampaignSnapshot, type DemoCampaignSnapshot } from '../../mocks/businessAdvertisingDemo';
-import {
-  getCampaignDraft,
-  getDemoCampaignSnapshot,
-  saveCampaignDraft,
-  saveDemoCampaignSnapshot,
-} from '../../utils/b2bCampaignStorage';
+import { getCampaignDraft, saveCampaignDraft } from '../../utils/b2bCampaignStorage';
+import { getPlaceAnalytics, type PlaceAnalyticsDto } from '../../services/businessApi';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
 import { getMyPlaces, type BusinessPlaceDto, type BusinessSession } from '../../services/businessApi';
 import {
   createAdCampaign,
+  deriveCampaignRunStatus,
   listMyCampaigns,
+  pickCampaignForDashboard,
   type BusinessAdCampaign,
   campaignPackageNameKey,
 } from '../../services/businessAdCampaignApi';
@@ -76,8 +73,16 @@ export default function BusinessAdvertisingScreen({
   const [startDate, setStartDate] = useState(padDate(new Date()));
   const [endDate, setEndDate] = useState(defaultEndDate());
   const [submitting, setSubmitting] = useState(false);
-  const [demoSnapshot, setDemoSnapshot] = useState<DemoCampaignSnapshot | null>(null);
   const [history, setHistory] = useState<BusinessAdCampaign[]>([]);
+  const [dashboardAnalytics, setDashboardAnalytics] = useState<PlaceAnalyticsDto | null>(null);
+  const [dashboardAnalyticsLoading, setDashboardAnalyticsLoading] = useState(false);
+  const [dashboardAnalyticsError, setDashboardAnalyticsError] = useState(false);
+
+  const dashboardCampaign = useMemo(() => pickCampaignForDashboard(history), [history]);
+  const dashboardRunStatus = useMemo(
+    () => (dashboardCampaign ? deriveCampaignRunStatus(dashboardCampaign) : null),
+    [dashboardCampaign],
+  );
 
   const loadPlaces = useCallback(async () => {
     try {
@@ -85,8 +90,6 @@ export default function BusinessAdvertisingScreen({
       const list = await getMyPlaces();
       setPlaces(list);
       const draft = await getCampaignDraft();
-      const snap = await getDemoCampaignSnapshot();
-      if (snap) setDemoSnapshot(snap);
       try {
         setHistory(await listMyCampaigns());
       } catch {
@@ -109,6 +112,31 @@ export default function BusinessAdvertisingScreen({
 
   useEffect(() => { loadPlaces(); }, [loadPlaces]);
 
+  useEffect(() => {
+    if (!dashboardCampaign?.placeId) {
+      setDashboardAnalytics(null);
+      setDashboardAnalyticsError(false);
+      return;
+    }
+    let cancelled = false;
+    setDashboardAnalyticsLoading(true);
+    setDashboardAnalyticsError(false);
+    getPlaceAnalytics(dashboardCampaign.placeId)
+      .then(data => {
+        if (!cancelled) setDashboardAnalytics(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDashboardAnalytics(null);
+          setDashboardAnalyticsError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDashboardAnalyticsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [dashboardCampaign?.placeId, dashboardCampaign?.campaignId]);
+
   const days = useMemo(() => campaignDays(startDate, endDate), [startDate, endDate]);
   const total = useMemo(() => computeCampaignTotal(selectedPkg, days), [selectedPkg, days]);
   const reach = useMemo(() => computeEstimatedReachDemo(selectedPkg, days), [selectedPkg, days]);
@@ -126,15 +154,12 @@ export default function BusinessAdvertisingScreen({
     setSubmitting(true);
     try {
       await saveCampaignDraft({ packageId: selectedPkg, placeId, startDate, endDate });
-      const created = await createAdCampaign({
+      await createAdCampaign({
         placeId,
         packageId: selectedPkg,
         startDate,
         endDate,
       });
-      const snap = buildDemoCampaignSnapshot(selectedPkg, startDate, endDate);
-      await saveDemoCampaignSnapshot(snap);
-      setDemoSnapshot(snap);
       setHistory(await listMyCampaigns());
       Toast.show({
         type: 'success',
@@ -280,11 +305,16 @@ export default function BusinessAdvertisingScreen({
           </>
         ) : null}
 
-        {demoSnapshot ? (
+        {dashboardCampaign && dashboardRunStatus ? (
           <>
             <Text style={[styles.sectionLabel, { marginTop: 28 }]}>{t('biz.ads.dashboardSection')}</Text>
-            <Text style={styles.analyticsHint}>{t('biz.ads.analyticsPreview')}</Text>
-            <B2bCampaignDashboard snapshot={demoSnapshot} />
+            <B2bCampaignDashboard
+              campaign={dashboardCampaign}
+              runStatus={dashboardRunStatus}
+              placeAnalytics={dashboardAnalytics}
+              loadingAnalytics={dashboardAnalyticsLoading}
+              analyticsError={dashboardAnalyticsError}
+            />
           </>
         ) : null}
 

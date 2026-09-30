@@ -66,10 +66,16 @@ function normalizePackageId(raw: string): B2bPackageId {
 }
 
 function normalizePaymentStatus(raw: unknown): CampaignPaymentStatus {
-  if (raw === 'Success' || raw === 1) return 'Success';
-  if (raw === 'Failed' || raw === 2) return 'Failed';
-  if (raw === 'Refunded' || raw === 3) return 'Refunded';
+  const s = typeof raw === 'string' ? raw.trim() : raw;
+  if (s === 'Success' || s === 1) return 'Success';
+  if (s === 'Failed' || s === 2) return 'Failed';
+  if (s === 'Refunded' || s === 3) return 'Refunded';
+  if (s === 'Pending' || s === 0) return 'Pending';
   return 'Pending';
+}
+
+export function campaignNeedsPayment(status: CampaignPaymentStatus): boolean {
+  return status !== 'Success' && status !== 'Refunded';
 }
 
 function normalizeCampaign(raw: Record<string, unknown>): BusinessAdCampaign {
@@ -95,6 +101,31 @@ export function formatCampaignPeriod(startDate: string, endDate: string): string
   const s = startDate.slice(0, 10);
   const e = endDate.slice(0, 10);
   return `${s} → ${e}`;
+}
+
+export type CampaignRunStatus = 'awaiting_payment' | 'scheduled' | 'active' | 'completed';
+
+export function deriveCampaignRunStatus(campaign: BusinessAdCampaign): CampaignRunStatus {
+  if (campaignNeedsPayment(campaign.paymentStatus)) return 'awaiting_payment';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(campaign.startDate.slice(0, 10));
+  const end = new Date(campaign.endDate.slice(0, 10));
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'scheduled';
+  if (today < start) return 'scheduled';
+  if (today > end) return 'completed';
+  return 'active';
+}
+
+/** Chiến dịch mới nhất đã thanh toán; nếu chưa có thì chiến dịch mới nhất. */
+export function pickCampaignForDashboard(campaigns: BusinessAdCampaign[]): BusinessAdCampaign | null {
+  if (!campaigns.length) return null;
+  const sorted = [...campaigns].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  return sorted.find(c => c.paymentStatus === 'Success') ?? sorted[0]!;
 }
 
 export async function listMyCampaigns(): Promise<BusinessAdCampaign[]> {

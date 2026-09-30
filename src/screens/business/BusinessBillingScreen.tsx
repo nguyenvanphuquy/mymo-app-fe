@@ -9,6 +9,7 @@ import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import { Colors, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
 import {
+  campaignNeedsPayment,
   campaignPackageNameKey,
   completeCampaignPayment,
   formatCampaignPeriod,
@@ -43,12 +44,20 @@ export default function BusinessBillingScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [justPaidId, setJustPaidId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     setOrders(await listBillingCampaigns());
   }, []);
 
-  useEffect(() => { load().catch(() => setOrders([])); }, [load]);
+  useEffect(() => {
+    load().catch(err => {
+      setOrders([]);
+      const msg = err instanceof Error ? err.message : t('biz.billing.loadError');
+      setLoadError(msg);
+    });
+  }, [load, t]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -62,7 +71,15 @@ export default function BusinessBillingScreen({
   };
 
   const pay = async (campaign: BusinessAdCampaign) => {
-    if (busyId || campaign.paymentStatus === 'Success') return;
+    if (!campaign.campaignId) {
+      Toast.show({ type: 'error', text1: t('biz.billing.payError') });
+      return;
+    }
+    if (busyId === campaign.campaignId) return;
+    if (!campaignNeedsPayment(campaign.paymentStatus)) {
+      Toast.show({ type: 'info', text1: t('biz.billing.alreadyPaid') });
+      return;
+    }
     setBusyId(campaign.campaignId);
     try {
       const updated = await completeCampaignPayment(campaign.campaignId);
@@ -98,13 +115,22 @@ export default function BusinessBillingScreen({
           />
         )}
       >
-        {orders.length === 0 ? (
+        {loadError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity onPress={() => load().catch(() => {})} style={styles.retryBtn}>
+              <Text style={styles.retryText}>{t('common.retry')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {!loadError && orders.length === 0 ? (
           <BusinessEmptyState
             icon="receipt-outline"
             title={t('biz.billing.empty')}
             description={t('biz.billing.emptyDesc')}
           />
-        ) : (
+        ) : null}
+        {orders.length > 0 ? (
           orders.map(o => (
             <View key={o.campaignId} style={styles.card}>
               <View style={styles.row}>
@@ -116,11 +142,12 @@ export default function BusinessBillingScreen({
               <View style={styles.statusPill}>
                 <Text style={styles.statusText}>{statusLabel(o.paymentStatus, t)}</Text>
               </View>
-              {o.paymentStatus === 'Pending' ? (
+              {campaignNeedsPayment(o.paymentStatus) ? (
                 <TouchableOpacity
-                  style={styles.payBtn}
+                  style={[styles.payBtn, busyId !== null && busyId !== o.campaignId && styles.payBtnDisabled]}
                   onPress={() => pay(o)}
-                  disabled={busyId === o.campaignId}
+                  disabled={busyId !== null && busyId !== o.campaignId}
+                  activeOpacity={0.85}
                 >
                   {busyId === o.campaignId ? (
                     <ActivityIndicator color={Colors.white} size="small" />
@@ -136,7 +163,7 @@ export default function BusinessBillingScreen({
               ) : null}
             </View>
           ))
-        )}
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -176,6 +203,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payBtnText: { color: Colors.white, fontWeight: '800', fontSize: 13 },
+  payBtnDisabled: { opacity: 0.45 },
+  errorBox: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorText: { fontSize: 12, color: '#B91C1C', lineHeight: 18 },
+  retryBtn: { marginTop: 10, alignSelf: 'flex-start' },
+  retryText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   brandBtn: {
     marginTop: 10,
     borderRadius: 12,

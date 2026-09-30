@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
-import type { DemoCampaignSnapshot } from '../../mocks/businessAdvertisingDemo';
-import { DEMO_CAMPAIGN_ANALYTICS_FLAG } from '../../mocks/businessAdvertisingDemo';
+import type { PlaceAnalyticsDto } from '../../services/businessApi';
+import type { BusinessAdCampaign, CampaignRunStatus } from '../../services/businessAdCampaignApi';
+import { campaignPackageNameKey, formatCampaignPeriod } from '../../services/businessAdCampaignApi';
 
 function Metric({ label, value, icon }: { label: string; value: string; icon: React.ComponentProps<typeof Ionicons>['name'] }) {
   return (
@@ -16,42 +17,76 @@ function Metric({ label, value, icon }: { label: string; value: string; icon: Re
   );
 }
 
-export default function B2bCampaignDashboard({ snapshot }: { snapshot: DemoCampaignSnapshot }) {
+function statusI18nKey(runStatus: CampaignRunStatus): string {
+  if (runStatus === 'awaiting_payment') return 'biz.ads.status.awaitingPayment';
+  return `biz.ads.status.${runStatus}`;
+}
+
+export default function B2bCampaignDashboard({
+  campaign,
+  runStatus,
+  placeAnalytics,
+  loadingAnalytics,
+  analyticsError,
+}: {
+  campaign: BusinessAdCampaign;
+  runStatus: CampaignRunStatus;
+  placeAnalytics: PlaceAnalyticsDto | null;
+  loadingAnalytics?: boolean;
+  analyticsError?: boolean;
+}) {
   const { t } = useI18n();
-  const max = Math.max(...snapshot.chartPoints.map(p => p.value), 1);
+  const period = formatCampaignPeriod(campaign.startDate, campaign.endDate);
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.head}>
-        <Text style={styles.title}>{t('biz.ads.dashboardTitle')}</Text>
-        <View style={styles.demoPill}>
-          <Ionicons name="flask-outline" size={12} color="#92400E" />
-          <Text style={styles.demoPillText}>{t('biz.ads.demoBadge')}</Text>
-        </View>
-      </View>
+      <Text style={styles.title}>{t('biz.ads.dashboardTitle')}</Text>
+      <Text style={styles.pkgLine}>
+        {t(campaignPackageNameKey(campaign))} · {campaign.placeName}
+      </Text>
       <Text style={styles.meta}>
-        {t('biz.ads.status')}: {t(`biz.ads.status.${snapshot.status}`)} · {snapshot.startDate} → {snapshot.endDate}
+        {t('biz.ads.status')}: {t(statusI18nKey(runStatus))} · {period}
       </Text>
 
-      <View style={styles.grid}>
-        <Metric label={t('biz.ads.metric.views')} value={snapshot.views.toLocaleString()} icon="eye-outline" />
-        <Metric label={t('biz.ads.metric.saves')} value={snapshot.saves.toLocaleString()} icon="bookmark-outline" />
-        <Metric label={t('biz.ads.metric.checkins')} value={snapshot.checkIns.toLocaleString()} icon="footsteps-outline" />
-        <Metric label={t('biz.ads.metric.engagement')} value={`${snapshot.engagementRate}%`} icon="pulse-outline" />
-      </View>
-
-      <Text style={styles.chartTitle}>{t('biz.ads.chartTitle')}</Text>
-      <View style={styles.chart}>
-        {snapshot.chartPoints.map(p => (
-          <View key={p.label} style={styles.barCol}>
-            <View style={[styles.bar, { height: Math.max(8, (p.value / max) * 80) }]} />
-            <Text style={styles.barLabel}>{p.label}</Text>
+      {loadingAnalytics ? (
+        <ActivityIndicator color={Colors.primary} style={{ marginVertical: 20 }} />
+      ) : analyticsError ? (
+        <Text style={styles.errorNote}>{t('biz.ads.analyticsUnavailable')}</Text>
+      ) : placeAnalytics ? (
+        <>
+          <View style={styles.grid}>
+            <Metric
+              label={t('biz.ads.metric.checkins')}
+              value={placeAnalytics.totalCheckIns.toLocaleString()}
+              icon="footsteps-outline"
+            />
+            <Metric
+              label={t('biz.ads.metric.todayCheckins')}
+              value={placeAnalytics.todayCheckIns.toLocaleString()}
+              icon="today-outline"
+            />
+            <Metric
+              label={t('biz.ads.metric.weekCheckins')}
+              value={placeAnalytics.weeklyCheckIns.toLocaleString()}
+              icon="calendar-outline"
+            />
+            <Metric
+              label={t('biz.ads.metric.monthCheckins')}
+              value={placeAnalytics.monthlyCheckIns.toLocaleString()}
+              icon="stats-chart-outline"
+            />
           </View>
-        ))}
-      </View>
-      <Text style={styles.sourceNote}>
-        {t('biz.ads.demoSource').replace('{flag}', DEMO_CAMPAIGN_ANALYTICS_FLAG)}
-      </Text>
+          <Text style={styles.sourceNote}>{t('biz.ads.analyticsLive')}</Text>
+          <Text style={styles.comingSoon}>{t('biz.ads.chartComingSoon')}</Text>
+        </>
+      ) : null}
+
+      {runStatus === 'awaiting_payment' ? (
+        <View style={styles.payHint}>
+          <Ionicons name="card-outline" size={16} color="#92400E" />
+          <Text style={styles.payHintText}>{t('biz.ads.dashboardPayHint')}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -65,19 +100,9 @@ const styles = StyleSheet.create({
     borderColor: '#EEEAF5',
     ...Shadows.soft,
   },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   title: { fontSize: 17, fontWeight: '900', color: Colors.textDark },
-  demoPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  demoPillText: { fontSize: 10, fontWeight: '800', color: '#92400E' },
-  meta: { fontSize: 12, color: Colors.textMuted, marginTop: 8, marginBottom: 14 },
+  pkgLine: { fontSize: 13, fontWeight: '700', color: Colors.textMid, marginTop: 6 },
+  meta: { fontSize: 12, color: Colors.textMuted, marginTop: 6, marginBottom: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   metric: {
     width: '47%',
@@ -88,22 +113,17 @@ const styles = StyleSheet.create({
   },
   metricVal: { fontSize: 18, fontWeight: '900', color: Colors.textDark },
   metricLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted },
-  chartTitle: { fontSize: 13, fontWeight: '800', color: Colors.textDark, marginTop: 18, marginBottom: 10 },
-  chart: {
+  sourceNote: { fontSize: 11, color: Colors.textMuted, marginTop: 14, lineHeight: 16 },
+  comingSoon: { fontSize: 10, color: Colors.textMuted, marginTop: 8, fontStyle: 'italic' },
+  errorNote: { fontSize: 13, color: '#B45309', marginVertical: 12 },
+  payHint: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 100,
-    gap: 6,
-    paddingHorizontal: 4,
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 14,
+    padding: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
   },
-  barCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
-  bar: {
-    width: '100%',
-    minHeight: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: 6,
-    opacity: 0.85,
-  },
-  barLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, marginTop: 6 },
-  sourceNote: { fontSize: 10, color: Colors.textMuted, marginTop: 12, fontStyle: 'italic' },
+  payHintText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#92400E', lineHeight: 18 },
 });
