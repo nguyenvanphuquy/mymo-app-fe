@@ -64,8 +64,9 @@ export default function BusinessBankPaymentScreen({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [payerRef, setPayerRef] = useState('');
   const [ackBusy, setAckBusy] = useState(false);
-  const [waitingConfirm, setWaitingConfirm] = useState(Boolean(campaign.paymentSubmittedAt));
+  const [showSupport, setShowSupport] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingPay = campaignNeedsPayment(campaign.paymentStatus);
 
   const loadInstructions = useCallback(async () => {
     setLoadError(null);
@@ -89,40 +90,40 @@ export default function BusinessBankPaymentScreen({
     }
   };
 
-  const startPoll = useCallback(() => {
-    stopPoll();
-    pollRef.current = setInterval(async () => {
-      try {
-        const fresh = await getCampaignPaymentStatus(campaign.campaignId);
-        if (fresh && !campaignNeedsPayment(fresh.paymentStatus)) {
-          stopPoll();
-          setWaitingConfirm(false);
-          Toast.show({ type: 'success', text1: t('biz.billing.paySuccess'), text2: t('biz.billing.paySuccessSub') });
-          onPaid(fresh);
-        }
-      } catch {
-        /* ignore transient poll errors */
-      }
-    }, 5000);
+  const checkPaymentOnce = useCallback(async () => {
+    const fresh = await getCampaignPaymentStatus(campaign.campaignId);
+    if (fresh && !campaignNeedsPayment(fresh.paymentStatus)) {
+      stopPoll();
+      Toast.show({ type: 'success', text1: t('biz.billing.paySuccess'), text2: t('biz.billing.paySuccessSub') });
+      onPaid(fresh);
+      return true;
+    }
+    return false;
   }, [campaign.campaignId, onPaid, t]);
 
+  const startPoll = useCallback(() => {
+    stopPoll();
+    void checkPaymentOnce();
+    pollRef.current = setInterval(() => {
+      void checkPaymentOnce();
+    }, 5000);
+  }, [checkPaymentOnce]);
+
   useEffect(() => {
-    if (waitingConfirm && campaignNeedsPayment(campaign.paymentStatus)) startPoll();
+    if (pendingPay) startPoll();
     return stopPoll;
-  }, [waitingConfirm, campaign.paymentStatus, startPoll]);
+  }, [pendingPay, startPoll]);
 
   const copy = async (text: string) => {
     await Clipboard.setStringAsync(text);
     Toast.show({ type: 'info', text1: t('biz.bankPay.copied') });
   };
 
-  const onAck = async () => {
+  const onSubmitSupportRef = async () => {
     setAckBusy(true);
     try {
-      const updated = await acknowledgeCampaignBankTransfer(campaign.campaignId, payerRef);
-      setWaitingConfirm(true);
-      Toast.show({ type: 'success', text1: t('biz.bankPay.ackSuccess'), text2: t('biz.bankPay.ackSuccessSub') });
-      if (!campaignNeedsPayment(updated.paymentStatus)) onPaid(updated);
+      await acknowledgeCampaignBankTransfer(campaign.campaignId, payerRef);
+      Toast.show({ type: 'success', text1: t('biz.bankPay.supportSent') });
     } catch (err) {
       Toast.show({ type: 'error', text1: err instanceof Error ? err.message : t('biz.bankPay.ackError') });
     } finally {
@@ -195,39 +196,71 @@ export default function BusinessBankPaymentScreen({
 
             <Text style={styles.warn}>{t('biz.bankPay.contentWarning')}</Text>
 
-            <Text style={styles.section}>{t('biz.bankPay.optionalRef')}</Text>
-            <TextInput
-              style={styles.input}
-              value={payerRef}
-              onChangeText={setPayerRef}
-              placeholder={t('biz.bankPay.optionalRefPh')}
-              placeholderTextColor={Colors.textMuted}
-            />
-
-            {waitingConfirm ? (
+            {pendingPay ? (
               <View style={styles.waitBox}>
                 <ActivityIndicator color={Colors.primary} />
-                <Text style={styles.waitText}>{t('biz.bankPay.waiting')}</Text>
                 {instructions.autoConfirmEnabled ? (
-                  <Text style={styles.waitSub}>{t('biz.bankPay.waitingAuto')}</Text>
+                  <>
+                    <Text style={styles.waitText}>{t('biz.bankPay.autoFlowTitle')}</Text>
+                    <Text style={styles.waitSub}>{t('biz.bankPay.autoFlowSub')}</Text>
+                  </>
                 ) : (
-                  <Text style={styles.waitSub}>{t('biz.bankPay.waitingManual')}</Text>
+                  <>
+                    <Text style={styles.waitText}>{t('biz.bankPay.waiting')}</Text>
+                    <Text style={styles.waitSub}>{t('biz.bankPay.waitingManual')}</Text>
+                  </>
                 )}
+                <TouchableOpacity
+                  style={styles.refreshBtn}
+                  onPress={() => { void checkPaymentOnce(); }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.refreshBtnText}>{t('biz.bankPay.checkNow')}</Text>
+                </TouchableOpacity>
               </View>
-            ) : (
+            ) : null}
+
+            {!instructions.autoConfirmEnabled && pendingPay ? (
               <TouchableOpacity
                 style={[styles.primaryBtn, ackBusy && styles.primaryBtnDisabled]}
-                onPress={onAck}
+                onPress={onSubmitSupportRef}
                 disabled={ackBusy}
                 activeOpacity={0.9}
               >
-                {ackBusy ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.primaryBtnText}>{t('biz.bankPay.ackBtn')}</Text>
-                )}
+                <Text style={styles.primaryBtnText}>{t('biz.bankPay.ackBtn')}</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
+
+            {instructions.autoConfirmEnabled ? (
+              <TouchableOpacity onPress={() => setShowSupport(v => !v)} style={styles.supportToggle}>
+                <Text style={styles.supportToggleText}>
+                  {showSupport ? t('biz.bankPay.hideSupport') : t('biz.bankPay.showSupport')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {showSupport || !instructions.autoConfirmEnabled ? (
+              <>
+                <Text style={styles.section}>{t('biz.bankPay.optionalRef')}</Text>
+                <Text style={styles.optionalHint}>{t('biz.bankPay.optionalRefHint')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={payerRef}
+                  onChangeText={setPayerRef}
+                  placeholder={t('biz.bankPay.optionalRefPh')}
+                  placeholderTextColor={Colors.textMuted}
+                />
+                {instructions.autoConfirmEnabled && showSupport ? (
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, ackBusy && styles.primaryBtnDisabled]}
+                    onPress={onSubmitSupportRef}
+                    disabled={ackBusy || !payerRef.trim()}
+                  >
+                    <Text style={styles.secondaryBtnText}>{t('biz.bankPay.sendSupportRef')}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
           </>
         ) : null}
       </ScrollView>
@@ -308,6 +341,20 @@ const styles = StyleSheet.create({
   },
   waitText: { fontSize: 14, fontWeight: '800', color: Colors.textDark, textAlign: 'center' },
   waitSub: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },
+  refreshBtn: { marginTop: 8, paddingVertical: 8, paddingHorizontal: 16 },
+  refreshBtnText: { fontSize: 13, fontWeight: '800', color: Colors.primary },
+  supportToggle: { marginTop: 16, alignItems: 'center' },
+  supportToggleText: { fontSize: 12, fontWeight: '700', color: Colors.textMuted, textDecorationLine: 'underline' },
+  optionalHint: { fontSize: 11, color: Colors.textMuted, marginBottom: 8, lineHeight: 16 },
+  secondaryBtn: {
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    marginBottom: 8,
+  },
+  secondaryBtnText: { color: Colors.primary, fontWeight: '800', fontSize: 14 },
   errorBox: { backgroundColor: '#FEE2E2', padding: 14, borderRadius: 12, marginBottom: 12 },
   errorText: { fontSize: 12, color: '#B91C1C' },
   retry: { marginTop: 8, fontWeight: '700', color: Colors.primary },
