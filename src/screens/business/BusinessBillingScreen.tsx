@@ -28,12 +28,21 @@ function statusLabel(status: CampaignPaymentStatus, t: (k: string) => string) {
   return t('biz.billing.pending');
 }
 
-export default function BusinessBillingScreen({ onBack }: { onBack: () => void }) {
+export default function BusinessBillingScreen({
+  onBack,
+  onPackageActivated,
+  onGoToBrand,
+}: {
+  onBack: () => void;
+  onPackageActivated?: () => void;
+  onGoToBrand?: () => void;
+}) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<BusinessAdCampaign[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [justPaidId, setJustPaidId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setOrders(await listBillingCampaigns());
@@ -58,7 +67,13 @@ export default function BusinessBillingScreen({ onBack }: { onBack: () => void }
     try {
       const updated = await completeCampaignPayment(campaign.campaignId);
       setOrders(prev => prev.map(o => (o.campaignId === updated.campaignId ? updated : o)));
-      Toast.show({ type: 'success', text1: t('biz.billing.paySuccess') });
+      setJustPaidId(updated.campaignId);
+      onPackageActivated?.();
+      Toast.show({
+        type: 'success',
+        text1: t('biz.billing.paySuccess'),
+        text2: t('biz.billing.paySuccessSub'),
+      });
     } catch (err) {
       Toast.show({
         type: 'error',
@@ -114,6 +129,11 @@ export default function BusinessBillingScreen({ onBack }: { onBack: () => void }
                   )}
                 </TouchableOpacity>
               ) : null}
+              {o.paymentStatus === 'Success' && justPaidId === o.campaignId && onGoToBrand ? (
+                <TouchableOpacity style={styles.brandBtn} onPress={onGoToBrand} activeOpacity={0.88}>
+                  <Text style={styles.brandBtnText}>{t('biz.billing.viewOnBrand')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           ))
         )}
@@ -156,4 +176,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payBtnText: { color: Colors.white, fontWeight: '800', fontSize: 13 },
+  brandBtn: {
+    marginTop: 10,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryTint,
+  },
+  brandBtnText: { color: Colors.primary, fontWeight: '800', fontSize: 13 },
 });

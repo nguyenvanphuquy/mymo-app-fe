@@ -65,6 +65,13 @@ function normalizePackageId(raw: string): B2bPackageId {
   return 'starter_spot';
 }
 
+function normalizePaymentStatus(raw: unknown): CampaignPaymentStatus {
+  if (raw === 'Success' || raw === 1) return 'Success';
+  if (raw === 'Failed' || raw === 2) return 'Failed';
+  if (raw === 'Refunded' || raw === 3) return 'Refunded';
+  return 'Pending';
+}
+
 function normalizeCampaign(raw: Record<string, unknown>): BusinessAdCampaign {
   return {
     campaignId: String(raw.campaignId ?? raw.CampaignId ?? ''),
@@ -75,7 +82,7 @@ function normalizeCampaign(raw: Record<string, unknown>): BusinessAdCampaign {
     startDate: String(raw.startDate ?? raw.StartDate ?? ''),
     endDate: String(raw.endDate ?? raw.EndDate ?? ''),
     amountVnd: Number(raw.amountVnd ?? raw.AmountVnd ?? 0),
-    paymentStatus: String(raw.paymentStatus ?? raw.PaymentStatus ?? 'Pending') as CampaignPaymentStatus,
+    paymentStatus: normalizePaymentStatus(raw.paymentStatus ?? raw.PaymentStatus),
     createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
   };
 }

@@ -15,19 +15,23 @@ import {
   getPlaceAnalytics,
   type BusinessSession,
 } from '../../services/businessApi';
-import { getActiveVibeMapPackage } from '../../services/businessAdCampaignApi';
+import { getActiveVibeMapPackage, listMyCampaigns } from '../../services/businessAdCampaignApi';
 import { B2B_VIBEMAP_PACKAGES } from '../../constants/b2bPromotionPackages';
 
 export default function BusinessHomeScreen({
   session,
+  packageRefreshKey = 0,
   onOpenAdvertising,
   onOpenNotifications,
+  onOpenBilling,
   onGoPlaces,
   onGoEvents,
 }: {
   session: BusinessSession;
+  packageRefreshKey?: number;
   onOpenAdvertising: () => void;
   onOpenNotifications: () => void;
+  onOpenBilling?: () => void;
   onGoPlaces: () => void;
   onGoEvents: () => void;
 }) {
@@ -40,6 +44,7 @@ export default function BusinessHomeScreen({
   const [totalCheckIns, setTotalCheckIns] = useState(0);
   const [todayCheckIns, setTodayCheckIns] = useState(0);
   const [activePkgKey, setActivePkgKey] = useState<string | null>(null);
+  const [hasUnpaidCampaign, setHasUnpaidCampaign] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -50,8 +55,15 @@ export default function BusinessHomeScreen({
       if (active.packageId) {
         const pkg = B2B_VIBEMAP_PACKAGES.find(p => p.id === active.packageId);
         setActivePkgKey(pkg?.nameKey ?? null);
+        setHasUnpaidCampaign(false);
       } else {
         setActivePkgKey(null);
+        try {
+          const campaigns = await listMyCampaigns();
+          setHasUnpaidCampaign(campaigns.some(c => c.paymentStatus === 'Pending'));
+        } catch {
+          setHasUnpaidCampaign(false);
+        }
       }
 
       const businesses = await getMyBusinesses();
@@ -83,7 +95,7 @@ export default function BusinessHomeScreen({
     }
   }, [session.displayName]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, packageRefreshKey]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -114,6 +126,17 @@ export default function BusinessHomeScreen({
         <Text style={styles.greeting}>{t('biz.home.greeting').replace('{name}', session.displayName)}</Text>
         <Text style={styles.sub}>{businessName || t('biz.home.sub')}</Text>
 
+        {hasUnpaidCampaign && onOpenBilling ? (
+          <TouchableOpacity style={styles.payBanner} onPress={onOpenBilling} activeOpacity={0.9}>
+            <Ionicons name="receipt-outline" size={22} color="#92400E" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.payBannerTitle}>{t('biz.home.pendingPayTitle')}</Text>
+              <Text style={styles.payBannerSub}>{t('biz.home.pendingPaySub')}</Text>
+            </View>
+            <Text style={styles.payBannerCta}>{t('biz.home.openBilling')}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity style={styles.promoCard} onPress={onOpenAdvertising} activeOpacity={0.92}>
           <LinearGradient colors={Gradients.primary} style={styles.promoGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <View style={styles.promoIcon}>
@@ -123,7 +146,7 @@ export default function BusinessHomeScreen({
               <Text style={styles.promoTitle}>{t('biz.home.adsCardTitle')}</Text>
               <Text style={styles.promoSub}>{t('biz.home.adsCardSub')}</Text>
               {activePkgKey ? (
-                <Text style={styles.promoPkg}>{t('biz.ads.activePackage')}: {t(activePkgKey)}</Text>
+                <Text style={styles.promoPkg}>{t('biz.ads.activePackageLive')}: {t(activePkgKey)}</Text>
               ) : null}
             </View>
             <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.9)" />
@@ -233,6 +256,20 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '800', color: Colors.activeGreen },
   greeting: { fontSize: 26, fontWeight: '900', color: Colors.textDark, letterSpacing: -0.6 },
   sub: { fontSize: 13, color: Colors.textMid, marginTop: 6, marginBottom: 18 },
+  payBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  payBannerTitle: { fontSize: 13, fontWeight: '800', color: '#92400E' },
+  payBannerSub: { fontSize: 11, color: '#B45309', marginTop: 2, lineHeight: 15 },
+  payBannerCta: { fontSize: 11, fontWeight: '800', color: Colors.primary },
   promoCard: { borderRadius: 22, overflow: 'hidden', marginBottom: 22, ...Shadows.glow },
   promoGrad: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14 },
   promoIcon: {

@@ -20,6 +20,7 @@ import {
 
 export default function BusinessBrandScreen({
   session,
+  packageRefreshKey = 0,
   onLogout,
   onSwitchToUserApp,
   onOpenAdvertising,
@@ -31,6 +32,7 @@ export default function BusinessBrandScreen({
   onOpenHelp,
 }: {
   session: BusinessSession;
+  packageRefreshKey?: number;
   onLogout: () => void;
   onSwitchToUserApp?: () => void;
   onOpenAdvertising: () => void;
@@ -61,7 +63,7 @@ export default function BusinessBrandScreen({
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, packageRefreshKey]);
 
   const activePkg = activePkgId ? B2B_VIBEMAP_PACKAGES.find(p => p.id === activePkgId) : null;
   const approvedPlaces = places.filter(p => p.status === 'Approved');

@@ -37,6 +37,15 @@ export default function BusinessApp({
   const [tab, setTab] = useState<BizTab>('home');
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [overlay, setOverlay] = useState<BizOverlay | null>(null);
+  const [packageRefreshKey, setPackageRefreshKey] = useState(0);
+
+  const notifyPackageUpdated = () => setPackageRefreshKey(k => k + 1);
+  const openBilling = () => setOverlay('billing');
+  const goBrandAfterPayment = () => {
+    notifyPackageUpdated();
+    setOverlay(null);
+    setTab('brand');
+  };
 
   useEffect(() => {
     hasCompletedBusinessOnboarding().then(done => {
@@ -78,7 +87,13 @@ export default function BusinessApp({
       case 'notifications':
         return <BusinessNotificationsScreen onBack={closeOverlay} />;
       case 'billing':
-        return <BusinessBillingScreen onBack={closeOverlay} />;
+        return (
+          <BusinessBillingScreen
+            onBack={closeOverlay}
+            onPackageActivated={notifyPackageUpdated}
+            onGoToBrand={goBrandAfterPayment}
+          />
+        );
       case 'editProfile':
         return <BusinessEditProfileScreen session={session} onBack={closeOverlay} />;
       case 'help':
@@ -90,8 +105,10 @@ export default function BusinessApp({
       return (
         <BusinessHomeScreen
           session={session}
+          packageRefreshKey={packageRefreshKey}
           onOpenAdvertising={() => setOverlay('advertising')}
           onOpenNotifications={() => setOverlay('notifications')}
+          onOpenBilling={openBilling}
           onGoPlaces={() => selectTab('places')}
           onGoEvents={() => selectTab('events')}
         />
@@ -111,13 +128,14 @@ export default function BusinessApp({
     return (
       <BusinessBrandScreen
         session={session}
+        packageRefreshKey={packageRefreshKey}
         onLogout={handleLogout}
         onSwitchToUserApp={onSwitchToUserApp}
         onOpenAdvertising={() => setOverlay('advertising')}
         onNavigateToPlaces={() => selectTab('places')}
         onNavigateToEvents={() => selectTab('events')}
         onOpenNotifications={() => setOverlay('notifications')}
-        onOpenBilling={() => setOverlay('billing')}
+        onOpenBilling={openBilling}
         onOpenEditProfile={() => setOverlay('editProfile')}
         onOpenHelp={() => setOverlay('help')}
       />
