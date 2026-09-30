@@ -190,6 +190,33 @@ export async function getMyBusinesses(): Promise<BusinessDto[]> {
   return list.map(normalizeBusiness);
 }
 
+export async function getBusinessById(businessId: string): Promise<BusinessDto> {
+  const res = await requestJson<Record<string, unknown>>(`/business/${businessId}`, 'GET');
+  return normalizeBusiness(res.data ?? {});
+}
+
+export async function updateBusiness(
+  businessId: string,
+  payload: {
+    name: string;
+    description?: string | null;
+    logoUrl?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    website?: string | null;
+  },
+): Promise<BusinessDto> {
+  const res = await requestJson<Record<string, unknown>>(`/business/${businessId}`, 'PUT', {
+    name: payload.name.trim(),
+    description: payload.description?.trim() || null,
+    logoUrl: payload.logoUrl ?? null,
+    phone: payload.phone?.trim() || null,
+    email: payload.email?.trim() || null,
+    website: payload.website?.trim() || null,
+  });
+  return normalizeBusiness(res.data ?? {});
+}
+
 export async function createBusiness(payload: {
   name: string;
   description?: string;

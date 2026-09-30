@@ -112,8 +112,8 @@ export default function BusinessBrandScreen({
             ) : null}
           </View>
 
-          <Text style={styles.displayName}>{session.displayName}</Text>
-          <Text style={styles.legalName}>{business?.name ?? '—'}</Text>
+          <Text style={styles.displayName}>{business?.name ?? session.displayName}</Text>
+          <Text style={styles.legalName}>{session.email}</Text>
 
           <View style={styles.tagRow}>
             <View style={styles.tag}>
