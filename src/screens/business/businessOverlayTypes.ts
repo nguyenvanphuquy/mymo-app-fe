@@ -1,5 +1,6 @@
 export type BizOverlay =
   | 'advertising'
+  | 'bankPay'
   | 'campaignSuccess'
   | 'notifications'
   | 'billing'

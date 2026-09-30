@@ -137,13 +137,34 @@ export function deriveCampaignRunStatus(campaign: BusinessAdCampaign): CampaignR
   return 'active';
 }
 
-/** Chiến dịch mới nhất đã thanh toán; nếu chưa có thì chiến dịch mới nhất. */
+/** Chiến dịch đã thanh toán đang trong khoảng ngày; không trả về đơn chưa trả. */
 export function pickCampaignForDashboard(campaigns: BusinessAdCampaign[]): BusinessAdCampaign | null {
-  if (!campaigns.length) return null;
-  const sorted = [...campaigns].sort(
+  const paid = campaigns.filter(c => c.paymentStatus === 'Success');
+  if (!paid.length) return null;
+  const sorted = [...paid].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
-  return sorted.find(c => c.paymentStatus === 'Success') ?? sorted[0]!;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const inRange = sorted.find(c => {
+    const start = new Date(c.startDate.slice(0, 10));
+    const end = new Date(c.endDate.slice(0, 10));
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return start <= today && end >= today;
+  });
+  return inRange ?? sorted[0]!;
+}
+
+export function resolveDashboardCampaign(
+  campaigns: BusinessAdCampaign[],
+  activePackage: ActiveVibeMapPackage | null,
+): BusinessAdCampaign | null {
+  if (activePackage?.campaignId) {
+    const match = campaigns.find(c => c.campaignId === activePackage.campaignId);
+    if (match && match.paymentStatus === 'Success') return match;
+  }
+  return pickCampaignForDashboard(campaigns);
 }
 
 export async function listMyCampaigns(): Promise<BusinessAdCampaign[]> {

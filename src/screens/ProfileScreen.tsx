@@ -27,10 +27,11 @@ import { avatarUri } from '../constants/defaultAvatar';
 import PremiumScreen from './PremiumScreen';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
-import { getPremiumPlan, isPremiumActive, type PremiumPlanId } from '../utils/premiumStorage';
+import { isPremiumActive, syncPremiumPlanFromServer, type PremiumPlanId } from '../utils/premiumStorage';
 import { getMyBusinessRegistration, type BusinessRegistrationDto } from '../services/businessRegistrationApi';
 import RegisterBusinessScreen from './RegisterBusinessScreen';
 import { getStoredAuthSession } from '../services/authApi';
+import { BUSINESS_OWNER_ROLE } from '../services/businessApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -149,13 +150,23 @@ export default function ProfileScreen({
     refreshAll();
   }, [isActive, refreshAll]);
 
+  const isBusinessRole =
+    authRole != null && authRole.toLowerCase() === BUSINESS_OWNER_ROLE.toLowerCase();
+  const showRegisterBusiness = authRole != null && authRole.toLowerCase() === 'user';
+
   useEffect(() => {
-    getPremiumPlan().then(setPremiumPlan).catch(() => {});
+    syncPremiumPlanFromServer().then(setPremiumPlan).catch(() => {});
     (async () => {
       const session = await getStoredAuthSession().catch(() => null);
-      setAuthRole(session?.role?.trim() ?? null);
+      const role = session?.role?.trim() ?? null;
+      setAuthRole(role);
       const uid = session?.userId || profile?.id;
       if (!uid) return;
+      const isBiz = role != null && role.toLowerCase() === BUSINESS_OWNER_ROLE.toLowerCase();
+      if (isBiz) {
+        setBusinessReg(null);
+        return;
+      }
       const reg = await getMyBusinessRegistration().catch(() => null);
       setBusinessReg(reg);
     })();
@@ -163,11 +174,12 @@ export default function ProfileScreen({
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('business-reg:updated', async () => {
+      if (isBusinessRole) return;
       const reg = await getMyBusinessRegistration().catch(() => null);
       setBusinessReg(reg);
     });
     return () => sub.remove();
-  }, []);
+  }, [isBusinessRole]);
 
   const copyProfileLink = async () => {
     if (!profileLink) return;
@@ -819,7 +831,7 @@ export default function ProfileScreen({
           right={<Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
           onPress={() => Toast.show({ type: 'info', text1: t('profile.blocked'), text2: t('profile.blockedDesc') })}
         />
-        {authRole === 'Business' && onOpenBusinessPortal ? (
+        {isBusinessRole && onOpenBusinessPortal ? (
           <SettingRow
             icon="briefcase"
             label={t('profile.openBusinessPortal')}
@@ -830,44 +842,48 @@ export default function ProfileScreen({
             }}
           />
         ) : null}
-        <SettingRow
-          icon="storefront"
-          label={t('profile.registerBusiness')}
-          hint={
-            !businessReg
-              ? undefined
-              : businessReg.status === 'Pending'
-                ? t('profile.partnerPendingHint')
-                : businessReg.status === 'Approved'
-                  ? t('profile.partnerApprovedHint')
-                  : t('profile.partnerRejectedHint')
-          }
-          right={
-            businessReg ? (
-              <View style={[
-                styles.partnerPill,
-                businessReg.status === 'Approved' && styles.partnerPillOk,
-                businessReg.status === 'Rejected' && styles.partnerPillNo,
-              ]}>
-                <Text style={styles.partnerPillText}>
-                  {businessReg.status === 'Pending'
-                    ? t('premium.partnerPending')
+        {showRegisterBusiness ? (
+          <>
+            <SettingRow
+              icon="storefront"
+              label={t('profile.registerBusiness')}
+              hint={
+                !businessReg
+                  ? undefined
+                  : businessReg.status === 'Pending'
+                    ? t('profile.partnerPendingHint')
                     : businessReg.status === 'Approved'
-                      ? t('biz.badge')
-                      : t('premium.partnerRejected')}
-                </Text>
-              </View>
-            ) : (
-              <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-            )
-          }
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setRegisterBusinessOpen(true);
-          }}
-        />
-        {businessReg?.status === 'Rejected' && businessReg.rejectReason ? (
-          <Text style={styles.rejectHint}>{businessReg.rejectReason}</Text>
+                      ? t('profile.partnerApprovedHint')
+                      : t('profile.partnerRejectedHint')
+              }
+              right={
+                businessReg ? (
+                  <View style={[
+                    styles.partnerPill,
+                    businessReg.status === 'Approved' && styles.partnerPillOk,
+                    businessReg.status === 'Rejected' && styles.partnerPillNo,
+                  ]}>
+                    <Text style={styles.partnerPillText}>
+                      {businessReg.status === 'Pending'
+                        ? t('premium.partnerPending')
+                        : businessReg.status === 'Approved'
+                          ? t('biz.badge')
+                          : t('premium.partnerRejected')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                )
+              }
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRegisterBusinessOpen(true);
+              }}
+            />
+            {businessReg?.status === 'Rejected' && businessReg.rejectReason ? (
+              <Text style={styles.rejectHint}>{businessReg.rejectReason}</Text>
+            ) : null}
+          </>
         ) : null}
         <SettingRow
           icon="sparkles"
@@ -913,19 +929,21 @@ export default function ProfileScreen({
         />
       </Modal>
 
-      <Modal
-        visible={registerBusinessOpen}
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setRegisterBusinessOpen(false)}
-      >
-        <RegisterBusinessScreen
-          onClose={() => {
-            setRegisterBusinessOpen(false);
-            DeviceEventEmitter.emit('business-reg:updated');
-          }}
-        />
-      </Modal>
+      {showRegisterBusiness ? (
+        <Modal
+          visible={registerBusinessOpen}
+          animationType="slide"
+          statusBarTranslucent
+          onRequestClose={() => setRegisterBusinessOpen(false)}
+        >
+          <RegisterBusinessScreen
+            onClose={() => {
+              setRegisterBusinessOpen(false);
+              DeviceEventEmitter.emit('business-reg:updated');
+            }}
+          />
+        </Modal>
+      ) : null}
     </ScrollView>
   );
 }

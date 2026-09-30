@@ -6,18 +6,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
-import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
-import { Colors, Shadows } from '../../constants/colors';
-import { useI18n } from '../../i18n';
+import { Colors, Shadows } from '../constants/colors';
+import { useI18n } from '../i18n';
 import {
-  acknowledgeCampaignBankTransfer,
-  campaignNeedsPayment,
-  campaignPackageNameKey,
-  getCampaignBankTransferInstructions,
-  getCampaignPaymentStatus,
-  type BusinessAdCampaign,
-  type CampaignBankTransferInstructions,
-} from '../../services/businessAdCampaignApi';
+  acknowledgePremiumBankTransfer,
+  getPremiumBankTransferInstructions,
+  getPremiumOrder,
+  premiumOrderNeedsPayment,
+  premiumPlanNameKey,
+  type PremiumBankTransferInstructions,
+  type UserPremiumOrder,
+} from '../services/userPremiumApi';
 
 function formatVnd(n: number, lang: string) {
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(n) + (lang === 'vi' ? 'đ' : ' VND');
@@ -48,38 +47,38 @@ function CopyRow({
   );
 }
 
-export default function BusinessBankPaymentScreen({
-  campaign,
+export default function UserPremiumBankPaymentScreen({
+  order,
   onBack,
   onPaid,
 }: {
-  campaign: BusinessAdCampaign;
+  order: UserPremiumOrder;
   onBack: () => void;
-  onPaid: (updated: BusinessAdCampaign) => void;
+  onPaid: (updated: UserPremiumOrder) => void;
 }) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
-  const [instructions, setInstructions] = useState<CampaignBankTransferInstructions | null>(null);
+  const [instructions, setInstructions] = useState<PremiumBankTransferInstructions | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [payerRef, setPayerRef] = useState('');
   const [ackBusy, setAckBusy] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingPay = campaignNeedsPayment(campaign.paymentStatus);
+  const pendingPay = premiumOrderNeedsPayment(order.paymentStatus);
 
   const loadInstructions = useCallback(async () => {
     setLoadError(null);
     setLoading(true);
     try {
-      setInstructions(await getCampaignBankTransferInstructions(campaign.campaignId));
+      setInstructions(await getPremiumBankTransferInstructions(order.orderId));
     } catch (err) {
       setInstructions(null);
-      setLoadError(err instanceof Error ? err.message : t('biz.bankPay.loadError'));
+      setLoadError(err instanceof Error ? err.message : t('premium.bankPay.loadError'));
     } finally {
       setLoading(false);
     }
-  }, [campaign.campaignId, t]);
+  }, [order.orderId, t]);
 
   useEffect(() => { loadInstructions(); }, [loadInstructions]);
 
@@ -91,15 +90,15 @@ export default function BusinessBankPaymentScreen({
   };
 
   const checkPaymentOnce = useCallback(async () => {
-    const fresh = await getCampaignPaymentStatus(campaign.campaignId);
-    if (fresh && !campaignNeedsPayment(fresh.paymentStatus)) {
+    const fresh = await getPremiumOrder(order.orderId);
+    if (!premiumOrderNeedsPayment(fresh.paymentStatus)) {
       stopPoll();
-      Toast.show({ type: 'success', text1: t('biz.billing.paySuccess'), text2: t('biz.billing.paySuccessSub') });
+      Toast.show({ type: 'success', text1: t('premium.welcome'), text2: t('premium.welcomeDesc') });
       onPaid(fresh);
       return true;
     }
     return false;
-  }, [campaign.campaignId, onPaid, t]);
+  }, [order.orderId, onPaid, t]);
 
   const startPoll = useCallback(() => {
     stopPoll();
@@ -122,7 +121,7 @@ export default function BusinessBankPaymentScreen({
   const onSubmitSupportRef = async () => {
     setAckBusy(true);
     try {
-      await acknowledgeCampaignBankTransfer(campaign.campaignId, payerRef);
+      await acknowledgePremiumBankTransfer(order.orderId, payerRef);
       Toast.show({ type: 'success', text1: t('biz.bankPay.supportSent') });
     } catch (err) {
       Toast.show({ type: 'error', text1: err instanceof Error ? err.message : t('biz.bankPay.ackError') });
@@ -131,13 +130,19 @@ export default function BusinessBankPaymentScreen({
     }
   };
 
-  const amount = instructions?.amountVnd ?? campaign.amountVnd;
+  const amount = instructions?.amountVnd ?? order.amountVnd;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <BusinessScreenHeader title={t('biz.bankPay.title')} onBack={onBack} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn} activeOpacity={0.85}>
+          <Ionicons name="arrow-back" size={20} color={Colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('premium.bankPay.title')}</Text>
+        <View style={styles.backBtn} />
+      </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
-        <Text style={styles.pkg}>{t(campaignPackageNameKey(campaign))}</Text>
+        <Text style={styles.pkg}>{t(premiumPlanNameKey(order.planId))}</Text>
         <Text style={styles.amount}>{formatVnd(amount, lang)}</Text>
 
         {loading ? <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} /> : null}
@@ -154,44 +159,15 @@ export default function BusinessBankPaymentScreen({
           <>
             <Text style={styles.section}>{t('biz.bankPay.qrSection')}</Text>
             {instructions.vietQrImageUrl ? (
-              <Image
-                source={{ uri: instructions.vietQrImageUrl }}
-                style={styles.qr}
-                resizeMode="contain"
-              />
+              <Image source={{ uri: instructions.vietQrImageUrl }} style={styles.qr} resizeMode="contain" />
             ) : null}
 
             <View style={styles.card}>
-              <CopyRow
-                label={t('biz.bankPay.bank')}
-                value={instructions.bankName}
-                onCopy={() => copy(instructions.bankName)}
-                copyLabel={t('biz.bankPay.copy')}
-              />
-              <CopyRow
-                label={t('biz.bankPay.accountNumber')}
-                value={instructions.accountNumber}
-                onCopy={() => copy(instructions.accountNumber)}
-                copyLabel={t('biz.bankPay.copy')}
-              />
-              <CopyRow
-                label={t('biz.bankPay.accountName')}
-                value={instructions.accountName}
-                onCopy={() => copy(instructions.accountName)}
-                copyLabel={t('biz.bankPay.copy')}
-              />
-              <CopyRow
-                label={t('biz.bankPay.amount')}
-                value={formatVnd(instructions.amountVnd, lang)}
-                onCopy={() => copy(String(Math.round(instructions.amountVnd)))}
-                copyLabel={t('biz.bankPay.copy')}
-              />
-              <CopyRow
-                label={t('biz.bankPay.transferContent')}
-                value={instructions.transferReferenceCode}
-                onCopy={() => copy(instructions.transferReferenceCode)}
-                copyLabel={t('biz.bankPay.copy')}
-              />
+              <CopyRow label={t('biz.bankPay.bank')} value={instructions.bankName} onCopy={() => copy(instructions.bankName)} copyLabel={t('biz.bankPay.copy')} />
+              <CopyRow label={t('biz.bankPay.accountNumber')} value={instructions.accountNumber} onCopy={() => copy(instructions.accountNumber)} copyLabel={t('biz.bankPay.copy')} />
+              <CopyRow label={t('biz.bankPay.accountName')} value={instructions.accountName} onCopy={() => copy(instructions.accountName)} copyLabel={t('biz.bankPay.copy')} />
+              <CopyRow label={t('biz.bankPay.amount')} value={formatVnd(instructions.amountVnd, lang)} onCopy={() => copy(String(Math.round(instructions.amountVnd)))} copyLabel={t('biz.bankPay.copy')} />
+              <CopyRow label={t('biz.bankPay.transferContent')} value={instructions.transferReferenceCode} onCopy={() => copy(instructions.transferReferenceCode)} copyLabel={t('biz.bankPay.copy')} />
             </View>
 
             <Text style={styles.warn}>{t('biz.bankPay.contentWarning')}</Text>
@@ -201,15 +177,9 @@ export default function BusinessBankPaymentScreen({
                 <ActivityIndicator color={Colors.primary} />
                 <Text style={styles.waitText}>{t('biz.bankPay.autoFlowTitle')}</Text>
                 <Text style={styles.waitSub}>
-                  {instructions.autoConfirmEnabled
-                    ? t('biz.bankPay.autoFlowSub')
-                    : t('biz.bankPay.autoFlowSubNoWebhook')}
+                  {instructions.autoConfirmEnabled ? t('biz.bankPay.autoFlowSub') : t('biz.bankPay.autoFlowSubNoWebhook')}
                 </Text>
-                <TouchableOpacity
-                  style={styles.refreshBtn}
-                  onPress={() => { void checkPaymentOnce(); }}
-                  activeOpacity={0.85}
-                >
+                <TouchableOpacity style={styles.refreshBtn} onPress={() => { void checkPaymentOnce(); }} activeOpacity={0.85}>
                   <Text style={styles.refreshBtnText}>{t('biz.bankPay.checkNow')}</Text>
                 </TouchableOpacity>
               </View>
@@ -250,6 +220,23 @@ export default function BusinessBankPaymentScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFC' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.soft,
+  },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: Colors.textDark },
   pkg: { fontSize: 16, fontWeight: '900', color: Colors.textDark },
   amount: { fontSize: 28, fontWeight: '900', color: Colors.primary, marginTop: 6, marginBottom: 16 },
   section: {
@@ -304,14 +291,7 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
     marginBottom: 16,
   },
-  primaryBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
   primaryBtnDisabled: { opacity: 0.7 },
-  primaryBtnText: { color: Colors.white, fontWeight: '900', fontSize: 15 },
   waitBox: {
     alignItems: 'center',
     padding: 20,

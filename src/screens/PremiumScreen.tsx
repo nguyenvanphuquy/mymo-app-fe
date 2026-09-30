@@ -10,15 +10,14 @@ import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import SparkleField from '../components/SparkleField';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  getPremiumPlan,
   setPremiumPlan,
+  syncPremiumPlanFromServer,
   type PremiumPlanId,
 } from '../utils/premiumStorage';
-import PartnerApplyWizard from './PartnerApplyWizard';
-import B2bPricingSection from '../components/b2b/B2bPricingSection';
-import B2bValueFunnel from '../components/b2b/B2bValueFunnel';
-import type { B2bPackageId } from '../constants/b2bPromotionPackages';
+import { createPremiumOrder, type UserPremiumOrder } from '../services/userPremiumApi';
+import UserPremiumBankPaymentScreen from './UserPremiumBankPaymentScreen';
 
 interface PremiumScreenProps {
   onClose: () => void;
@@ -62,20 +61,22 @@ function formatVnd(amount: number, lang: string): string {
 export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenProps) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
-  const [track, setTrack] = useState<'personal' | 'partner'>('personal');
   const [currentPlan, setCurrentPlan] = useState<PremiumPlanId>('free');
   const [selectedPlan, setSelectedPlan] = useState<PremiumPlanId>('yearly');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [partnerPkg, setPartnerPkg] = useState<B2bPackageId>('featured_venue');
+  const [payOrder, setPayOrder] = useState<UserPremiumOrder | null>(null);
 
   useEffect(() => {
-    getPremiumPlan()
-      .then(plan => {
+    (async () => {
+      try {
+        const plan = await syncPremiumPlanFromServer();
         setCurrentPlan(plan);
         if (plan !== 'free') setSelectedPlan(plan);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const handleSelect = (planId: PremiumPlanId) => {
@@ -103,22 +104,33 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
       return;
     }
 
+    const token = await AsyncStorage.getItem('mymo.accessToken');
+    if (!token) {
+      Toast.show({ type: 'error', text1: t('premium.needLogin') });
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await new Promise(r => setTimeout(r, 800));
-      await setPremiumPlan(selectedPlan);
-      setCurrentPlan(selectedPlan);
-      onPlanChanged?.(selectedPlan);
+      const order = await createPremiumOrder(selectedPlan);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setPayOrder(order);
+    } catch (err) {
       Toast.show({
-        type: 'success',
-        text1: t('premium.welcome'),
-        text2: t('premium.welcomeDesc'),
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('premium.orderError'),
       });
-      onClose();
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const onPaymentComplete = async (updated: UserPremiumOrder) => {
+    await setPremiumPlan(updated.planId);
+    setCurrentPlan(updated.planId);
+    onPlanChanged?.(updated.planId);
+    setPayOrder(null);
+    onClose();
   };
 
   const ctaLabel = selectedPlan === 'free'
@@ -128,6 +140,16 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
     : selectedPlan === 'monthly'
     ? t('premium.subscribeMonthly')
     : t('premium.subscribeYearly');
+
+  if (payOrder) {
+    return (
+      <UserPremiumBankPaymentScreen
+        order={payOrder}
+        onBack={() => setPayOrder(null)}
+        onPaid={onPaymentComplete}
+      />
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -152,35 +174,16 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
         <View style={styles.backBtn} />
       </View>
 
-      <View style={styles.trackTabs}>
-        {(['personal', 'partner'] as const).map(item => (
-          <TouchableOpacity
-            key={item}
-            onPress={() => setTrack(item)}
-            style={[styles.trackTab, track === item && styles.trackTabActive]}
-            activeOpacity={0.85}
-          >
-            <Text style={[styles.trackTabText, track === item && styles.trackTabTextActive]}>
-              {item === 'personal' ? t('premium.tabPersonal') : t('premium.tabPartner')}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + (track === 'personal' ? 100 : 32) }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
       >
         <View style={styles.heroCard}>
           <LinearGradient colors={Gradients.primary} style={styles.heroGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <Text style={styles.heroEmoji}>✨</Text>
-            <Text style={styles.heroTitle}>
-              {track === 'personal' ? t('premium.heroTitle') : t('premium.partnerHeroTitle')}
-            </Text>
-            <Text style={styles.heroSub}>
-              {track === 'personal' ? t('premium.heroSub') : t('premium.partnerHeroSub')}
-            </Text>
-            {track === 'personal' && currentPlan !== 'free' && (
+            <Text style={styles.heroTitle}>{t('premium.heroTitle')}</Text>
+            <Text style={styles.heroSub}>{t('premium.heroSub')}</Text>
+            {currentPlan !== 'free' && (
               <View style={styles.activePill}>
                 <Ionicons name="checkmark-circle" size={14} color={Colors.white} />
                 <Text style={styles.activePillText}>
@@ -188,32 +191,9 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
                 </Text>
               </View>
             )}
-            {track === 'partner' && (
-              <View style={styles.activePill}>
-                <Ionicons name="megaphone-outline" size={14} color={Colors.white} />
-                <Text style={styles.activePillText}>{t('biz.b2b.streamLabel')}</Text>
-              </View>
-            )}
           </LinearGradient>
         </View>
 
-        {track === 'partner' ? (
-          <>
-            <View style={styles.partnerHeroMini}>
-              <Text style={styles.partnerHeroMiniTitle}>{t('biz.ads.heroTitle')}</Text>
-              <Text style={styles.partnerHeroMiniSub}>{t('biz.ads.heroSub')}</Text>
-            </View>
-            <B2bPricingSection selectedId={partnerPkg} onSelect={setPartnerPkg} />
-            <View style={{ marginTop: 16 }}>
-              <B2bValueFunnel />
-            </View>
-            <Text style={styles.partnerWarn}>{t('premium.partnerWarn')}</Text>
-            <Text style={styles.sectionLabel}>{t('premium.partnerApplyTitle')}</Text>
-            <PartnerApplyWizard onSubmitted={onClose} />
-            <Text style={styles.footnote}>{t('biz.ads.footer')}</Text>
-          </>
-        ) : (
-          <>
         <Text style={styles.sectionLabel}>{t('premium.choosePlan')}</Text>
 
         {loading ? (
@@ -293,12 +273,8 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
         </View>
 
         <Text style={styles.footnote}>{t('premium.footnote')}</Text>
-          </>
-        )}
-        {/* personal vs partner tracks */}
       </ScrollView>
 
-      {track === 'personal' && (
       <View style={[styles.footer, { paddingBottom: Math.max(16, insets.bottom + 8) }]}>
         <TouchableOpacity
           onPress={handleSubscribe}
@@ -318,7 +294,6 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
           </LinearGradient>
         </TouchableOpacity>
       </View>
-      )}
     </View>
   );
 }
@@ -329,7 +304,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryTint,
     ...Platform.select({
       web: {
-        maxWidth: 500,
+        maxWidth: 420,
         width: '100%',
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
@@ -374,72 +349,44 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
     letterSpacing: -0.3,
   },
-  trackTabs: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 4,
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    borderRadius: 16,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: Colors.primarySoft,
-  },
-  trackTab: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  trackTabActive: {
-    backgroundColor: Colors.white,
-    ...Shadows.soft,
-  },
-  trackTabText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
-  trackTabTextActive: {
-    color: Colors.primary,
-  },
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 8,
   },
   heroCard: {
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 20,
+    marginBottom: 16,
     ...Shadows.glow,
   },
   heroGrad: {
-    padding: 24,
+    padding: 20,
     alignItems: 'center',
   },
   heroEmoji: {
-    fontSize: 36,
-    marginBottom: 8,
+    fontSize: 32,
+    marginBottom: 6,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
     color: Colors.white,
     textAlign: 'center',
     letterSpacing: -0.5,
   },
   heroSub: {
-    fontSize: 13,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.9)',
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
+    marginTop: 6,
+    lineHeight: 18,
     maxWidth: 280,
   },
   activePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 14,
+    marginTop: 12,
     backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -451,22 +398,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginBottom: 8,
     marginLeft: 4,
   },
   planList: {
-    gap: 10,
-    marginBottom: 22,
+    gap: 8,
+    marginBottom: 18,
   },
   planCard: {
     backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 2,
     borderColor: 'transparent',
     ...Shadows.soft,
@@ -528,7 +475,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   planName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     color: Colors.textDark,
   },
@@ -552,7 +499,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   planPrice: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     color: Colors.primary,
   },
@@ -566,17 +513,17 @@ const styles = StyleSheet.create({
   },
   featureCard: {
     backgroundColor: Colors.white,
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 4,
-    marginBottom: 16,
+    marginBottom: 14,
     ...Shadows.soft,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   featureRowBorder: {
     borderBottomWidth: 1,
@@ -595,34 +542,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textDark,
     lineHeight: 18,
-  },
-  partnerHeroMini: {
-    backgroundColor: Colors.white,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#EEEAF5',
-  },
-  partnerHeroMiniTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: Colors.textDark,
-  },
-  partnerHeroMiniSub: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 6,
-    lineHeight: 19,
-  },
-  partnerWarn: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 4,
-    lineHeight: 18,
-    paddingHorizontal: 8,
   },
   footnote: {
     fontSize: 11,
@@ -656,7 +575,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   ctaText: {
     color: Colors.white,

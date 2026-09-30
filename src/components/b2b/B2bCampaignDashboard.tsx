@@ -10,7 +10,7 @@ import { campaignPackageNameKey, formatCampaignPeriod } from '../../services/bus
 function Metric({ label, value, icon }: { label: string; value: string; icon: React.ComponentProps<typeof Ionicons>['name'] }) {
   return (
     <View style={styles.metric}>
-      <Ionicons name={icon} size={18} color={Colors.primary} />
+      <Ionicons name={icon} size={15} color={Colors.primary} />
       <Text style={styles.metricVal}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
     </View>
@@ -94,27 +94,27 @@ export default function B2bCampaignDashboard({
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#EEEAF5',
     ...Shadows.soft,
   },
-  title: { fontSize: 17, fontWeight: '900', color: Colors.textDark },
-  pkgLine: { fontSize: 13, fontWeight: '700', color: Colors.textMid, marginTop: 6 },
-  meta: { fontSize: 12, color: Colors.textMuted, marginTop: 6, marginBottom: 14 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  title: { fontSize: 14, fontWeight: '900', color: Colors.textDark },
+  pkgLine: { fontSize: 12, fontWeight: '700', color: Colors.textMid, marginTop: 4 },
+  meta: { fontSize: 11, color: Colors.textMuted, marginTop: 4, marginBottom: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metric: {
     width: '47%',
     backgroundColor: Colors.primaryTint,
-    borderRadius: 14,
-    padding: 12,
-    gap: 4,
+    borderRadius: 10,
+    padding: 8,
+    gap: 2,
   },
-  metricVal: { fontSize: 18, fontWeight: '900', color: Colors.textDark },
-  metricLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted },
-  sourceNote: { fontSize: 11, color: Colors.textMuted, marginTop: 14, lineHeight: 16 },
-  comingSoon: { fontSize: 10, color: Colors.textMuted, marginTop: 8, fontStyle: 'italic' },
+  metricVal: { fontSize: 15, fontWeight: '900', color: Colors.textDark },
+  metricLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted },
+  sourceNote: { fontSize: 10, color: Colors.textMuted, marginTop: 10, lineHeight: 14 },
+  comingSoon: { fontSize: 9, color: Colors.textMuted, marginTop: 6, fontStyle: 'italic' },
   errorNote: { fontSize: 13, color: '#B45309', marginVertical: 12 },
   payHint: {
     flexDirection: 'row',

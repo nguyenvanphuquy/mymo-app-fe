@@ -19,6 +19,8 @@ import BusinessBillingScreen from './BusinessBillingScreen';
 import BusinessEditProfileScreen from './BusinessEditProfileScreen';
 import BusinessHelpScreen from './BusinessHelpScreen';
 import BusinessCampaignSuccessScreen from './BusinessCampaignSuccessScreen';
+import BusinessBankPaymentScreen from './BusinessBankPaymentScreen';
+import type { BusinessAdCampaign } from '../../services/businessAdCampaignApi';
 import type { BizOverlay } from './businessOverlayTypes';
 
 type BizTab = 'home' | 'places' | 'events' | 'brand';
@@ -37,6 +39,7 @@ export default function BusinessApp({
   const [tab, setTab] = useState<BizTab>('home');
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [overlay, setOverlay] = useState<BizOverlay | null>(null);
+  const [payCampaign, setPayCampaign] = useState<BusinessAdCampaign | null>(null);
   const [packageRefreshKey, setPackageRefreshKey] = useState(0);
 
   const notifyPackageUpdated = () => setPackageRefreshKey(k => k + 1);
@@ -53,7 +56,14 @@ export default function BusinessApp({
     });
   }, []);
 
-  const closeOverlay = () => setOverlay(null);
+  const closeOverlay = () => {
+    setOverlay(null);
+    setPayCampaign(null);
+  };
+  const openBankPay = (campaign: BusinessAdCampaign) => {
+    setPayCampaign(campaign);
+    setOverlay('bankPay');
+  };
   const selectTab = (next: BizTab) => {
     closeOverlay();
     setTab(next);
@@ -74,13 +84,30 @@ export default function BusinessApp({
           <BusinessAdvertisingScreen
             session={session}
             onBack={closeOverlay}
-            onSuccess={() => setOverlay('campaignSuccess')}
+            onSuccess={openBankPay}
+            onOpenPayment={openBankPay}
           />
         );
+      case 'bankPay':
+        return payCampaign ? (
+          <BusinessBankPaymentScreen
+            campaign={payCampaign}
+            onBack={() => {
+              setPayCampaign(null);
+              setOverlay('advertising');
+              setPackageRefreshKey(k => k + 1);
+            }}
+            onPaid={() => {
+              setPayCampaign(null);
+              goBrandAfterPayment();
+            }}
+          />
+        ) : null;
       case 'campaignSuccess':
         return (
           <BusinessCampaignSuccessScreen
             onBack={closeOverlay}
+            onPayNow={campaign => openBankPay(campaign)}
             onViewBilling={() => setOverlay('billing')}
           />
         );
@@ -142,7 +169,7 @@ export default function BusinessApp({
     );
   };
 
-  const showNav = overlay !== 'onboarding';
+  const showNav = overlay == null;
 
   return (
     <View style={styles.root}>
