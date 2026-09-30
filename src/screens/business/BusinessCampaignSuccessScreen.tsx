@@ -3,11 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DemoBadge from '../../components/business/DemoBadge';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
-import { getPackageById } from '../../constants/b2bPromotionPackages';
-import { listCampaignHistory, type StoredCampaignRecord } from '../../utils/b2bCampaignStorage';
+import {
+  listMyCampaigns,
+  campaignPackageNameKey,
+  formatCampaignPeriod,
+  type BusinessAdCampaign,
+} from '../../services/businessAdCampaignApi';
 
 export default function BusinessCampaignSuccessScreen({
   onBack,
@@ -18,15 +21,14 @@ export default function BusinessCampaignSuccessScreen({
 }) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
-  const [latest, setLatest] = useState<StoredCampaignRecord | null>(null);
+  const [latest, setLatest] = useState<BusinessAdCampaign | null>(null);
 
   useEffect(() => {
-    listCampaignHistory().then(h => setLatest(h[0] ?? null));
+    listMyCampaigns().then(h => setLatest(h[0] ?? null)).catch(() => setLatest(null));
   }, []);
 
-  const pkg = latest ? getPackageById(latest.packageId) : null;
   const amount = latest
-    ? new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(latest.totalVnd) + (lang === 'vi' ? 'đ' : ' VND')
+    ? new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(latest.amountVnd) + (lang === 'vi' ? 'đ' : ' VND')
     : '—';
 
   return (
@@ -40,11 +42,10 @@ export default function BusinessCampaignSuccessScreen({
         </View>
         <Text style={styles.title}>{t('biz.success.title')}</Text>
         <Text style={styles.sub}>{t('biz.success.sub')}</Text>
-        <DemoBadge />
-        {latest && pkg ? (
+        {latest ? (
           <View style={styles.summary}>
-            <Text style={styles.line}>{t(pkg.nameKey)} · {latest.placeName}</Text>
-            <Text style={styles.line}>{latest.startDate} → {latest.endDate}</Text>
+            <Text style={styles.line}>{t(campaignPackageNameKey(latest))} · {latest.placeName}</Text>
+            <Text style={styles.line}>{formatCampaignPeriod(latest.startDate, latest.endDate)}</Text>
             <Text style={styles.amount}>{amount}</Text>
             <Text style={styles.note}>{t('biz.success.unpaidNote')}</Text>
           </View>

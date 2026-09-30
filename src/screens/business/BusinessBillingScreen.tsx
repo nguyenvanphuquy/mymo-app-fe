@@ -1,48 +1,84 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import {
+  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, ActivityIndicator,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
-import DemoBadge from '../../components/business/DemoBadge';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import { Colors, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
-import { listBillingOrders, type BillingOrderRecord } from '../../mocks/businessBillingDemo';
+import {
+  campaignPackageNameKey,
+  completeCampaignPayment,
+  formatCampaignPeriod,
+  listBillingCampaigns,
+  type BusinessAdCampaign,
+  type CampaignPaymentStatus,
+} from '../../services/businessAdCampaignApi';
 
 function formatVnd(n: number, lang: string) {
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(n) + (lang === 'vi' ? 'đ' : ' VND');
 }
 
-function statusLabel(status: BillingOrderRecord['status'], t: (k: string) => string) {
-  if (status === 'demo_paid') return t('biz.billing.paid');
-  if (status === 'demo_pending') return t('biz.billing.pending');
-  return t('biz.billing.unpaid');
+function statusLabel(status: CampaignPaymentStatus, t: (k: string) => string) {
+  if (status === 'Success') return t('biz.billing.paid');
+  if (status === 'Pending') return t('biz.billing.unpaid');
+  if (status === 'Failed') return t('biz.billing.failed');
+  return t('biz.billing.pending');
 }
 
 export default function BusinessBillingScreen({ onBack }: { onBack: () => void }) {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
-  const [orders, setOrders] = useState<BillingOrderRecord[]>([]);
+  const [orders, setOrders] = useState<BusinessAdCampaign[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setOrders(await listBillingOrders());
+    setOrders(await listBillingCampaigns());
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load().catch(() => setOrders([])); }, [load]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } catch {
+      setOrders([]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const pay = async (campaign: BusinessAdCampaign) => {
+    if (busyId || campaign.paymentStatus === 'Success') return;
+    setBusyId(campaign.campaignId);
+    try {
+      const updated = await completeCampaignPayment(campaign.campaignId);
+      setOrders(prev => prev.map(o => (o.campaignId === updated.campaignId ? updated : o)));
+      Toast.show({ type: 'success', text1: t('biz.billing.paySuccess') });
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('biz.billing.payError'),
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <BusinessScreenHeader title={t('biz.billing.title')} onBack={onBack} />
-      <View style={styles.demoRow}>
-        <DemoBadge />
-        <Text style={styles.demoHint}>{t('biz.billing.demoHint')}</Text>
-      </View>
+      <Text style={styles.hint}>{t('biz.billing.hint')}</Text>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
         refreshControl={(
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
+            onRefresh={onRefresh}
             tintColor={Colors.primary}
           />
         )}
@@ -55,16 +91,29 @@ export default function BusinessBillingScreen({ onBack }: { onBack: () => void }
           />
         ) : (
           orders.map(o => (
-            <View key={o.id} style={styles.card}>
+            <View key={o.campaignId} style={styles.card}>
               <View style={styles.row}>
-                <Text style={styles.pkg}>{t(o.packageNameKey)}</Text>
+                <Text style={styles.pkg}>{t(campaignPackageNameKey(o))}</Text>
                 <Text style={styles.amount}>{formatVnd(o.amountVnd, lang)}</Text>
               </View>
               <Text style={styles.place}>{o.placeName}</Text>
-              <Text style={styles.meta}>{o.periodLabel}</Text>
+              <Text style={styles.meta}>{formatCampaignPeriod(o.startDate, o.endDate)}</Text>
               <View style={styles.statusPill}>
-                <Text style={styles.statusText}>{statusLabel(o.status, t)}</Text>
+                <Text style={styles.statusText}>{statusLabel(o.paymentStatus, t)}</Text>
               </View>
+              {o.paymentStatus === 'Pending' ? (
+                <TouchableOpacity
+                  style={styles.payBtn}
+                  onPress={() => pay(o)}
+                  disabled={busyId === o.campaignId}
+                >
+                  {busyId === o.campaignId ? (
+                    <ActivityIndicator color={Colors.white} size="small" />
+                  ) : (
+                    <Text style={styles.payBtnText}>{t('biz.billing.confirmPay')}</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
             </View>
           ))
         )}
@@ -75,8 +124,7 @@ export default function BusinessBillingScreen({ onBack }: { onBack: () => void }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FAFAFC' },
-  demoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20 },
-  demoHint: { fontSize: 11, color: Colors.textMuted, flex: 1 },
+  hint: { fontSize: 11, color: Colors.textMuted, paddingHorizontal: 20, marginBottom: 4 },
   card: {
     backgroundColor: Colors.white,
     borderRadius: 16,
@@ -100,4 +148,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   statusText: { fontSize: 10, fontWeight: '800', color: Colors.primary },
+  payBtn: {
+    marginTop: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  payBtnText: { color: Colors.white, fontWeight: '800', fontSize: 13 },
 });

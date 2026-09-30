@@ -1,2 +1,5 @@
-/** @deprecated Import from `b2bCampaignStorage` instead. */
-export { getB2bPackage, setB2bPackage } from './b2bCampaignStorage';
+/** @deprecated Use `getActiveVibeMapPackage` from `../services/businessAdCampaignApi`. */
+export {
+  getActiveVibeMapPackage,
+  getActiveVibeMapPackage as getB2bPackage,
+} from '../services/businessAdCampaignApi';

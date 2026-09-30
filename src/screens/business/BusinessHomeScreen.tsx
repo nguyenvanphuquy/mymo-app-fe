@@ -15,7 +15,7 @@ import {
   getPlaceAnalytics,
   type BusinessSession,
 } from '../../services/businessApi';
-import { getB2bPackage } from '../../utils/b2bCampaignStorage';
+import { getActiveVibeMapPackage } from '../../services/businessAdCampaignApi';
 import { B2B_VIBEMAP_PACKAGES } from '../../constants/b2bPromotionPackages';
 
 export default function BusinessHomeScreen({
@@ -46,10 +46,12 @@ export default function BusinessHomeScreen({
   const load = useCallback(async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      const pkgId = await getB2bPackage();
-      if (pkgId) {
-        const pkg = B2B_VIBEMAP_PACKAGES.find(p => p.id === pkgId);
+      const active = await getActiveVibeMapPackage();
+      if (active.packageId) {
+        const pkg = B2B_VIBEMAP_PACKAGES.find(p => p.id === active.packageId);
         setActivePkgKey(pkg?.nameKey ?? null);
+      } else {
+        setActivePkgKey(null);
       }
 
       const businesses = await getMyBusinesses();

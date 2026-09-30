@@ -9,7 +9,7 @@ import { Colors, Gradients, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
 import SparkleField from '../../components/SparkleField';
 import { B2B_VIBEMAP_PACKAGES } from '../../constants/b2bPromotionPackages';
-import { getB2bPackage } from '../../utils/b2bCampaignStorage';
+import { getActiveVibeMapPackage } from '../../services/businessAdCampaignApi';
 import {
   getMyBusinesses,
   getMyPlaces,
@@ -54,7 +54,8 @@ export default function BusinessBrandScreen({
       const [bizList, pl] = await Promise.all([getMyBusinesses(), getMyPlaces()]);
       setBusiness(bizList[0] ?? null);
       setPlaces(pl);
-      setActivePkgId(await getB2bPackage());
+      const active = await getActiveVibeMapPackage();
+      setActivePkgId(active.packageId);
     } finally {
       setLoading(false);
     }

@@ -20,19 +20,19 @@ import {
 } from '../../constants/b2bPromotionPackages';
 import { buildDemoCampaignSnapshot, type DemoCampaignSnapshot } from '../../mocks/businessAdvertisingDemo';
 import {
-  appendCampaignHistory,
   getCampaignDraft,
   getDemoCampaignSnapshot,
-  listCampaignHistory,
   saveCampaignDraft,
   saveDemoCampaignSnapshot,
-  setB2bPackage,
-  type StoredCampaignRecord,
 } from '../../utils/b2bCampaignStorage';
-import { addBillingOrder } from '../../mocks/businessBillingDemo';
-import { pushBusinessNotification } from '../../mocks/businessNotificationsDemo';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
 import { getMyPlaces, type BusinessPlaceDto, type BusinessSession } from '../../services/businessApi';
+import {
+  createAdCampaign,
+  listMyCampaigns,
+  type BusinessAdCampaign,
+  campaignPackageNameKey,
+} from '../../services/businessAdCampaignApi';
 
 function padDate(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
@@ -77,7 +77,7 @@ export default function BusinessAdvertisingScreen({
   const [endDate, setEndDate] = useState(defaultEndDate());
   const [submitting, setSubmitting] = useState(false);
   const [demoSnapshot, setDemoSnapshot] = useState<DemoCampaignSnapshot | null>(null);
-  const [history, setHistory] = useState<StoredCampaignRecord[]>([]);
+  const [history, setHistory] = useState<BusinessAdCampaign[]>([]);
 
   const loadPlaces = useCallback(async () => {
     try {
@@ -87,7 +87,11 @@ export default function BusinessAdvertisingScreen({
       const draft = await getCampaignDraft();
       const snap = await getDemoCampaignSnapshot();
       if (snap) setDemoSnapshot(snap);
-      setHistory(await listCampaignHistory());
+      try {
+        setHistory(await listMyCampaigns());
+      } catch {
+        setHistory([]);
+      }
       if (draft) {
         setSelectedPkg(draft.packageId);
         setPlaceId(draft.placeId);
@@ -121,42 +125,28 @@ export default function BusinessAdvertisingScreen({
     }
     setSubmitting(true);
     try {
-      await setB2bPackage(selectedPkg);
       await saveCampaignDraft({ packageId: selectedPkg, placeId, startDate, endDate });
+      const created = await createAdCampaign({
+        placeId,
+        packageId: selectedPkg,
+        startDate,
+        endDate,
+      });
       const snap = buildDemoCampaignSnapshot(selectedPkg, startDate, endDate);
       await saveDemoCampaignSnapshot(snap);
       setDemoSnapshot(snap);
-      const pkg = getPackageById(selectedPkg);
-      const placeName = selectedPlace?.name ?? session.displayName;
-      const record: StoredCampaignRecord = {
-        id: `camp_${Date.now()}`,
-        packageId: selectedPkg,
-        placeId,
-        placeName,
-        startDate,
-        endDate,
-        totalVnd: total,
-        createdAt: new Date().toISOString(),
-      };
-      await appendCampaignHistory(record);
-      setHistory(await listCampaignHistory());
-      await addBillingOrder({
-        id: record.id,
-        packageId: selectedPkg,
-        packageNameKey: pkg.nameKey,
-        placeName,
-        amountVnd: total,
-        status: 'demo_unpaid',
-        createdAt: record.createdAt,
-        periodLabel: `${startDate} → ${endDate}`,
-      });
-      await pushBusinessNotification({
-        kind: 'campaign',
-        title: t('biz.notif.campaignCreated'),
-        body: `${t(pkg.nameKey)} · ${placeName}`,
-        createdAt: new Date().toISOString(),
+      setHistory(await listMyCampaigns());
+      Toast.show({
+        type: 'success',
+        text1: t('biz.ads.createSuccess'),
+        text2: t('biz.ads.createSuccessBilling'),
       });
       onSuccess?.();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('biz.ads.createError'),
+      });
     } finally {
       setSubmitting(false);
     }
@@ -281,10 +271,10 @@ export default function BusinessAdvertisingScreen({
           <>
             <Text style={[styles.sectionLabel, { marginTop: 28 }]}>{t('biz.ads.historyTitle')}</Text>
             {history.slice(0, 5).map(h => (
-              <View key={h.id} style={styles.historyRow}>
-                <Text style={styles.historyTitle}>{t(getPackageById(h.packageId).nameKey)}</Text>
-                <Text style={styles.historyMeta}>{h.placeName} · {h.startDate}</Text>
-                <Text style={styles.historyPrice}>{formatVnd(h.totalVnd, lang)}</Text>
+              <View key={h.campaignId} style={styles.historyRow}>
+                <Text style={styles.historyTitle}>{t(campaignPackageNameKey(h))}</Text>
+                <Text style={styles.historyMeta}>{h.placeName} · {h.startDate.slice(0, 10)}</Text>
+                <Text style={styles.historyPrice}>{formatVnd(h.amountVnd, lang)}</Text>
               </View>
             ))}
           </>
@@ -293,6 +283,7 @@ export default function BusinessAdvertisingScreen({
         {demoSnapshot ? (
           <>
             <Text style={[styles.sectionLabel, { marginTop: 28 }]}>{t('biz.ads.dashboardSection')}</Text>
+            <Text style={styles.analyticsHint}>{t('biz.ads.analyticsPreview')}</Text>
             <B2bCampaignDashboard snapshot={demoSnapshot} />
           </>
         ) : null}
@@ -435,6 +426,12 @@ const styles = StyleSheet.create({
   historyTitle: { fontSize: 14, fontWeight: '800', color: Colors.textDark },
   historyMeta: { fontSize: 12, color: Colors.textMuted, marginTop: 4 },
   historyPrice: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginTop: 6 },
+  analyticsHint: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
   footer: {
     fontSize: 11,
     color: Colors.textMuted,
