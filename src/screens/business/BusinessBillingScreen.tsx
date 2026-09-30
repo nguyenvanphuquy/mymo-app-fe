@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
@@ -11,12 +11,12 @@ import { useI18n } from '../../i18n';
 import {
   campaignNeedsPayment,
   campaignPackageNameKey,
-  completeCampaignPayment,
   formatCampaignPeriod,
   listBillingCampaigns,
   type BusinessAdCampaign,
   type CampaignPaymentStatus,
 } from '../../services/businessAdCampaignApi';
+import BusinessBankPaymentScreen from './BusinessBankPaymentScreen';
 
 function formatVnd(n: number, lang: string) {
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(n) + (lang === 'vi' ? 'đ' : ' VND');
@@ -42,9 +42,9 @@ export default function BusinessBillingScreen({
   const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<BusinessAdCampaign[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [justPaidId, setJustPaidId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [payCampaign, setPayCampaign] = useState<BusinessAdCampaign | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -70,36 +70,34 @@ export default function BusinessBillingScreen({
     }
   };
 
-  const pay = async (campaign: BusinessAdCampaign) => {
+  const openBankPay = (campaign: BusinessAdCampaign) => {
     if (!campaign.campaignId) {
       Toast.show({ type: 'error', text1: t('biz.billing.payError') });
       return;
     }
-    if (busyId === campaign.campaignId) return;
     if (!campaignNeedsPayment(campaign.paymentStatus)) {
       Toast.show({ type: 'info', text1: t('biz.billing.alreadyPaid') });
       return;
     }
-    setBusyId(campaign.campaignId);
-    try {
-      const updated = await completeCampaignPayment(campaign.campaignId);
-      setOrders(prev => prev.map(o => (o.campaignId === updated.campaignId ? updated : o)));
-      setJustPaidId(updated.campaignId);
-      onPackageActivated?.();
-      Toast.show({
-        type: 'success',
-        text1: t('biz.billing.paySuccess'),
-        text2: t('biz.billing.paySuccessSub'),
-      });
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: err instanceof Error ? err.message : t('biz.billing.payError'),
-      });
-    } finally {
-      setBusyId(null);
-    }
+    setPayCampaign(campaign);
   };
+
+  const handlePaid = (updated: BusinessAdCampaign) => {
+    setOrders(prev => prev.map(o => (o.campaignId === updated.campaignId ? updated : o)));
+    setJustPaidId(updated.campaignId);
+    setPayCampaign(null);
+    onPackageActivated?.();
+  };
+
+  if (payCampaign) {
+    return (
+      <BusinessBankPaymentScreen
+        campaign={payCampaign}
+        onBack={() => setPayCampaign(null)}
+        onPaid={handlePaid}
+      />
+    );
+  }
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -142,18 +140,16 @@ export default function BusinessBillingScreen({
               <View style={styles.statusPill}>
                 <Text style={styles.statusText}>{statusLabel(o.paymentStatus, t)}</Text>
               </View>
+              {o.paymentSubmittedAt && campaignNeedsPayment(o.paymentStatus) ? (
+                <Text style={styles.pendingNote}>{t('biz.billing.awaitingBank')}</Text>
+              ) : null}
               {campaignNeedsPayment(o.paymentStatus) ? (
                 <TouchableOpacity
-                  style={[styles.payBtn, busyId !== null && busyId !== o.campaignId && styles.payBtnDisabled]}
-                  onPress={() => pay(o)}
-                  disabled={busyId !== null && busyId !== o.campaignId}
+                  style={styles.payBtn}
+                  onPress={() => openBankPay(o)}
                   activeOpacity={0.85}
                 >
-                  {busyId === o.campaignId ? (
-                    <ActivityIndicator color={Colors.white} size="small" />
-                  ) : (
-                    <Text style={styles.payBtnText}>{t('biz.billing.confirmPay')}</Text>
-                  )}
+                  <Text style={styles.payBtnText}>{t('biz.billing.payByBank')}</Text>
                 </TouchableOpacity>
               ) : null}
               {o.paymentStatus === 'Success' && justPaidId === o.campaignId && onGoToBrand ? (
@@ -203,7 +199,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payBtnText: { color: Colors.white, fontWeight: '800', fontSize: 13 },
-  payBtnDisabled: { opacity: 0.45 },
+  pendingNote: { fontSize: 11, color: '#B45309', marginTop: 10, fontWeight: '700' },
   errorBox: {
     backgroundColor: '#FEE2E2',
     borderRadius: 12,

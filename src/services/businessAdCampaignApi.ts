@@ -15,7 +15,22 @@ export interface BusinessAdCampaign {
   endDate: string;
   amountVnd: number;
   paymentStatus: CampaignPaymentStatus;
+  transferReferenceCode: string;
+  paymentSubmittedAt: string | null;
+  paidAt: string | null;
   createdAt: string;
+}
+
+export interface CampaignBankTransferInstructions {
+  campaignId: string;
+  amountVnd: number;
+  transferReferenceCode: string;
+  bankName: string;
+  bankBin: string;
+  accountNumber: string;
+  accountName: string;
+  vietQrImageUrl: string;
+  autoConfirmEnabled: boolean;
 }
 
 export interface ActiveVibeMapPackage {
@@ -89,6 +104,9 @@ function normalizeCampaign(raw: Record<string, unknown>): BusinessAdCampaign {
     endDate: String(raw.endDate ?? raw.EndDate ?? ''),
     amountVnd: Number(raw.amountVnd ?? raw.AmountVnd ?? 0),
     paymentStatus: normalizePaymentStatus(raw.paymentStatus ?? raw.PaymentStatus),
+    transferReferenceCode: String(raw.transferReferenceCode ?? raw.TransferReferenceCode ?? ''),
+    paymentSubmittedAt: (raw.paymentSubmittedAt ?? raw.PaymentSubmittedAt ?? null) as string | null,
+    paidAt: (raw.paidAt ?? raw.PaidAt ?? null) as string | null,
     createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
   };
 }
@@ -171,4 +189,45 @@ export async function completeCampaignPayment(campaignId: string): Promise<Busin
     'PUT',
   );
   return normalizeCampaign((res.data ?? {}) as Record<string, unknown>);
+}
+
+function normalizeBankInstructions(raw: Record<string, unknown>): CampaignBankTransferInstructions {
+  return {
+    campaignId: String(raw.campaignId ?? raw.CampaignId ?? ''),
+    amountVnd: Number(raw.amountVnd ?? raw.AmountVnd ?? 0),
+    transferReferenceCode: String(raw.transferReferenceCode ?? raw.TransferReferenceCode ?? ''),
+    bankName: String(raw.bankName ?? raw.BankName ?? ''),
+    bankBin: String(raw.bankBin ?? raw.BankBin ?? ''),
+    accountNumber: String(raw.accountNumber ?? raw.AccountNumber ?? ''),
+    accountName: String(raw.accountName ?? raw.AccountName ?? ''),
+    vietQrImageUrl: String(raw.vietQrImageUrl ?? raw.VietQrImageUrl ?? ''),
+    autoConfirmEnabled: Boolean(raw.autoConfirmEnabled ?? raw.AutoConfirmEnabled ?? false),
+  };
+}
+
+export async function getCampaignBankTransferInstructions(
+  campaignId: string,
+): Promise<CampaignBankTransferInstructions> {
+  const res = await requestJson<Record<string, unknown>>(
+    `/business/campaigns/${campaignId}/bank-transfer`,
+    'GET',
+  );
+  return normalizeBankInstructions((res.data ?? {}) as Record<string, unknown>);
+}
+
+export async function acknowledgeCampaignBankTransfer(
+  campaignId: string,
+  payerDeclaredReference?: string,
+): Promise<BusinessAdCampaign> {
+  const res = await requestJson<Record<string, unknown>>(
+    `/business/campaigns/${campaignId}/bank-transfer/ack`,
+    'POST',
+    { payerDeclaredReference: payerDeclaredReference?.trim() || undefined },
+  );
+  return normalizeCampaign((res.data ?? {}) as Record<string, unknown>);
+}
+
+export async function getCampaignPaymentStatus(campaignId: string): Promise<BusinessAdCampaign | null> {
+  const list = await listBillingCampaigns();
+  return list.find(c => c.campaignId === campaignId) ?? null;
 }
