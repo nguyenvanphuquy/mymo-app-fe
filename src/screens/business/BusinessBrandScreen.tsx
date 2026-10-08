@@ -85,14 +85,14 @@ export default function BusinessBrandScreen({
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#9C7CFF', '#7C5BFF', '#6B4FE0']}
+          colors={['#FFFEFF', '#F6F2FF', '#E8DFFF']}
           style={[styles.hero, { paddingTop: insets.top + 12 }]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.heroTop}>
             <View style={styles.heroBadge}>
-              <Ionicons name="sparkles" size={12} color={Colors.white} />
+              <Ionicons name="sparkles" size={12} color={Colors.primary} />
               <Text style={styles.heroBadgeText}>{t('biz.badge')}</Text>
             </View>
             <Text style={styles.heroEmail} numberOfLines={1}>{session.email}</Text>
@@ -124,7 +124,7 @@ export default function BusinessBrandScreen({
             </View>
             {activePkg ? (
               <View style={[styles.tag, styles.tagLight]}>
-                <Ionicons name="megaphone-outline" size={11} color={Colors.white} />
+                <Ionicons name="megaphone-outline" size={11} color={Colors.primary} />
                 <Text style={styles.tagText}>{t(activePkg.nameKey)}</Text>
               </View>
             ) : null}
@@ -364,13 +364,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
   },
-  heroBadgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
-  heroEmail: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', maxWidth: '55%' },
+  heroBadgeText: { color: Colors.primary, fontSize: 11, fontWeight: '800' },
+  heroEmail: { color: Colors.textMid, fontSize: 11, fontWeight: '600', maxWidth: '55%' },
   avatarRing: { position: 'relative', marginBottom: 12 },
   avatar: {
     width: 96,
@@ -396,20 +396,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  displayName: { fontSize: 24, fontWeight: '900', color: Colors.white, letterSpacing: -0.5 },
-  legalName: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontWeight: '600' },
+  displayName: { fontSize: 24, fontWeight: '900', color: Colors.textDark, letterSpacing: -0.5 },
+  legalName: { fontSize: 13, color: Colors.textMid, marginTop: 4, fontWeight: '600' },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14, justifyContent: 'center' },
   tag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
   },
-  tagLight: { backgroundColor: 'rgba(255,255,255,0.28)' },
-  tagText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
+  tagLight: { backgroundColor: 'rgba(255,255,255,0.92)' },
+  tagText: { color: Colors.primary, fontSize: 11, fontWeight: '800' },
   body: { paddingHorizontal: 20, marginTop: -12 },
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   statChip: {

@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Animated,
+  View, TouchableOpacity, StyleSheet, Animated,
   Platform, StatusBar, DeviceEventEmitter,
 } from 'react-native';
+import { Text } from './src/ui/AppText';
+import {
+  useFonts,
+  Nunito_400Regular,
+  Nunito_500Medium,
+  Nunito_600SemiBold,
+  Nunito_700Bold,
+  Nunito_800ExtraBold,
+  Nunito_900Black,
+} from '@expo-google-fonts/nunito';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,6 +53,7 @@ import {
   saveLocationPrivacyPrefs,
 } from './src/utils/locationPrivacyStorage';
 import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
+import { disconnectMapHub, startPresenceHeartbeat, stopPresenceHeartbeat } from './src/services/mapHub';
 import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
 import type { BusinessSession } from './src/services/businessApi';
@@ -61,19 +72,40 @@ type ChatSession = {
 type FriendProfileSession = FriendProfileParams | null;
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    Nunito_400Regular,
+    Nunito_500Medium,
+    Nunito_600SemiBold,
+    Nunito_700Bold,
+    Nunito_800ExtraBold,
+    Nunito_900Black,
+  });
+
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      const style = document.createElement('style');
-      style.textContent = `
-        body {
-          background-color: #F3F1F8 !important;
-          margin: 0;
-          padding: 0;
-        }
-      `;
-      document.head.appendChild(style);
-    }
+    if (Platform.OS !== 'web') return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap';
+    document.head.appendChild(link);
+
+    const style = document.createElement('style');
+    style.textContent = `
+      body {
+        background-color: #F3F1F8 !important;
+        margin: 0;
+        padding: 0;
+        font-family: Nunito, sans-serif;
+      }
+      input, textarea, button {
+        font-family: Nunito, sans-serif;
+      }
+    `;
+    document.head.appendChild(style);
   }, []);
+
+  if (!fontsLoaded && !fontError) {
+    return <View style={{ flex: 1, backgroundColor: '#F3F1F8' }} />;
+  }
 
   return (
     <SafeAreaProvider>
@@ -178,6 +210,15 @@ function AppInner() {
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [notifPost, setNotifPost] = useState<PostView | null>(null);
+
+  useEffect(() => {
+    if (screen !== 'app') {
+      stopPresenceHeartbeat();
+      return;
+    }
+    startPresenceHeartbeat();
+    return () => stopPresenceHeartbeat();
+  }, [screen]);
 
   useEffect(() => {
     if (screen !== 'app') return;
@@ -593,6 +634,7 @@ function AppInner() {
             }}
             onLogout={() => {
               void hideUserLocation().catch(() => {});
+              void disconnectMapHub().catch(() => {});
               void clearLocationPrivacyPrefs();
               setScreen('auth');
               setTab('home');
@@ -750,7 +792,7 @@ function NavItem({
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity onPress={handlePress} style={styles.navItem}>
         {active ? (
-          <LinearGradient colors={['#F7F2FF', '#E4D6FF']} style={[styles.navIconWrap, styles.navIconWrapActive]}>
+          <LinearGradient colors={['#FCFAFF', '#F0E8FF']} style={[styles.navIconWrap, styles.navIconWrapActive]}>
             <Ionicons name={item.iconActive as any} size={22} color={Colors.primary} />
           </LinearGradient>
         ) : (

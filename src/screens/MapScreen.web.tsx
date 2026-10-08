@@ -31,7 +31,7 @@ import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
+import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
 import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
@@ -45,7 +45,7 @@ mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
-const DEFAULT_ZOOM = 17;
+const DEFAULT_ZOOM = 14.5;
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface MapScreenProps {
@@ -94,7 +94,7 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
   nameTag.style.cssText = `
     margin-top:4px; background:rgba(255,255,255,0.95);
     padding:2px 8px; border-radius:10px;
-    font-size:10px; font-weight:700; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:10px; font-weight:700; color:#2A1758;
     box-shadow:0 2px 8px rgba(124,91,255,0.12); white-space:nowrap;
   `;
   nameTag.textContent = friend.name;
@@ -112,7 +112,7 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
   const bubble = document.createElement('div');
   bubble.style.cssText = `
     width:44px; height:44px; border-radius:50%;
-    background:linear-gradient(135deg, #9C7CFF, #7C5BFF);
+    background:linear-gradient(135deg, #E4DAFF, #A78BFA);
     border:2.5px solid #fff;
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 4px 16px rgba(124,91,255,0.45);
@@ -143,7 +143,7 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
     width:0; height:0; margin-top:-1px;
     border-left:7px solid transparent;
     border-right:7px solid transparent;
-    border-top:9px solid #7C5BFF;
+    border-top:9px solid #A78BFA;
   `;
 
   const chip = document.createElement('div');
@@ -158,7 +158,7 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
 
   const name = document.createElement('span');
   name.style.cssText = `
-    font-size:9px; font-weight:800; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:9px; font-weight:800; color:#2A1758;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     flex:1; min-width:0;
   `;
@@ -168,7 +168,7 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
   if (place.averageRating && place.averageRating > 0) {
     const rating = document.createElement('span');
     rating.style.cssText = `
-      font-size:8px; font-weight:800; color:#4E3A87;
+      font-family:Nunito,sans-serif; font-size:8px; font-weight:800; color:#4E3A87;
       background:#F6F2FF; padding:2px 5px; border-radius:8px;
       white-space:nowrap; flex-shrink:0;
     `;
@@ -210,7 +210,7 @@ function createPostMarkerEl(post: NearbyPost, onTap: () => void): HTMLDivElement
   nameTag.style.cssText = `
     margin-top:4px; max-width:72px; background:rgba(255,255,255,0.95);
     padding:2px 6px; border-radius:8px;
-    font-size:9px; font-weight:700; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:9px; font-weight:700; color:#2A1758;
     box-shadow:0 2px 8px rgba(124,91,255,0.12);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   `;
@@ -229,7 +229,7 @@ function createSearchMarkerEl(): HTMLDivElement {
   const bubble = document.createElement('div');
   bubble.style.cssText = `
     width:40px; height:40px; border-radius:50%;
-    background:linear-gradient(135deg, #9C7CFF, #7C5BFF);
+    background:linear-gradient(135deg, #E4DAFF, #A78BFA);
     border:2.5px solid #fff;
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 4px 16px rgba(124,91,255,0.5);
@@ -242,7 +242,7 @@ function createSearchMarkerEl(): HTMLDivElement {
     width:0; height:0; margin-top:-1px;
     border-left:7px solid transparent;
     border-right:7px solid transparent;
-    border-top:9px solid #7C5BFF;
+    border-top:9px solid #A78BFA;
   `;
 
   el.appendChild(bubble);
@@ -470,19 +470,25 @@ export default function MapScreen({
         (p.city || '').toLowerCase().includes(searchLower))
     : nearbyPlaces;
 
-  const showDetailPins = mapZoom >= MAP_DETAIL_MIN_ZOOM;
+  const shownZoom = shownMapZoom(mapZoom);
+  const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
+  const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
   const spreadMapPosts = useMemo(
-    () => spreadOverlappingMarkers(filteredPosts),
-    [filteredPosts],
+    () => (showPosts ? spreadOverlappingMarkers(filteredPosts) : []),
+    [filteredPosts, showPosts],
   );
 
   useEffect(() => {
     if (showDetailPins) return;
-    setSelectedPost(null);
-    setSelectedPostIsOwn(false);
     setSelectedPlace(null);
   }, [showDetailPins]);
+
+  useEffect(() => {
+    if (showPosts) return;
+    setSelectedPost(null);
+    setSelectedPostIsOwn(false);
+  }, [showPosts]);
 
   // ── Inject mapbox-gl CSS once and wait for it to load ──────────────────────
   useEffect(() => {
@@ -893,6 +899,12 @@ export default function MapScreen({
 
       {/* ── Right zoom / locate controls ── */}
       <View style={styles.rightControls}>
+        <View style={styles.zoomBadge}>
+          <Text style={styles.zoomBadgeValue}>{shownZoom.toFixed(1)}</Text>
+          <Text style={styles.zoomBadgeHint} numberOfLines={1}>
+            {showPosts ? t('map.zoomPostsOn') : t('map.zoomFriendsOnly')}
+          </Text>
+        </View>
         <TouchableOpacity onPress={zoomIn}   style={styles.zoomBtn}>
           <Ionicons name="add"            size={20} color={Colors.primary} />
         </TouchableOpacity>
@@ -955,7 +967,7 @@ export default function MapScreen({
       {/* ── Friend detail sheet ── */}
       {selectedFriend && (
         <FriendSheet
-          friend={selectedFriend}
+          friend={friendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
           onClose={onCloseSheet}
           onMessage={f => { onCloseSheet(); onMessage(f); }}
           onViewProfile={onViewProfile ? f => { onCloseSheet(); onViewProfile(f); } : undefined}
@@ -1121,6 +1133,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...Shadows.float,
+  },
+  zoomBadge: {
+    width: 48,
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 6,
+    ...Shadows.float,
+  },
+  zoomBadgeValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textDark,
+    lineHeight: 16,
+  },
+  zoomBadgeHint: {
+    marginTop: 1,
+    fontSize: 8,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   locateBtn: {
     width: 52,

@@ -11,6 +11,7 @@ export interface FriendLocation {
   longitude: number;
   isOnline: boolean;
   lastSeen?: string | null;
+  lastActiveAt?: string | null;
 }
 
 export type MapFriendPin = Friend & {
@@ -56,6 +57,7 @@ function normalizeFriendLocation(raw: Record<string, unknown>): FriendLocation {
     longitude: Number(raw.longitude ?? raw.Longitude ?? 0),
     isOnline: Boolean(raw.isOnline ?? raw.IsOnline),
     lastSeen: (raw.lastSeen ?? raw.LastSeen ?? null) as string | null,
+    lastActiveAt: (raw.lastActiveAt ?? raw.LastActiveAt ?? null) as string | null,
   };
 }
 
@@ -77,6 +79,7 @@ export function friendLocationToMapPin(
         : '—',
     status: loc.isOnline ? 'active' : 'idle',
     battery: 100,
+    lastActiveAt: loc.lastActiveAt ?? null,
     x: 50,
     y: 50,
     lng: loc.longitude,

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parseVibeIds, type VibeId } from '../constants/vibes';
 import { API_URL } from '../config/apiConfig';
 import {
   BUSINESS_PORTAL_KEY,
@@ -118,6 +119,7 @@ export interface BusinessDto {
   phone?: string | null;
   email?: string | null;
   website?: string | null;
+  vibes: VibeId[];
   verified: boolean;
   status?: string;
 }
@@ -157,6 +159,7 @@ function normalizeBusiness(raw: Record<string, unknown>): BusinessDto {
     phone: (raw.phone ?? raw.Phone ?? null) as string | null,
     email: (raw.email ?? raw.Email ?? null) as string | null,
     website: (raw.website ?? raw.Website ?? null) as string | null,
+    vibes: parseVibeIds(raw.vibes ?? raw.Vibes),
     verified: Boolean(raw.verified ?? raw.Verified ?? false),
     status: String(raw.status ?? raw.Status ?? 'Approved'),
   };
@@ -204,6 +207,7 @@ export async function updateBusiness(
     phone?: string | null;
     email?: string | null;
     website?: string | null;
+    vibes: string[];
   },
 ): Promise<BusinessDto> {
   const res = await requestJson<Record<string, unknown>>(`/business/${businessId}`, 'PUT', {
@@ -213,6 +217,7 @@ export async function updateBusiness(
     phone: payload.phone?.trim() || null,
     email: payload.email?.trim() || null,
     website: payload.website?.trim() || null,
+    vibes: payload.vibes,
   });
   return normalizeBusiness(res.data ?? {});
 }

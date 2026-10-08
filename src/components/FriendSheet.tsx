@@ -13,6 +13,23 @@ import { removeFriend, blockFriend } from '../services/friendsApi';
 import Toast from 'react-native-toast-message';
 import { avatarUri } from '../constants/defaultAvatar';
 
+function formatLastActive(
+  iso: string | null | undefined,
+  now: number,
+  t: (key: string) => string,
+): string {
+  if (!iso) return t('friend.seenUnknown');
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return t('friend.seenUnknown');
+  const minutes = Math.max(0, Math.floor((now - then) / 60000));
+  if (minutes < 1) return t('friend.seenNow');
+  if (minutes < 60) return t('friend.seenMinutes').replace('{count}', String(minutes));
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t('friend.seenHours').replace('{count}', String(hours));
+  const days = Math.floor(hours / 24);
+  return t('friend.seenDays').replace('{count}', String(days));
+}
+
 interface FriendSheetProps {
   friend: Friend;
   onClose: () => void;
@@ -57,6 +74,13 @@ export default function FriendSheet({ friend, onClose, onMessage, onViewProfile 
     : friend.status === 'moving'
     ? '#FEF3C7'
     : Colors.primarySoft;
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  const seenLabel = formatLastActive(friend.lastActiveAt, now, t);
 
   const confirmRemove = () => setConfirmAction('remove');
 
@@ -120,7 +144,7 @@ export default function FriendSheet({ friend, onClose, onMessage, onViewProfile 
         <View style={styles.stats}>
           <StatBox label={t('friend.battery')} value={`${friend.battery}%`} />
           <StatBox label={t('friend.speed')} value={friend.status === 'moving' ? '12 km/h' : '0'} />
-          <StatBox label={t('friend.seen')} value={t('friend.seenVal')} />
+          <StatBox label={t('friend.seen')} value={seenLabel} />
         </View>
 
         {/* Battery bar */}

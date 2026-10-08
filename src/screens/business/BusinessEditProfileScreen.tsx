@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
 import { Colors, Shadows } from '../../constants/colors';
+import { type VibeId } from '../../constants/vibes';
+import VibeGallery from '../../components/VibeGallery';
 import { useI18n } from '../../i18n';
 import {
   getMyBusinesses,
@@ -29,7 +31,7 @@ export default function BusinessEditProfileScreen({
   session: BusinessSession;
   onBack: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,6 +46,7 @@ export default function BusinessEditProfileScreen({
   const [notifyCampaign, setNotifyCampaign] = useState(true);
   const [notifyReviews, setNotifyReviews] = useState(true);
   const [notifyPlaceStatus, setNotifyPlaceStatus] = useState(true);
+  const [vibes, setVibes] = useState<VibeId[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +67,7 @@ export default function BusinessEditProfileScreen({
           setWebsite(biz.website ?? '');
           setServerLogoUrl(biz.logoUrl ?? null);
           setLogoUri(biz.logoUrl ?? null);
+          setVibes(biz.vibes);
         }
         setNotifyCampaign(notifyPrefs.notifyCampaign);
         setNotifyReviews(notifyPrefs.notifyReviews);
@@ -102,6 +106,10 @@ export default function BusinessEditProfileScreen({
       Toast.show({ type: 'error', text1: t('biz.profile.nameRequired') });
       return;
     }
+    if (vibes.length < 1 || vibes.length > 3) {
+      Toast.show({ type: 'error', text1: t('biz.profile.vibesRequired') });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -125,6 +133,7 @@ export default function BusinessEditProfileScreen({
         email: email.trim() || null,
         website: website.trim() || null,
         logoUrl,
+        vibes,
       });
 
       await saveBusinessNotifyPrefs({
@@ -167,6 +176,25 @@ export default function BusinessEditProfileScreen({
           <Field label={t('biz.register.phone')} value={phone} onChangeText={setPhone} />
           <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" />
           <Field label="Website" value={website} onChangeText={setWebsite} />
+          <View style={styles.vibeHead}>
+            <Text style={styles.section}>{t('biz.profile.vibes')}</Text>
+            <Text style={styles.vibeCount}>{t('biz.profile.vibesCount').replace('{count}', String(vibes.length))}</Text>
+          </View>
+          <Text style={styles.notifyHint}>{t('biz.profile.vibesHint')}</Text>
+          <VibeGallery
+            selectedIds={vibes}
+            lang={lang}
+            onSelect={id => {
+              setVibes(current => {
+                if (current.includes(id)) return current.filter(item => item !== id);
+                if (current.length >= 3) {
+                  Toast.show({ type: 'info', text1: t('biz.profile.vibesRequired') });
+                  return current;
+                }
+                return [...current, id];
+              });
+            }}
+          />
           <Text style={styles.section}>{t('biz.profile.notifyPrefs')}</Text>
           <Text style={styles.notifyHint}>{t('biz.profile.notifyLocalHint')}</Text>
           <Toggle label={t('biz.profile.notifyCampaign')} value={notifyCampaign} onValueChange={setNotifyCampaign} />
@@ -249,6 +277,8 @@ const styles = StyleSheet.create({
   },
   inputMulti: { minHeight: 88, textAlignVertical: 'top' },
   section: { fontSize: 13, fontWeight: '800', color: Colors.textDark, marginTop: 8, marginBottom: 4 },
+  vibeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  vibeCount: { fontSize: 12, fontWeight: '800', color: Colors.primary, marginTop: 8 },
   notifyHint: { fontSize: 11, color: Colors.textMuted, marginBottom: 8 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
   toggleLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark, flex: 1, paddingRight: 12 },

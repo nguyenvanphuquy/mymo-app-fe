@@ -23,7 +23,7 @@ export default function PortalChoiceScreen({
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#F0EAFF', '#DDD0FF', '#C9B8FF']}
+        colors={['#FFFEFF', '#F7F4FF', '#EFE8FF']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -55,7 +55,7 @@ export default function PortalChoiceScreen({
           activeOpacity={0.88}
           onPress={onChooseBusiness}
         >
-          <LinearGradient colors={['#5B4AE0', '#8B5CF6']} style={styles.cardIcon}>
+          <LinearGradient colors={['#F4EEFF', '#A78BFA']} style={styles.cardIcon}>
             <Ionicons name="storefront" size={28} color={Colors.white} />
           </LinearGradient>
           <View style={styles.cardText}>

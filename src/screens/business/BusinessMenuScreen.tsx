@@ -264,7 +264,7 @@ function MenuItemCard({
       {item.imageUrl ? (
         <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
       ) : (
-        <LinearGradient colors={['#E8DFFF', '#C8A8FF']} style={styles.thumbPlaceholder}>
+        <LinearGradient colors={['#F6F2FF', '#E4DAFF']} style={styles.thumbPlaceholder}>
           <Ionicons name="fast-food-outline" size={28} color={Colors.primary} />
         </LinearGradient>
       )}

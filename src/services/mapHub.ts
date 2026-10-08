@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 
 import { MAP_HUB_URL } from '../config/apiConfig';
 
@@ -11,6 +12,11 @@ type MapPostDeletedHandler = (payload: { postId: string }) => void;
 let connection: signalR.HubConnection | null = null;
 let starting: Promise<signalR.HubConnection> | null = null;
 let lastMapAreaKey: string | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatAppState: { remove: () => void } | null = null;
+let heartbeatOn = false;
+
+const HEARTBEAT_MS = 30_000;
 
 const mapPostCreatedHandlers = new Set<MapPostCreatedHandler>();
 const mapPostDeletedHandlers = new Set<MapPostDeletedHandler>();
@@ -76,10 +82,49 @@ export async function updateMapArea(lat: number, lng: number): Promise<void> {
 }
 
 export async function disconnectMapHub(): Promise<void> {
+  stopPresenceHeartbeat();
   if (!connection) return;
   try { await connection.stop(); } catch { /* ignore */ }
   connection = null;
   lastMapAreaKey = null;
+}
+
+async function sendPresenceHeartbeat(): Promise<void> {
+  const conn = await ensureMapHubConnected();
+  await conn.invoke('Heartbeat');
+}
+
+function armPresenceHeartbeat(): void {
+  if (heartbeatTimer) return;
+  void sendPresenceHeartbeat().catch(() => {});
+  heartbeatTimer = setInterval(() => {
+    void sendPresenceHeartbeat().catch(() => {});
+  }, HEARTBEAT_MS);
+}
+
+function disarmPresenceHeartbeat(): void {
+  if (!heartbeatTimer) return;
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+/** While the user app is open, tell the server this account is still in use. */
+export function startPresenceHeartbeat(): void {
+  if (heartbeatOn) return;
+  heartbeatOn = true;
+  if (AppState.currentState === 'active') armPresenceHeartbeat();
+  heartbeatAppState = AppState.addEventListener('change', state => {
+    if (!heartbeatOn) return;
+    if (state === 'active') armPresenceHeartbeat();
+    else disarmPresenceHeartbeat();
+  });
+}
+
+export function stopPresenceHeartbeat(): void {
+  heartbeatOn = false;
+  disarmPresenceHeartbeat();
+  heartbeatAppState?.remove();
+  heartbeatAppState = null;
 }
 
 export function onMapPostCreated(handler: MapPostCreatedHandler): () => void {
@@ -96,6 +141,8 @@ export default {
   ensureMapHubConnected,
   updateMapArea,
   disconnectMapHub,
+  startPresenceHeartbeat,
+  stopPresenceHeartbeat,
   onMapPostCreated,
   onMapPostDeleted,
 };

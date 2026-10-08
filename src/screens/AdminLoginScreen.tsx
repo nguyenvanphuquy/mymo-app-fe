@@ -54,7 +54,7 @@ export default function AdminLoginScreen({ onSuccess, onBack }: AdminLoginScreen
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <LinearGradient
-          colors={['#F0EAFF', '#DDD0FF', '#BFA2FF']}
+          colors={['#FFFEFF', '#F7F4FF', '#EFE8FF']}
           style={styles.heroGrad}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}

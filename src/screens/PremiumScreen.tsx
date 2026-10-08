@@ -154,7 +154,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#F6F2FF', '#E8DFFF', '#D8C8FF']}
+        colors={['#FCFAFF', '#F6F2FF', '#EDE6FF']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}

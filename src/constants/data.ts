@@ -9,6 +9,7 @@ export interface Friend {
   distance: string;
   status: 'active' | 'idle' | 'moving';
   battery: number;
+  lastActiveAt?: string | null;
   x: number; // 0-100 percentage on map
   y: number;
 }

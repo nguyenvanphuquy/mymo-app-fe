@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows } from '../constants/colors';
+import { type VibeId } from '../constants/vibes';
+import VibeStrip from '../components/VibeStrip';
 import { useI18n } from '../i18n';
 import { getUserProfile } from '../services/userApi';
 import { getFriends, getFriendRequests, getFriendSuggestions } from '../services/friendsApi';
@@ -28,14 +30,6 @@ interface HomeScreenProps {
   onOpenPost?: (postId: string) => void;
   onOpenChat?: (conversationId: string, title: string, avatarUrl?: string | null) => void;
 }
-
-const VIBES = [
-  { id: 'chill', label: 'Chill', icon: 'leaf-outline' as const, grad: ['#FFD6EC', '#FFB8D9'] as const, color: '#D9468F', emoji: '🌸' },
-  { id: 'study', label: 'Study', icon: 'book-outline' as const, grad: ['#C8F5DC', '#9AE6B8'] as const, color: '#16A34A', emoji: '📚' },
-  { id: 'date', label: 'Date', icon: 'heart' as const, grad: ['#FFD4DC', '#FF9EB0'] as const, color: '#E11D48', emoji: '💕' },
-  { id: 'party', label: 'Party', icon: 'musical-notes-outline' as const, grad: ['#E8D4FF', '#C9A8FF'] as const, color: '#7C3AED', emoji: '🎉' },
-  { id: 'workout', label: 'Workout', icon: 'barbell-outline' as const, grad: ['#C8E4FF', '#93C8FD'] as const, color: '#2563EB', emoji: '💪' },
-] as const;
 
 const FALLBACK_PLACE = 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=400&fit=crop';
 
@@ -78,7 +72,7 @@ export default function HomeScreen({
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [notifOpen, setNotifOpen] = useState(false);
-  const [selectedVibe, setSelectedVibe] = useState<string>('chill');
+  const [selectedVibe, setSelectedVibe] = useState<VibeId>('chill');
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -161,6 +155,7 @@ export default function HomeScreen({
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
         style={styles.scrollView}
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12, paddingBottom: 120 }]}
       >
@@ -196,7 +191,7 @@ export default function HomeScreen({
             </TouchableOpacity>
 
             <TouchableOpacity onPress={onGoProfile} activeOpacity={0.85}>
-              <LinearGradient colors={['#C9A8FF', '#FF9EC8', '#9C7CFF']} style={styles.avatarRing}>
+              <LinearGradient colors={['#F4EEFF', '#FFD6EC', '#DDD4FF']} style={styles.avatarRing}>
                 <Image
                   source={{ uri: avatarUri(avatarUrl) }}
                   style={styles.avatar}
@@ -219,57 +214,24 @@ export default function HomeScreen({
           </View>
         </View>
 
-        {/* Vibe chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.vibeRow}
-        >
-          {VIBES.map(vibe => {
-            const active = selectedVibe === vibe.id;
-            return (
-              <TouchableOpacity
-                key={vibe.id}
-                onPress={() => {
-                  setSelectedVibe(vibe.id);
-                  onGoMap();
-                }}
-                activeOpacity={0.88}
-              >
-                {active ? (
-                  <LinearGradient
-                    colors={[...vibe.grad]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.vibeChip, styles.vibeChipActive]}
-                  >
-                    <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
-                    <Ionicons name={vibe.icon} size={14} color={vibe.color} />
-                    <Text style={[styles.vibeText, { color: vibe.color }]}>{vibe.label}</Text>
-                    <Text style={styles.vibeSparkle}>✦</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={[styles.vibeChip, styles.vibeChipInactive]}>
-                    <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
-                    <Ionicons name={vibe.icon} size={14} color={vibe.color} />
-                    <Text style={[styles.vibeText, { color: vibe.color }]}>{vibe.label}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <VibeStrip
+          selectedId={selectedVibe}
+          onSelect={id => {
+            setSelectedVibe(id);
+            onGoMap();
+          }}
+        />
 
         {/* AI suggestion card */}
         <LinearGradient
-          colors={['#F0E8FF', '#E8DEFF', '#FFE8F4', '#E4F0FF']}
+          colors={['#FCFAFF', '#F6F2FF', '#FFF4FA', '#F4F8FF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.aiCardOuter}
         >
           <View style={styles.aiCardShine} />
           <View style={styles.aiBadge}>
-            <LinearGradient colors={['#C9A8FF', '#9C7CFF']} style={styles.aiBadgeGrad}>
+            <LinearGradient colors={[...Gradients.primary]} style={styles.aiBadgeGrad}>
               <Text style={styles.aiBadgeText}>AI ✨</Text>
             </LinearGradient>
           </View>
@@ -304,7 +266,7 @@ export default function HomeScreen({
             </Text>
             <TouchableOpacity onPress={onGoMap} activeOpacity={0.88}>
               <LinearGradient
-                colors={['#B896FF', '#7C5BFF', '#9C7CFF']}
+                colors={['#C9B8FF', '#8F78F0', '#B7A6F8']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.mapBtn}
@@ -373,12 +335,12 @@ export default function HomeScreen({
 
         <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
           <LinearGradient
-            colors={['#F5EEFF', '#EDE4FF', '#F8F0FF']}
+            colors={['#FCFAFF', '#F6F2FF', '#FCFAFF']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.signalCard, styles.signalPurple]}
           >
-            <LinearGradient colors={['#E8DEFF', '#D4C4FF']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
+            <LinearGradient colors={['#F7F3FF', '#E4DAFF']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
               <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" />
             </LinearGradient>
             <View style={styles.signalCopy}>
@@ -531,41 +493,6 @@ const styles = StyleSheet.create({
   },
   vibeQuestionEmoji: {
     fontSize: 16,
-  },
-  vibeRow: {
-    gap: 10,
-    paddingBottom: 22,
-  },
-  vibeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 999,
-  },
-  vibeChipActive: {
-    ...Shadows.glow,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.85)',
-  },
-  vibeChipInactive: {
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(232, 216, 255, 0.6)',
-    ...Shadows.soft,
-  },
-  vibeEmoji: {
-    fontSize: 13,
-  },
-  vibeText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  vibeSparkle: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '700',
   },
   aiCardOuter: {
     borderRadius: 26,

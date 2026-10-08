@@ -187,7 +187,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#9C7CFF', '#7C5BFF', '#6B4FE0']}
+          colors={['#FFFEFF', '#F6F2FF', '#E8DFFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, { paddingTop: insets.top + 16 }]}
@@ -197,7 +197,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
           <View style={styles.heroTop}>
             <View style={styles.heroTitleBlock}>
               <View style={styles.heroIconWrap}>
-                <Ionicons name="storefront" size={22} color={Colors.white} />
+                <Ionicons name="storefront" size={22} color={Colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.heroTitle}>{t('biz.places.title')}</Text>
@@ -283,7 +283,7 @@ function HeroStat({
 }) {
   return (
     <View style={styles.heroStat}>
-      <Ionicons name={icon} size={16} color="rgba(255,255,255,0.85)" />
+      <Ionicons name={icon} size={16} color={Colors.primary} />
       <Text style={styles.heroStatVal}>{value}</Text>
       <Text style={styles.heroStatLbl} numberOfLines={1}>{label}</Text>
     </View>
@@ -300,7 +300,7 @@ function PlaceCard({
   onEdit: () => void;
 }) {
   const st = placeStatusStyle(place.status);
-  const accent = index % 3 === 0 ? ['#9C7CFF', '#7C5BFF'] : index % 3 === 1 ? ['#7CC4FF', '#5B9FD4'] : ['#FFB8E0', '#E879A8'];
+  const accent = index % 3 === 0 ? ['#DDD4FF', '#A78BFA'] : index % 3 === 1 ? ['#B7E4FF', '#7CC4FF'] : ['#FFD6EC', '#FFB8E0'];
 
   return (
     <TouchableOpacity activeOpacity={0.92} onPress={onView} style={styles.card}>
@@ -401,7 +401,7 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
   },
   heroDecor2: {
     position: 'absolute',
@@ -418,12 +418,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heroTitle: { fontSize: 26, fontWeight: '900', color: Colors.white },
-  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4, fontWeight: '600', lineHeight: 18 },
+  heroTitle: { fontSize: 26, fontWeight: '900', color: Colors.textDark },
+  heroSub: { fontSize: 13, color: Colors.textMid, marginTop: 4, fontWeight: '600', lineHeight: 18 },
   addFab: {
     width: 48,
     height: 48,
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   },
   heroStat: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 10,
@@ -448,8 +448,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },
-  heroStatVal: { fontSize: 20, fontWeight: '900', color: Colors.white, marginTop: 4 },
-  heroStatLbl: { fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.75)', marginTop: 2, textTransform: 'uppercase' },
+  heroStatVal: { fontSize: 20, fontWeight: '900', color: Colors.textDark, marginTop: 4 },
+  heroStatLbl: { fontSize: 9, fontWeight: '800', color: Colors.textMuted, marginTop: 2, textTransform: 'uppercase' },
   heroCta: { marginTop: 16, borderRadius: 18, overflow: 'hidden', ...Shadows.soft },
   heroCtaGrad: {
     flexDirection: 'row',

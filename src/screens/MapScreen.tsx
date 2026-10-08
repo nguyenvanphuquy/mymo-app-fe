@@ -28,7 +28,7 @@ import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM } from '../constants/mapbox';
+import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
 import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
@@ -55,7 +55,7 @@ interface MapScreenProps {
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
-const DEFAULT_ZOOM = 17;
+const DEFAULT_ZOOM = 14.5;
 
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
@@ -285,19 +285,25 @@ export default function MapScreen({
     ? [userCoords.lng, userCoords.lat]
     : DEFAULT_CENTER;
 
-  const showDetailPins = mapZoom >= MAP_DETAIL_MIN_ZOOM;
+  const shownZoom = shownMapZoom(mapZoom);
+  const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
+  const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
   const spreadMapPosts = useMemo(
-    () => spreadOverlappingMarkers(filteredPosts),
-    [filteredPosts],
+    () => (showPosts ? spreadOverlappingMarkers(filteredPosts) : []),
+    [filteredPosts, showPosts],
   );
 
   useEffect(() => {
     if (showDetailPins) return;
-    setSelectedPost(null);
-    setSelectedPostIsOwn(false);
     setSelectedPlace(null);
   }, [showDetailPins]);
+
+  useEffect(() => {
+    if (showPosts) return;
+    setSelectedPost(null);
+    setSelectedPostIsOwn(false);
+  }, [showPosts]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
@@ -650,18 +656,20 @@ export default function MapScreen({
 
       {/* ── Right zoom / locate controls ── */}
       <View style={styles.rightControls}>
+        <View style={styles.zoomBadge}>
+          <Text style={styles.zoomBadgeValue}>{shownZoom.toFixed(1)}</Text>
+          <Text style={styles.zoomBadgeHint} numberOfLines={1}>
+            {showPosts ? t('map.zoomPostsOn') : t('map.zoomFriendsOnly')}
+          </Text>
+        </View>
         <TouchableOpacity
-          onPress={() => cameraRef.current?.zoomTo(
-            Math.min((DEFAULT_ZOOM + 1), 20), 300
-          )}
+          onPress={() => cameraRef.current?.zoomTo(Math.min(mapZoom + 1, 22), 300)}
           style={styles.zoomBtn}
         >
           <Ionicons name="add" size={20} color={Colors.primary} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => cameraRef.current?.zoomTo(
-            Math.max((DEFAULT_ZOOM - 1), 1), 300
-          )}
+          onPress={() => cameraRef.current?.zoomTo(Math.max(mapZoom - 1, 2), 300)}
           style={styles.zoomBtn}
         >
           <Ionicons name="remove" size={20} color={Colors.primary} />
@@ -725,7 +733,7 @@ export default function MapScreen({
       {/* ── Friend detail sheet ── */}
       {selectedFriend && (
         <FriendSheet
-          friend={selectedFriend}
+          friend={friendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
           onClose={onCloseSheet}
           onMessage={(f) => { onCloseSheet(); onMessage(f); }}
           onViewProfile={onViewProfile ? (f) => { onCloseSheet(); onViewProfile(f); } : undefined}
@@ -1059,6 +1067,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     ...Shadows.float,
+  },
+  zoomBadge: {
+    width: 48,
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 6,
+    ...Shadows.float,
+  },
+  zoomBadgeValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textDark,
+    lineHeight: 16,
+  },
+  zoomBadgeHint: {
+    marginTop: 1,
+    fontSize: 8,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   locateBtn: {
     width: 52,

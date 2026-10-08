@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
+import { vibeById, type VibeId } from '../../constants/vibes';
 import { useI18n } from '../../i18n';
 import MymoLogo from '../../components/MymoLogo';
 import SparkleField from '../../components/SparkleField';
@@ -38,6 +39,7 @@ export default function BusinessHomeScreen({
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [businessName, setBusinessName] = useState('');
+  const [vibes, setVibes] = useState<VibeId[]>([]);
   const [placeCount, setPlaceCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [approvedCount, setApprovedCount] = useState(0);
@@ -68,6 +70,7 @@ export default function BusinessHomeScreen({
 
       const businesses = await getMyBusinesses();
       setBusinessName(businesses[0]?.name ?? session.displayName);
+      setVibes(businesses[0]?.vibes ?? []);
 
       const places = await getMyPlaces();
       setPlaceCount(places.length);
@@ -125,6 +128,20 @@ export default function BusinessHomeScreen({
         </View>
         <Text style={styles.greeting}>{t('biz.home.greeting').replace('{name}', session.displayName)}</Text>
         <Text style={styles.sub}>{businessName || t('biz.home.sub')}</Text>
+        {vibes.length > 0 ? (
+          <View style={styles.vibeRow}>
+            {vibes.map(id => {
+              const vibe = vibeById(id);
+              if (!vibe) return null;
+              return (
+                <View key={id} style={[styles.vibeChip, { backgroundColor: vibe.grad[0], borderColor: vibe.grad[1] }]}>
+                  <Text style={styles.vibeEmoji}>{vibe.emoji}</Text>
+                  <Text style={[styles.vibeName, { color: vibe.color }]}>{vibe.name}</Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
 
         {hasUnpaidCampaign && onOpenBilling ? (
           <TouchableOpacity style={styles.payBanner} onPress={onOpenBilling} activeOpacity={0.9}>
@@ -255,7 +272,19 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 11, fontWeight: '800', color: Colors.activeGreen },
   greeting: { fontSize: 26, fontWeight: '900', color: Colors.textDark, letterSpacing: -0.6 },
-  sub: { fontSize: 13, color: Colors.textMid, marginTop: 6, marginBottom: 18 },
+  sub: { fontSize: 13, color: Colors.textMid, marginTop: 6, marginBottom: 12 },
+  vibeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  vibeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  vibeEmoji: { fontSize: 14 },
+  vibeName: { fontSize: 12, fontWeight: '800' },
   payBanner: {
     flexDirection: 'row',
     alignItems: 'center',
