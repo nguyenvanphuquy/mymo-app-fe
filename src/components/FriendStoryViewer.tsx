@@ -11,6 +11,7 @@ import PostSheet from './PostSheet';
 import { getPostThumbnail, toPostView } from '../services/postApi';
 import type { UserMomentGroup } from '../utils/friendMomentsGrouping';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface FriendStoryViewerProps {
   group: UserMomentGroup | null;
@@ -125,14 +126,32 @@ export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerP
               </View>
 
               <View style={styles.userRow}>
-                <Image
-                  source={{
-                    uri: avatarUri(group.avatarUrl),
-                  }}
-                  style={styles.userAvatar}
-                />
+                <TouchableOpacity
+                  onPress={() => openUserProfile({
+                    userId: group.userId,
+                    displayName: group.displayName,
+                    avatarUrl: group.avatarUrl,
+                  })}
+                  activeOpacity={0.75}
+                >
+                  <Image
+                    source={{
+                      uri: avatarUri(group.avatarUrl),
+                    }}
+                    style={styles.userAvatar}
+                  />
+                </TouchableOpacity>
                 <View style={styles.userInfo}>
-                  <Text style={styles.userName} numberOfLines={1}>{group.displayName}</Text>
+                  <TouchableOpacity
+                    onPress={() => openUserProfile({
+                      userId: group.userId,
+                      displayName: group.displayName,
+                      avatarUrl: group.avatarUrl,
+                    })}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.userName} numberOfLines={1}>{group.displayName}</Text>
+                  </TouchableOpacity>
                   <Text style={styles.userMeta}>
                     {activeIndex + 1}/{posts.length} · {new Date(currentPost.createdAt).toLocaleDateString()}
                   </Text>

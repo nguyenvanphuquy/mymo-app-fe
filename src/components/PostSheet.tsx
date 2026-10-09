@@ -28,6 +28,9 @@ import {
   type Comment,
 } from '../services/commentApi';
 import { getStoredAuthSession } from '../services/authApi';
+import ContentRejectedBanner from './ContentRejectedBanner';
+import { isContentRejected } from '../utils/contentRejected';
+import { isRealUserId, openUserProfile } from '../utils/openUserProfile';
 
 interface PostSheetProps {
   post: PostView;
@@ -38,6 +41,36 @@ interface PostSheetProps {
 function sameUserId(a: string | null | undefined, b: string | null | undefined): boolean {
   if (!a || !b) return false;
   return a.toLowerCase() === b.toLowerCase();
+}
+
+function isExpiredMessage(message: string | null): boolean {
+  return !!message && message.toLowerCase().includes('expired');
+}
+
+function formatPostedAt(
+  createdAt: string,
+  now: number,
+  lang: string,
+  t: (key: string) => string,
+): string {
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return '';
+
+  const elapsed = Math.max(0, now - created);
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 30) return t('post.justPosted');
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (elapsed < dayMs) {
+    const hours = Math.min(23, Math.max(1, Math.floor((minutes + 29) / 60)));
+    return t('post.hoursAgo').replace('{count}', String(hours));
+  }
+
+  return new Date(createdAt).toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function formatCaption(caption: string | null | undefined, t: (key: string) => string): string {
@@ -78,15 +111,31 @@ function CommentRow({
   const isOwner = currentUserId === comment.userId;
   const isNested = depth > 0;
   const avatarSize = depth === 0 ? 28 : depth === 1 ? 22 : 18;
+  const canOpenProfile = isRealUserId(comment.user.userId || comment.userId);
+  const openProfile = () => {
+    if (!canOpenProfile) return;
+    openUserProfile({
+      userId: comment.user.userId || comment.userId,
+      displayName: name,
+      avatarUrl: comment.user.avatarUrl,
+    });
+  };
 
   return (
     <View style={[styles.commentRow, isNested && styles.replyRow]}>
-      <View style={[styles.commentAvatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
+      <TouchableOpacity
+        onPress={openProfile}
+        disabled={!canOpenProfile}
+        activeOpacity={canOpenProfile ? 0.75 : 1}
+        style={[styles.commentAvatar, { width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}
+      >
         <Image source={{ uri: avatarUri(comment.user.avatarUrl) }} style={styles.commentAvatarImage} />
-      </View>
+      </TouchableOpacity>
       <View style={styles.commentBody}>
         <View style={styles.commentMeta}>
-          <Text style={[styles.commentName, isNested && styles.commentNameNested]}>{name}</Text>
+          <TouchableOpacity onPress={openProfile} disabled={!canOpenProfile} activeOpacity={canOpenProfile ? 0.75 : 1}>
+            <Text style={[styles.commentName, isNested && styles.commentNameNested]}>{name}</Text>
+          </TouchableOpacity>
           <Text style={styles.commentDate}>
             {new Date(comment.createdAt).toLocaleDateString()}
           </Text>
@@ -119,7 +168,7 @@ function CommentRow({
 }
 
 export default function PostSheet({ post, onClose, isOwnPost = false }: PostSheetProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const appWidth = useAppContentWidth();
   const slideAnim = useRef(new Animated.Value(400)).current;
   const useNativeDriver = Platform.OS !== 'web';
@@ -133,6 +182,7 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [commentNotice, setCommentNotice] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -143,9 +193,15 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   const [reportPreset, setReportPreset] = useState<string | null>(null);
   const [reportDetail, setReportDetail] = useState('');
   const [reporting, setReporting] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const contentPad = 24;
   const mediaSize = appWidth - contentPad * 2;
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -299,7 +355,11 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
       Toast.show({ type: 'success', text1: t('post.commentPosted') });
     } catch (err) {
       const message = err instanceof Error ? err.message : t('post.commentError');
-      if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
+      if (isContentRejected(err)) {
+        const notice = t('moderation.body');
+        setCommentNotice(notice);
+        Toast.show({ type: 'error', text1: t('moderation.title'), text2: notice, visibilityTime: 6500 });
+      } else if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
         Toast.show({ type: 'error', text1: t('post.loginToComment') });
       } else {
         Toast.show({ type: 'error', text1: message });
@@ -367,7 +427,7 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   }, []);
 
   const owner = detail?.owner;
-  const isAnonymous = detail?.visibility === 'Anonymous';
+  const isAnonymous = detail?.visibility === 'Anonymous' || Boolean(post.isAnonymous);
   const displayName = owner?.displayName || owner?.username || post.displayName;
   const avatarUrl = owner?.avatarUrl ?? post.avatarUrl;
   const showUsername = owner?.username && owner.username !== 'anonymous';
@@ -376,6 +436,18 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   const imageUrl = primaryMedia?.url || primaryMedia?.thumbnailUrl || post.thumbnailUrl;
   const viewCount = detail?.viewCount ?? 0;
   const shareCount = detail?.shareCount ?? 0;
+  const createdAt = detail?.createdAt || post.createdAt;
+  const postedLabel = createdAt ? formatPostedAt(createdAt, now, lang, t) : '';
+  const authorUserId = isAnonymous ? null : (detail?.owner?.userId || post.userId);
+  const canOpenAuthor = isRealUserId(authorUserId);
+  const openAuthor = () => {
+    if (!canOpenAuthor) return;
+    openUserProfile({
+      userId: authorUserId,
+      displayName,
+      avatarUrl,
+    });
+  };
 
   return (
     <>
@@ -394,20 +466,32 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <View style={styles.avatar}>
+            <TouchableOpacity
+              onPress={openAuthor}
+              disabled={!canOpenAuthor}
+              activeOpacity={canOpenAuthor ? 0.75 : 1}
+              style={styles.avatar}
+            >
               {isAnonymous ? (
                 <Ionicons name="eye-off-outline" size={16} color={Colors.primary} />
               ) : (
                 <Image source={{ uri: avatarUri(avatarUrl) }} style={styles.avatarImage} />
               )}
-            </View>
+            </TouchableOpacity>
             <View style={styles.headerInfo}>
-              <Text style={styles.name}>{displayName}</Text>
-              {isAnonymous ? (
-                <Text style={styles.username}>{t('post.anonymous')}</Text>
-              ) : showUsername ? (
-                <Text style={styles.username}>@{owner?.username}</Text>
-              ) : null}
+              <TouchableOpacity
+                onPress={openAuthor}
+                disabled={!canOpenAuthor}
+                activeOpacity={canOpenAuthor ? 0.75 : 1}
+              >
+                <Text style={styles.name}>{displayName}</Text>
+                {isAnonymous ? (
+                  <Text style={styles.username}>{t('post.anonymous')}</Text>
+                ) : showUsername ? (
+                  <Text style={styles.username}>@{owner?.username}</Text>
+                ) : null}
+              </TouchableOpacity>
+              {postedLabel ? <Text style={styles.postedAt}>{postedLabel}</Text> : null}
             </View>
             <TouchableOpacity onPress={close} style={styles.closeBtn}>
               <Ionicons name="close" size={18} color={Colors.textMuted} />
@@ -427,7 +511,7 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
               </View>
             )}
 
-            {error && !loading && (
+            {error && !loading && !isExpiredMessage(error) && (
               <Text style={styles.errorText}>{error}</Text>
             )}
 
@@ -495,11 +579,6 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                       <Text style={styles.statText}>{shareCount}</Text>
                     </View>
                   )}
-                  {detail?.createdAt && (
-                    <Text style={styles.dateText}>
-                      {new Date(detail.createdAt).toLocaleDateString()}
-                    </Text>
-                  )}
                 </View>
 
                 {isPostOwner && (
@@ -566,13 +645,17 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                   </TouchableOpacity>
                 </View>
               )}
+              {commentNotice ? <ContentRejectedBanner message={commentNotice} /> : null}
               <View style={styles.inputRow}>
                 <TextInput
                   style={styles.commentInput}
                   placeholder={t('post.commentPlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   value={commentText}
-                  onChangeText={setCommentText}
+                  onChangeText={text => {
+                    setCommentText(text);
+                    setCommentNotice(null);
+                  }}
                   multiline
                   maxLength={2000}
                   onFocus={() => setShowComments(true)}
@@ -764,6 +847,12 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 2,
   },
+  postedAt: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.primary,
+    marginTop: 2,
+  },
   closeBtn: {
     width: 30,
     height: 30,
@@ -845,11 +934,6 @@ const styles = StyleSheet.create({
   },
   likeTextActive: {
     color: '#EF4444',
-  },
-  dateText: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginLeft: 'auto',
   },
   recallBtn: {
     flexDirection: 'row',

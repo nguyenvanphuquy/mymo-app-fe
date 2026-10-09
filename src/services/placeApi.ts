@@ -476,6 +476,8 @@ export function recentPostToPostView(post: PlaceRecentPost) {
     caption: post.caption || '',
     likeCount: post.likeCount,
     commentCount: post.commentCount,
+    createdAt: post.createdAt,
+    userId: post.user.userId,
   };
 }
 

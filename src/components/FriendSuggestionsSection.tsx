@@ -8,16 +8,29 @@ import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { FriendSummary } from '../services/friendsApi';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface FriendSuggestionsSectionProps {
   suggestions: FriendSummary[];
   onAdd: (user: FriendSummary) => void;
+  emptyLabel?: string;
 }
 
-export default function FriendSuggestionsSection({ suggestions, onAdd }: FriendSuggestionsSectionProps) {
+export default function FriendSuggestionsSection({ suggestions, onAdd, emptyLabel }: FriendSuggestionsSectionProps) {
   const { t } = useI18n();
 
-  if (suggestions.length === 0) return null;
+  if (suggestions.length === 0) {
+    if (!emptyLabel) return null;
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.titleRow}>
+          <Ionicons name="sparkles-outline" size={16} color={Colors.primary} />
+          <Text style={styles.title}>{t('friends.suggestions')}</Text>
+        </View>
+        <Text style={styles.empty}>{emptyLabel}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>
@@ -29,15 +42,25 @@ export default function FriendSuggestionsSection({ suggestions, onAdd }: FriendS
       {suggestions.slice(0, 5).map(user => (
         <View key={user.userId} style={styles.card}>
           <View style={styles.userRow}>
-            <Image source={{ uri: avatarUri(user.avatarUrl) }} style={styles.avatar} />
-            <View style={styles.info}>
-              <Text style={styles.name}>{user.displayName}</Text>
+            <TouchableOpacity
+              style={styles.avatarName}
+              activeOpacity={0.75}
+              onPress={() => openUserProfile({
+                userId: user.userId,
+                displayName: user.displayName,
+                avatarUrl: user.avatarUrl,
+              })}
+            >
+              <Image source={{ uri: avatarUri(user.avatarUrl) }} style={styles.avatar} />
+              <View style={styles.info}>
+                <Text style={styles.name}>{user.displayName}</Text>
               <Text style={styles.sub}>
                 {user.mutualFriendsCount
                   ? `${user.mutualFriendsCount} ${t('friends.mutualFriends')}`
                   : t('friends.suggestionHint')}
               </Text>
-            </View>
+              </View>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onAdd(user)}
               activeOpacity={0.85}
@@ -71,6 +94,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textDark,
   },
+  empty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
   card: {
     backgroundColor: Colors.white,
     borderRadius: 16,
@@ -83,6 +111,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  avatarName: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
   },
   avatar: {
     width: 40,

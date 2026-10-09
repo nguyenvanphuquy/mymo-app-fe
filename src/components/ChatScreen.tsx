@@ -33,11 +33,13 @@ import { uploadMedia } from '../services/mediaApi';
 import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import { getStoredAuthSession } from '../services/authApi';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 export interface ChatScreenProps {
   conversationId: string;
   title: string;
   avatarUrl?: string | null;
+  peerUserId?: string | null;
   sharePostId?: string;
   sharePlaceId?: string;
   onClose: () => void;
@@ -53,6 +55,7 @@ export default function ChatScreen({
   conversationId,
   title,
   avatarUrl,
+  peerUserId,
   sharePostId,
   sharePlaceId,
   onClose,
@@ -405,9 +408,19 @@ export default function ChatScreen({
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={20} color={Colors.primary} />
         </TouchableOpacity>
-        <Image source={{ uri: avatarUri(avatarUrl) }} style={styles.headerAvatar} />
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => openUserProfile({ userId: peerUserId, displayName: title, avatarUrl })}
+        >
+          <Image source={{ uri: avatarUri(avatarUrl) }} style={styles.headerAvatar} />
+        </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>{title}</Text>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => openUserProfile({ userId: peerUserId, displayName: title, avatarUrl })}
+          >
+            <Text style={styles.headerName}>{title}</Text>
+          </TouchableOpacity>
           <Text style={styles.statusText}>
             {typingName ? `${typingName} ${t('chat.typing')}` : t('chat.online')}
           </Text>

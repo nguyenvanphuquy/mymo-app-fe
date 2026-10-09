@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  StatusBar, Image, DeviceEventEmitter, ActivityIndicator, ScrollView, TextInput,
+  StatusBar, Image, DeviceEventEmitter, ActivityIndicator, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,11 +13,27 @@ import { uploadMedia } from '../services/mediaApi';
 import { createPost } from '../services/postApi';
 import { buildImageFormData } from '../utils/imageFormData';
 import { getNearbyPlaces, pickClosestPlace, PlaceResult } from '../services/placeApi';
-import { BEAUTY_FILTERS, getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
+import { getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
+import { applyColorMatrix } from '../utils/applyColorMatrix';
+import {
+  beautifyCanvas,
+  drawBeautyPreview,
+  prepareFaceBeauty,
+  type FaceBeautyLevel,
+} from '../utils/faceBeauty';
+import FilterStrip from './FilterStrip';
+import ContentRejectedBanner from './ContentRejectedBanner';
+import { isContentRejected } from '../utils/contentRejected';
 import { pickRandomAlias } from '../utils/anonymousAlias';
 import { ensureLocationForPosting } from '../utils/ensureLocation';
 
 const CAPTION_MAX = 150;
+const FACE_LEVELS: { id: FaceBeautyLevel; labelKey: string }[] = [
+  { id: 0, labelKey: 'cam.faceOff' },
+  { id: 1, labelKey: 'cam.faceLight' },
+  { id: 2, labelKey: 'cam.facePretty' },
+  { id: 3, labelKey: 'cam.faceStrong' },
+];
 
 interface CameraSheetProps {
   locationGranted: boolean;
@@ -41,13 +57,19 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
   const [nearestPlace, setNearestPlace] = useState<PlaceResult | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [resolvingPlace, setResolvingPlace] = useState(false);
-  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Anonymous'>('Public');
+  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Private' | 'Anonymous'>('Public');
   const [anonymousAlias, setAnonymousAlias] = useState(() => pickRandomAlias());
   const [caption, setCaption] = useState('');
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(null);
   const [beautyFilter, setBeautyFilter] = useState<BeautyFilterId>('soft');
   const [showBeautyPanel, setShowBeautyPanel] = useState(false);
   const beautyFilterRef = useRef<BeautyFilterId>('soft');
   beautyFilterRef.current = beautyFilter;
+  const [faceLevel, setFaceLevel] = useState<FaceBeautyLevel>(0);
+  const [faceLoading, setFaceLoading] = useState(false);
+  const faceLevelRef = useRef<FaceBeautyLevel>(0);
+  faceLevelRef.current = faceLevel;
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceIndex, setDeviceIndex] = useState(0);
   const slideAnim = useRef(new Animated.Value(800)).current;
@@ -86,6 +108,14 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
 
     video.style.cssText = `width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:${mirror ? 'scaleX(-1)' : 'none'};filter:${filterCss};`;
     video.srcObject = stream;
+
+    let canvas = previewCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      host.appendChild(canvas);
+      previewCanvasRef.current = canvas;
+    }
+    canvas.style.cssText = `width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:${mirror ? 'scaleX(-1)' : 'none'};display:none;pointer-events:none;`;
     video.onloadedmetadata = () => {
       video?.play().then(() => {
         setCameraReady(true);
@@ -138,11 +168,64 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
 
   useEffect(() => {
     const video = videoRef.current;
+    const canvas = previewCanvasRef.current;
     if (!video) return;
-    const mirror = facing === 'user';
-    video.style.filter = getBeautyFilter(beautyFilter).cssFilter;
-    video.style.transform = mirror ? 'scaleX(-1)' : 'none';
-  }, [beautyFilter, facing]);
+    const mirror = facing === 'user' ? 'scaleX(-1)' : 'none';
+    const showFace = faceLevel > 0 && !captured;
+    video.style.filter = showFace ? 'none' : getBeautyFilter(beautyFilter).cssFilter;
+    video.style.transform = mirror;
+    video.style.opacity = showFace && canvas?.style.display === 'block' ? '0' : '1';
+    if (canvas) canvas.style.transform = mirror;
+  }, [beautyFilter, facing, faceLevel, captured]);
+
+  useEffect(() => {
+    if (captured || faceLevel === 0) return;
+    let stopped = false;
+    let timer = 0;
+
+    const loop = async () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      const canvas = previewCanvasRef.current;
+      if (video && canvas && faceLevelRef.current > 0) {
+        try {
+          const painted = await drawBeautyPreview(
+            video,
+            canvas,
+            faceLevelRef.current,
+            getBeautyFilter(beautyFilterRef.current).matrix,
+          );
+          if (painted && !stopped) {
+            canvas.style.display = 'block';
+            video.style.opacity = '0';
+          }
+        } catch {
+          if (canvas) canvas.style.display = 'none';
+          video.style.opacity = '1';
+        }
+      }
+      if (!stopped) timer = window.setTimeout(loop, 80);
+    };
+
+    void prepareFaceBeauty()
+      .then(() => {
+        if (!stopped) void loop();
+      })
+      .catch(() => {
+        if (stopped) return;
+        setFaceLevel(0);
+        Toast.show({ type: 'error', text1: t('cam.faceFailed') });
+      });
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      const canvas = previewCanvasRef.current;
+      const video = videoRef.current;
+      if (canvas) canvas.style.display = 'none';
+      if (video) video.style.opacity = '1';
+    };
+  }, [faceLevel, captured, t]);
 
   useEffect(() => {
     if (captured) {
@@ -278,9 +361,17 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
-      ctx.filter = getBeautyFilter(beautyFilter).cssFilter;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      ctx.filter = 'none';
+      if (faceLevelRef.current > 0) {
+        try {
+          await beautifyCanvas(canvas, faceLevelRef.current);
+        } catch {
+          Toast.show({ type: 'error', text1: t('cam.faceFailed') });
+        }
+      }
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      applyColorMatrix(frame.data, getBeautyFilter(beautyFilter).matrix);
+      ctx.putImageData(frame, 0, 0);
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       setSelectedImageUri(dataUrl);
@@ -300,6 +391,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
     setCaptured(false);
     setSelectedImageUri(null);
     setCaption('');
+    setBlockedNotice(null);
     setCameraReady(false);
   };
 
@@ -354,8 +446,8 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         postType: 'Image',
         visibility,
         mediaIds: [uploadResult.id],
-        latitude,
-        longitude,
+        latitude: Math.round(latitude * 1e6) / 1e6,
+        longitude: Math.round(longitude * 1e6) / 1e6,
       };
       if (visibility === 'Anonymous') {
         payload.anonymousAlias = anonymousAlias.trim() || pickRandomAlias();
@@ -369,6 +461,12 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
       close();
     } catch (error) {
       setPosting(false);
+      if (isContentRejected(error)) {
+        const notice = t('moderation.body');
+        setBlockedNotice(notice);
+        Toast.show({ type: 'error', text1: t('moderation.title'), text2: notice, visibilityTime: 6500 });
+        return;
+      }
       Toast.show({ type: 'error', text1: String(error instanceof Error ? error.message : 'Upload failed') });
     }
   };
@@ -473,7 +571,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                 <TextInput
                   style={styles.captionInput}
                   value={caption}
-                  onChangeText={text => setCaption(text.slice(0, CAPTION_MAX))}
+                  onChangeText={text => {
+                    setCaption(text.slice(0, CAPTION_MAX));
+                    setBlockedNotice(null);
+                  }}
                   placeholder={t('cam.captionPlaceholder')}
                   placeholderTextColor="rgba(255,255,255,0.55)"
                   multiline
@@ -502,36 +603,46 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         <View style={styles.controls}>
           {!captured ? (
             <>
+              <View style={styles.faceRow}>
+                {FACE_LEVELS.map(level => {
+                  const active = faceLevel === level.id;
+                  return (
+                    <TouchableOpacity
+                      key={level.id}
+                      onPress={() => {
+                        setFaceLevel(level.id);
+                        if (level.id === 0) return;
+                        setFaceLoading(true);
+                        prepareFaceBeauty()
+                          .catch(() => {
+                            setFaceLevel(0);
+                            Toast.show({ type: 'error', text1: t('cam.faceFailed') });
+                          })
+                          .finally(() => setFaceLoading(false));
+                      }}
+                      style={[styles.faceChip, active && styles.faceChipActive]}
+                      activeOpacity={0.88}
+                    >
+                      <Text style={[styles.faceChipText, active && styles.faceChipTextActive]}>
+                        {t(level.labelKey)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {faceLoading ? <Text style={styles.faceLoading}>{t('cam.faceLoading')}</Text> : null}
               {showBeautyPanel && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.beautyRow}
-                >
-                  {BEAUTY_FILTERS.map(filter => {
-                    const active = beautyFilter === filter.id;
-                    return (
-                      <TouchableOpacity
-                        key={filter.id}
-                        onPress={() => {
-                          setBeautyFilter(filter.id);
-                          Toast.show({
-                            type: 'success',
-                            text1: t('cam.filter'),
-                            text2: t(filter.labelKey),
-                          });
-                        }}
-                        style={[styles.beautyChip, active && styles.beautyChipActive]}
-                        activeOpacity={0.88}
-                      >
-                        <Text style={styles.beautyEmoji}>{filter.emoji}</Text>
-                        <Text style={[styles.beautyChipText, active && styles.beautyChipTextActive]}>
-                          {t(filter.labelKey)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                <FilterStrip
+                  selectedId={beautyFilter}
+                  onSelect={id => {
+                    setBeautyFilter(id);
+                    Toast.show({
+                      type: 'success',
+                      text1: t('cam.filter'),
+                      text2: t(getBeautyFilter(id).labelKey),
+                    });
+                  }}
+                />
               )}
               <View style={styles.captureRow}>
                 <TouchableOpacity
@@ -583,6 +694,15 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  onPress={() => setVisibility('Private')}
+                  style={[styles.visibilityChip, visibility === 'Private' && styles.visibilityChipActive]}
+                >
+                  <Ionicons name="lock-closed-outline" size={14} color={visibility === 'Private' ? Colors.white : Colors.primary} />
+                  <Text style={[styles.visibilityText, visibility === 'Private' && styles.visibilityTextActive]}>
+                    {t('cam.visibilityPrivate')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => {
                     setVisibility('Anonymous');
                     setAnonymousAlias(pickRandomAlias());
@@ -600,7 +720,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   <TextInput
                     style={styles.aliasInput}
                     value={anonymousAlias}
-                    onChangeText={setAnonymousAlias}
+                    onChangeText={text => {
+                      setAnonymousAlias(text);
+                      setBlockedNotice(null);
+                    }}
                     placeholder={t('cam.aliasPlaceholder')}
                     placeholderTextColor="rgba(255,255,255,0.5)"
                     maxLength={32}
@@ -613,6 +736,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   </TouchableOpacity>
                 </View>
               )}
+              {blockedNotice ? <ContentRejectedBanner message={blockedNotice} onDark /> : null}
               <TouchableOpacity
                 onPress={handlePostNow}
                 activeOpacity={0.85}
@@ -844,6 +968,38 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingTop: 16,
   },
+  faceRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  faceChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  faceChipActive: {
+    backgroundColor: 'rgba(156,124,255,0.55)',
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  faceChipText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  faceChipTextActive: {
+    color: '#FFFFFF',
+  },
+  faceLoading: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   captureRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -882,6 +1038,15 @@ const styles = StyleSheet.create({
   beautyChipActive: {
     backgroundColor: 'rgba(156,124,255,0.45)',
     borderColor: 'rgba(255,255,255,0.55)',
+  },
+  beautySwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
   },
   beautyEmoji: {
     fontSize: 16,

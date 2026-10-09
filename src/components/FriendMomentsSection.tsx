@@ -19,8 +19,8 @@ import {
   getGroupThumbnail,
   type UserMomentGroup,
 } from '../utils/friendMomentsGrouping';
-import { filterActivePosts } from '../utils/postExpiration';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface CurrentUser {
   userId: string;
@@ -32,6 +32,7 @@ interface FriendMomentsSectionProps {
   friendNames: Record<string, { name: string; avatar?: string | null }>;
   currentUser?: CurrentUser | null;
   hideTitle?: boolean;
+  emptyLabel?: string;
 }
 
 function mergeFeedPosts(friendsFeed: FeedPost[], ownPosts: FeedPost[]): FeedPost[] {
@@ -50,6 +51,7 @@ export default function FriendMomentsSection({
   friendNames,
   currentUser = null,
   hideTitle = false,
+  emptyLabel,
 }: FriendMomentsSectionProps) {
   const { t } = useI18n();
   const [groups, setGroups] = useState<UserMomentGroup[]>([]);
@@ -87,7 +89,7 @@ export default function FriendMomentsSection({
 
     if (currentUser?.userId) {
       try {
-        const ownPosts = filterActivePosts(await getMyPosts()).filter(
+        const ownPosts = (await getMyPosts()).filter(
           post => post.userId.toLowerCase() === currentUser.userId.toLowerCase(),
         );
         feed = mergeFeedPosts(feed, ownPosts);
@@ -96,7 +98,7 @@ export default function FriendMomentsSection({
       }
     }
 
-    setGroups(groupPostsByUser(filterActivePosts(feed), namesLookup));
+    setGroups(groupPostsByUser(feed, namesLookup));
   }, [friendNames, currentUser]);
 
   useEffect(() => {
@@ -123,7 +125,19 @@ export default function FriendMomentsSection({
     });
   }, [groups, currentUser]);
 
-  if (loading || visibleGroups.length === 0) return null;
+  if (loading) return null;
+  if (visibleGroups.length === 0) {
+    if (!emptyLabel) return null;
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.titleRow}>
+          <Ionicons name="images-outline" size={16} color={Colors.primary} />
+          <Text style={styles.title}>{t('friends.moments')}</Text>
+        </View>
+        <Text style={styles.empty}>{emptyLabel}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.wrap}>
@@ -163,9 +177,17 @@ export default function FriendMomentsSection({
                 style={styles.cardGradient}
               />
 
-              <View style={styles.avatarRing}>
+              <TouchableOpacity
+                style={styles.avatarRing}
+                activeOpacity={0.75}
+                onPress={() => openUserProfile({
+                  userId: group.userId,
+                  displayName: group.displayName,
+                  avatarUrl: group.avatarUrl,
+                })}
+              >
                 <Image source={{ uri: avatar }} style={styles.avatar} />
-              </View>
+              </TouchableOpacity>
 
               {group.count > 1 && (
                 <View style={styles.countBadge}>
@@ -173,11 +195,20 @@ export default function FriendMomentsSection({
                 </View>
               )}
 
-              <Text style={styles.author} numberOfLines={1}>
-                {group.userId === currentUser?.userId.toLowerCase()
-                  ? t('friends.yourStory')
-                  : group.displayName}
-              </Text>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() => openUserProfile({
+                  userId: group.userId,
+                  displayName: group.displayName,
+                  avatarUrl: group.avatarUrl,
+                })}
+              >
+                <Text style={styles.author} numberOfLines={1}>
+                  {group.userId === currentUser?.userId.toLowerCase()
+                    ? t('friends.yourStory')
+                    : group.displayName}
+                </Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           );
         })}
@@ -208,6 +239,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: Colors.textDark,
+  },
+  empty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
+    paddingHorizontal: 16,
   },
   row: {
     paddingHorizontal: 16,

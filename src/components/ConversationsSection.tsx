@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { DeviceEventEmitter } from 'react-native';
 import { Colors } from '../constants/colors';
 import { useI18n } from '../i18n';
 import { getConversations, type ConversationSummary } from '../services/chatApi';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 export interface OpenChatParams {
   conversationId?: string;
@@ -17,20 +17,29 @@ export interface OpenChatParams {
 }
 
 interface ConversationsSectionProps {
+  query: string;
+  onlineUserIds: ReadonlySet<string>;
   onOpenChat: (params: OpenChatParams) => void;
+  onManage?: (conversation: ConversationSummary) => void;
 }
 
 function formatTime(iso?: string | null, nowLabel = 'now'): string {
   if (!iso) return '';
   const date = new Date(iso);
   const diffMs = Date.now() - date.getTime();
+  if (Number.isNaN(diffMs)) return '';
   if (diffMs < 60_000) return nowLabel;
   if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
   if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h`;
   return date.toLocaleDateString();
 }
 
-export default function ConversationsSection({ onOpenChat }: ConversationsSectionProps) {
+export default function ConversationsSection({
+  query,
+  onlineUserIds,
+  onOpenChat,
+  onManage,
+}: ConversationsSectionProps) {
   const { t } = useI18n();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +61,13 @@ export default function ConversationsSection({ onOpenChat }: ConversationsSectio
     return () => sub.remove();
   }, [load]);
 
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? conversations.filter(conv =>
+      conv.conversationName.toLowerCase().includes(needle)
+      || (conv.lastMessage || '').toLowerCase().includes(needle))
+    : conversations;
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -60,136 +76,178 @@ export default function ConversationsSection({ onOpenChat }: ConversationsSectio
     );
   }
 
-  if (conversations.length === 0) return null;
+  if (visible.length === 0) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyTitle}>{needle ? t('friends.noChatMatch') : t('friends.noChats')}</Text>
+        {needle ? null : <Text style={styles.emptyDesc}>{t('friends.noChatsDesc')}</Text>}
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>{t('chat.recent')}</Text>
-        <Ionicons name="chatbubbles-outline" size={16} color={Colors.primary} />
-      </View>
+    <View>
+      {visible.map(conv => {
+        const online = !!conv.otherUserId && onlineUserIds.has(conv.otherUserId);
+        return (
+          <View key={conv.conversationId} style={styles.row}>
+            <TouchableOpacity
+              style={styles.avatarWrap}
+              activeOpacity={0.8}
+              onPress={() => openUserProfile({
+                userId: conv.otherUserId,
+                displayName: conv.conversationName,
+                avatarUrl: conv.conversationAvatar,
+              })}
+            >
+              <Image source={{ uri: avatarUri(conv.conversationAvatar) }} style={styles.avatar} />
+              <View style={[styles.dot, online ? styles.dotOn : styles.dotOff]} />
+            </TouchableOpacity>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {conversations.map(conv => (
-          <TouchableOpacity
-            key={conv.conversationId}
-            style={styles.chip}
-            activeOpacity={0.8}
-            onPress={() => onOpenChat({
-              conversationId: conv.conversationId,
-              title: conv.conversationName,
-              avatarUrl: conv.conversationAvatar,
-            })}
-          >
-            <View style={styles.avatarWrap}>
-              <Image
-                source={{ uri: avatarUri(conv.conversationAvatar) }}
-                style={styles.avatar}
-              />
-              {conv.unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {conv.unreadCount > 9 ? '9+' : conv.unreadCount}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.name} numberOfLines={1}>{conv.conversationName}</Text>
-            {conv.lastMessage ? (
-              <Text style={styles.preview} numberOfLines={1}>{conv.lastMessage}</Text>
-            ) : null}
-            {conv.lastMessageTime ? (
-              <Text style={styles.time}>{formatTime(conv.lastMessageTime, t('common.now'))}</Text>
-            ) : null}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            <TouchableOpacity
+              style={styles.main}
+              activeOpacity={0.75}
+              onPress={() => onOpenChat({
+                conversationId: conv.conversationId,
+                userId: conv.otherUserId || undefined,
+                title: conv.conversationName,
+                avatarUrl: conv.conversationAvatar,
+              })}
+              onLongPress={() => onManage?.(conv)}
+            >
+              <View style={styles.topLine}>
+                <Text style={styles.name} numberOfLines={1}>{conv.conversationName}</Text>
+                {conv.lastMessageTime ? (
+                  <Text style={styles.time}>{formatTime(conv.lastMessageTime, t('common.now'))}</Text>
+                ) : null}
+              </View>
+              <View style={styles.bottomLine}>
+                <Text style={[styles.preview, conv.unreadCount > 0 && styles.previewUnread]} numberOfLines={1}>
+                  {conv.lastMessage || t('chat.empty')}
+                </Text>
+                {conv.unreadCount > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{conv.unreadCount > 9 ? '9+' : conv.unreadCount}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.status}>{online ? t('chat.online') : t('friends.offline')}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0EEF8',
-    marginBottom: 8,
-  },
   loadingWrap: {
-    paddingVertical: 16,
+    paddingVertical: 28,
     alignItems: 'center',
   },
-  headerRow: {
-    flexDirection: 'row',
+  empty: {
+    paddingHorizontal: 28,
+    paddingVertical: 36,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 10,
   },
-  title: {
-    fontSize: 13,
+  emptyTitle: {
+    fontSize: 15,
     fontWeight: '800',
     color: Colors.textDark,
+    textAlign: 'center',
   },
-  scrollContent: {
-    paddingHorizontal: 12,
-    gap: 10,
+  emptyDesc: {
+    marginTop: 6,
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
   },
-  chip: {
-    width: 88,
+  row: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
   },
   avatarWrap: {
     position: 'relative',
-    marginBottom: 6,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: Colors.white,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: Colors.primaryTint,
   },
-  badge: {
+  dot: {
     position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#EF4444',
+    bottom: 2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2.5,
+    borderColor: Colors.white,
+  },
+  dotOn: {
+    backgroundColor: Colors.activeGreen,
+  },
+  dotOff: {
+    backgroundColor: '#C9C1DC',
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  name: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.textDark,
+  },
+  time: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  bottomLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 3,
+  },
+  preview: {
+    flex: 1,
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  previewUnread: {
+    color: Colors.textDark,
+    fontWeight: '700',
+  },
+  status: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: Colors.white,
+    paddingHorizontal: 5,
   },
   badgeText: {
     color: Colors.white,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-  },
-  name: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textDark,
-    textAlign: 'center',
-  },
-  preview: {
-    fontSize: 9,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  time: {
-    fontSize: 8,
-    color: Colors.textMuted,
-    marginTop: 1,
   },
 });

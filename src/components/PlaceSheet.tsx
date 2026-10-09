@@ -10,6 +10,9 @@ import { Colors, Shadows } from '../constants/colors';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
+import ContentRejectedBanner from './ContentRejectedBanner';
+import { isContentRejected } from '../utils/contentRejected';
 import {
   getPlaceDetail,
   getPlaceMenu,
@@ -103,6 +106,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
   const [rating, setRating] = useState(5);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [checkInSubmitting, setCheckInSubmitting] = useState(false);
@@ -205,7 +209,11 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
       Toast.show({ type: 'success', text1: t('place.reviewPosted') });
     } catch (err) {
       const message = err instanceof Error ? err.message : t('place.reviewError');
-      if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
+      if (isContentRejected(err)) {
+        const notice = t('moderation.body');
+        setReviewNotice(notice);
+        Toast.show({ type: 'error', text1: t('moderation.title'), text2: notice, visibilityTime: 6500 });
+      } else if (message.toLowerCase().includes('unauthorized') || message.includes('401')) {
         Toast.show({ type: 'error', text1: t('place.loginToReview') });
       } else {
         Toast.show({ type: 'error', text1: message });
@@ -598,11 +606,28 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                     return (
                       <View key={review.reviewId} style={styles.reviewCard}>
                         <View style={styles.reviewHeader}>
-                          <View style={styles.reviewAvatar}>
+                          <TouchableOpacity
+                            onPress={() => openUserProfile({
+                              userId: review.user.userId,
+                              displayName: displayName(review.user),
+                              avatarUrl: review.user.avatarUrl,
+                            })}
+                            activeOpacity={0.75}
+                            style={styles.reviewAvatar}
+                          >
                             <Image source={{ uri: avatarUri(review.user.avatarUrl) }} style={styles.reviewAvatarImg} />
-                          </View>
+                          </TouchableOpacity>
                           <View style={styles.reviewMeta}>
-                            <Text style={styles.reviewName}>{displayName(review.user)}</Text>
+                            <TouchableOpacity
+                              onPress={() => openUserProfile({
+                                userId: review.user.userId,
+                                displayName: displayName(review.user),
+                                avatarUrl: review.user.avatarUrl,
+                              })}
+                              activeOpacity={0.75}
+                            >
+                              <Text style={styles.reviewName}>{displayName(review.user)}</Text>
+                            </TouchableOpacity>
                             <StarRating value={review.rating} size={12} />
                           </View>
                           {isOwner && (
@@ -630,6 +655,7 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               {!myReview && (
                 <View style={styles.reviewForm}>
                   <Text style={styles.sectionTitle}>{t('place.writeReview')}</Text>
+                  {reviewNotice ? <ContentRejectedBanner message={reviewNotice} /> : null}
                   <Text style={styles.formLabel}>{t('place.yourRating')}</Text>
                   <StarRating value={rating} onChange={setRating} />
                   <TextInput
@@ -637,7 +663,10 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                     placeholder={t('place.reviewTitlePlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     value={title}
-                    onChangeText={setTitle}
+                    onChangeText={text => {
+                      setTitle(text);
+                      setReviewNotice(null);
+                    }}
                     maxLength={200}
                   />
                   <TextInput
@@ -645,7 +674,10 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                     placeholder={t('place.reviewContentPlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     value={content}
-                    onChangeText={setContent}
+                    onChangeText={text => {
+                      setContent(text);
+                      setReviewNotice(null);
+                    }}
                     multiline
                     maxLength={2000}
                   />

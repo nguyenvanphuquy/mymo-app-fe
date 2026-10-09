@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  FlatList, Image, Platform,
+  ScrollView, Image, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
@@ -24,7 +24,7 @@ import {
   cancelFriendRequest,
   removeFriend,
   blockFriend,
-  searchFriends,
+  getOnlineFriends,
   type FriendSummary,
   type PendingFriendRequest,
   type SentFriendRequest,
@@ -52,19 +52,21 @@ interface FriendsScreenProps {
 }
 
 type FriendView = Friend & { avatar: string; lastMsg: string; lastTime: string };
+type FriendsTab = 'chats' | 'people';
 
 export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, onAdd }: FriendsScreenProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<FriendsTab>('chats');
   const [query, setQuery] = useState('');
   const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [suggestions, setSuggestions] = useState<FriendSummary[]>([]);
   const [friendRequests, setFriendRequests] = useState<PendingFriendRequest[]>([]);
   const [sentRequests, setSentRequests] = useState<SentFriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [blockedOpen, setBlockedOpen] = useState(false);
   const [actionFriend, setActionFriend] = useState<FriendView | null>(null);
-  const [searchResults, setSearchResults] = useState<FriendView[] | null>(null);
   const [currentUser, setCurrentUser] = useState<{
     userId: string;
     name: string;
@@ -104,53 +106,42 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, 
     });
     return map;
   }, [friendsWithStatus]);
-  const filteredFriends = friendsWithStatus.filter(f =>
-    f.name.toLowerCase().includes(query.toLowerCase())
-  );
-  const displayFriends = searchResults ?? filteredFriends;
-
-  useEffect(() => {
-    if (!query.trim()) {
-      setSearchResults(null);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await searchFriends(query.trim());
-        setSearchResults(res.map(mapFriendSummary));
-      } catch {
-        setSearchResults([]);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [query]);
 
   const fetchFriendData = async () => {
     setIsLoading(true);
-    try {
-      const [friendsRes, suggestionsRes, requestsRes, sentRes, profileRes] = await Promise.all([
-        getFriends(),
-        getFriendSuggestions(),
-        getFriendRequests(),
-        getSentRequests(),
-        getUserProfile().catch(() => null),
-      ]);
-      setFriends(friendsRes);
-      setSuggestions(suggestionsRes);
-      setFriendRequests(requestsRes);
-      setSentRequests(sentRes);
-      if (profileRes?.id) {
-        setCurrentUser({
-          userId: profileRes.id,
-          name: profileRes.displayName || profileRes.username,
-          avatar: profileRes.avatarUrl,
-        });
+    const load = async <T,>(work: Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await work;
+      } catch {
+        return fallback;
       }
-    } catch (error) {
-      Toast.show({ type: 'error', text1: String(error instanceof Error ? error.message : 'Unable to load friends') });
-    } finally {
-      setIsLoading(false);
+    };
+    const [friendsRes, suggestionsRes, requestsRes, sentRes, profileRes, onlineRes] = await Promise.all([
+      load(getFriends(), [] as FriendSummary[]),
+      load(getFriendSuggestions(), [] as FriendSummary[]),
+      load(getFriendRequests(), [] as PendingFriendRequest[]),
+      load(getSentRequests(), [] as SentFriendRequest[]),
+      load(getUserProfile(), null),
+      load(getOnlineFriends(), [] as FriendSummary[]),
+    ]);
+    setFriends(friendsRes);
+    const online = new Set<string>();
+    friendsRes.forEach(friend => {
+      if (friend.isOnline) online.add(friend.userId);
+    });
+    onlineRes.forEach(friend => online.add(friend.userId));
+    setOnlineUserIds(online);
+    setSuggestions(suggestionsRes);
+    setFriendRequests(requestsRes);
+    setSentRequests(sentRes);
+    if (profileRes?.id) {
+      setCurrentUser({
+        userId: profileRes.id,
+        name: profileRes.displayName || profileRes.username,
+        avatar: profileRes.avatarUrl,
+      });
     }
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -240,97 +231,90 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, 
         </View>
       </View>
 
-      {/* ── Search Bar ── */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search-outline" size={16} color={Colors.textMuted} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder={t('friends.search')}
-          placeholderTextColor={Colors.textMuted}
-          style={styles.searchInput}
-        />
-        {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')}>
-            <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
-          </TouchableOpacity>
-        )}
+      <View style={styles.tabs}>
+        {(['chats', 'people'] as FriendsTab[]).map(id => {
+          const active = tab === id;
+          const label = id === 'chats' ? t('friends.tabChats') : t('friends.tabPeople');
+          return (
+            <TouchableOpacity
+              key={id}
+              onPress={() => setTab(id)}
+              style={[styles.tab, active && styles.tabActive]}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* ── Main List ── */}
-      <FlatList
-        data={displayFriends}
-        keyExtractor={f => f.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={() => (
-          <View>
-            <ConversationsSection onOpenChat={onOpenChat} />
-            <FriendRequestsSection
-              requests={friendRequests}
-              onAccept={handleAcceptRequest}
-              onReject={handleRejectRequest}
+      {tab === 'chats' ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.searchRow}>
+            <Ionicons name="search-outline" size={16} color={Colors.textMuted} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t('friends.chatSearch')}
+              placeholderTextColor={Colors.textMuted}
+              style={styles.searchInput}
             />
-            <SentRequestsSection
-              requests={sentRequests}
-              onCancel={handleCancelSent}
-            />
-            <FriendSuggestionsSection
-              suggestions={suggestions}
-              onAdd={handleAddSuggestion}
-            />
-            <FriendMomentsSection friendNames={friendLookup} currentUser={currentUser} />
+            {query.length > 0 && (
+              <TouchableOpacity onPress={() => setQuery('')}>
+                <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
           </View>
-        )}
-        renderItem={({ item: f }) => (
-          <View style={styles.chatItem}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onViewProfile({
-                  userId: f.id,
-                  displayName: f.name,
-                  avatarUrl: f.avatar,
-                });
-              }}
-              style={styles.chatAvatarWrap}
-              activeOpacity={0.8}
-            >
-              <Image source={{ uri: f.avatar }} style={styles.chatAvatar} />
-              {f.status === 'active' && <View style={styles.chatActiveDot} />}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onOpenChat({ userId: f.id, title: f.name, avatarUrl: f.avatar });
-              }}
-              onLongPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                showFriendActions(f);
-              }}
-              style={styles.chatItemMain}
-              activeOpacity={0.7}
-            >
-              <View style={styles.chatInfo}>
-                <Text style={styles.chatName}>{f.name}</Text>
-                <Text style={styles.chatMsg} numberOfLines={1}>
-                  {f.lastMsg} · {f.lastTime}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => showFriendActions(f)}
-              style={styles.chatMoreBtn}
-              activeOpacity={0.7}
-              accessibilityLabel={t('friends.manageFriend')}
-            >
-              <Ionicons name="ellipsis-vertical" size={18} color={Colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        )}
-      />
+          <ConversationsSection
+            query={query}
+            onlineUserIds={onlineUserIds}
+            onOpenChat={onOpenChat}
+            onManage={conversation => {
+              if (!conversation.otherUserId) return;
+              const known = friendsWithStatus.find(friend => friend.id === conversation.otherUserId);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              showFriendActions(known || {
+                id: conversation.otherUserId,
+                name: conversation.conversationName,
+                emoji: '👋',
+                color: '#7CC4FF',
+                place: 'Friend',
+                distance: 'Online',
+                status: onlineUserIds.has(conversation.otherUserId) ? 'active' : 'idle',
+                battery: 100,
+                x: 0,
+                y: 0,
+                avatar: avatarUri(conversation.conversationAvatar),
+                lastMsg: conversation.lastMessage || '',
+                lastTime: '',
+              });
+            }}
+          />
+        </ScrollView>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
+          <FriendMomentsSection
+            friendNames={friendLookup}
+            currentUser={currentUser}
+            emptyLabel={t('friends.noMoments')}
+          />
+          <FriendRequestsSection
+            requests={friendRequests}
+            onAccept={handleAcceptRequest}
+            onReject={handleRejectRequest}
+            emptyLabel={t('friends.noRequests')}
+          />
+          <SentRequestsSection
+            requests={sentRequests}
+            onCancel={handleCancelSent}
+          />
+          <FriendSuggestionsSection
+            suggestions={suggestions}
+            onAdd={handleAddSuggestion}
+            emptyLabel={t('friends.noSuggestions')}
+          />
+        </ScrollView>
+      )}
 
       <BlockedUsersSheet
         visible={blockedOpen}
@@ -374,7 +358,7 @@ export default function FriendsScreen({ onFriendTap, onOpenChat, onViewProfile, 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.background,
     ...Platform.select({
       web: {
         maxWidth: 500,
@@ -415,20 +399,49 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: Colors.primarySoft,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  tabs: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: Colors.primarySoft,
+    borderRadius: 16,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  tabActive: {
+    backgroundColor: Colors.white,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textMid,
+  },
+  tabTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: Colors.white,
     marginHorizontal: 16,
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   searchInput: {
     flex: 1,
@@ -437,66 +450,5 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 120,
-  },
-
-  // ── Chat items list ──
-  chatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  chatItemMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minWidth: 0,
-  },
-  chatMoreBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-    ...Platform.select({
-      web: { cursor: 'pointer' as const },
-      default: {},
-    }),
-  },
-  chatAvatarWrap: {
-    position: 'relative',
-  },
-  chatAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#EEE',
-  },
-  chatActiveDot: {
-    position: 'absolute',
-    bottom: 3,
-    right: 3,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
-    backgroundColor: '#10B981',
-    borderWidth: 2.5,
-    borderColor: Colors.white,
-  },
-  chatInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  chatName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textDark,
-  },
-  chatMsg: {
-    fontSize: 13,
-    color: Colors.textMuted,
-    marginTop: 3,
   },
 });

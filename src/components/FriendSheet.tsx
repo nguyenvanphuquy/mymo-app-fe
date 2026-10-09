@@ -120,15 +120,26 @@ export default function FriendSheet({ friend, onClose, onMessage, onViewProfile 
         <View style={styles.handle} />
 
         <View style={styles.header}>
-          <View style={[styles.avatar, { backgroundColor: friend.color, ...Shadows.glow }]}>
+          <TouchableOpacity
+            onPress={() => onViewProfile?.(friend)}
+            disabled={!onViewProfile}
+            activeOpacity={onViewProfile ? 0.75 : 1}
+            style={[styles.avatar, { backgroundColor: friend.color, ...Shadows.glow }]}
+          >
             <Image
               source={{ uri: avatarUri((friend as Friend & { avatarUrl?: string | null }).avatarUrl) }}
               style={styles.avatarImage}
             />
             {friend.status === 'active' && <View style={styles.dot} />}
-          </View>
+          </TouchableOpacity>
           <View style={styles.headerInfo}>
-            <Text style={styles.name}>{friend.name}</Text>
+            <TouchableOpacity
+              onPress={() => onViewProfile?.(friend)}
+              disabled={!onViewProfile}
+              activeOpacity={onViewProfile ? 0.75 : 1}
+            >
+              <Text style={styles.name}>{friend.name}</Text>
+            </TouchableOpacity>
             <View style={styles.placeRow}>
               <Ionicons name="location-outline" size={12} color={Colors.textMuted} />
               <Text style={styles.place}>{friend.place} · {friend.distance}</Text>

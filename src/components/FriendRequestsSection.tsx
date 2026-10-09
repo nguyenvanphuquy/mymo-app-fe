@@ -8,12 +8,14 @@ import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { PendingFriendRequest } from '../services/friendsApi';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface FriendRequestsSectionProps {
   requests: PendingFriendRequest[];
   onAccept: (request: PendingFriendRequest) => void;
   onReject: (request: PendingFriendRequest) => void;
   compact?: boolean;
+  emptyLabel?: string;
 }
 
 export default function FriendRequestsSection({
@@ -21,10 +23,22 @@ export default function FriendRequestsSection({
   onAccept,
   onReject,
   compact = false,
+  emptyLabel,
 }: FriendRequestsSectionProps) {
   const { t } = useI18n();
 
-  if (requests.length === 0) return null;
+  if (requests.length === 0) {
+    if (!emptyLabel) return null;
+    return (
+      <View style={[styles.wrap, compact && styles.wrapCompact]}>
+        <View style={styles.titleRow}>
+          <Ionicons name="person-add-outline" size={16} color={Colors.primary} />
+          <Text style={styles.title}>{t('friends.requests')}</Text>
+        </View>
+        <Text style={styles.empty}>{emptyLabel}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.wrap, compact && styles.wrapCompact]}>
@@ -38,13 +52,21 @@ export default function FriendRequestsSection({
 
       {requests.map(request => (
         <View key={request.userId} style={styles.card}>
-          <View style={styles.userRow}>
+          <TouchableOpacity
+            style={styles.userRow}
+            activeOpacity={0.75}
+            onPress={() => openUserProfile({
+              userId: request.userId,
+              displayName: request.displayName,
+              avatarUrl: request.avatarUrl,
+            })}
+          >
             <Image source={{ uri: avatarUri(request.avatarUrl) }} style={styles.avatar} />
             <View style={styles.info}>
               <Text style={styles.name}>{request.displayName}</Text>
               <Text style={styles.sub}>{t('notif.text.request')}</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
           <View style={styles.actions}>
             <TouchableOpacity
@@ -90,6 +112,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textDark,
     flex: 1,
+  },
+  empty: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 18,
   },
   countBadge: {
     minWidth: 20,

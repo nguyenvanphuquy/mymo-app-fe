@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  StatusBar, Platform, Image, DeviceEventEmitter, ActivityIndicator, ScrollView, TextInput,
+  StatusBar, Platform, DeviceEventEmitter, ActivityIndicator, TextInput,
   KeyboardAvoidingView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,8 +14,13 @@ import { uploadMedia } from '../services/mediaApi';
 import { createPost } from '../services/postApi';
 import { buildImageFormData } from '../utils/imageFormData';
 import { getNearbyPlaces, pickClosestPlace, PlaceResult } from '../services/placeApi';
-import { BEAUTY_FILTERS, getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
+import { getBeautyFilter, type BeautyFilterId } from '../constants/beautyFilters';
+import FilteredPhoto from './FilteredPhoto';
+import FilterStrip from './FilterStrip';
+import { bakeFilteredJpeg } from '../utils/bakeFilteredJpeg';
 import { pickRandomAlias } from '../utils/anonymousAlias';
+import ContentRejectedBanner from './ContentRejectedBanner';
+import { isContentRejected } from '../utils/contentRejected';
 import { ensureLocationForPosting } from '../utils/ensureLocation';
 
 const CAPTION_MAX = 150;
@@ -40,9 +45,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
   const [nearestPlace, setNearestPlace] = useState<PlaceResult | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [resolvingPlace, setResolvingPlace] = useState(false);
-  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Anonymous'>('Public');
+  const [visibility, setVisibility] = useState<'Public' | 'Friends' | 'Private' | 'Anonymous'>('Public');
   const [anonymousAlias, setAnonymousAlias] = useState(() => pickRandomAlias());
   const [caption, setCaption] = useState('');
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(null);
   const [beautyFilter, setBeautyFilter] = useState<BeautyFilterId>('soft');
   const [showBeautyPanel, setShowBeautyPanel] = useState(false);
   const slideAnim = useRef(new Animated.Value(800)).current;
@@ -183,6 +189,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
     setCaptured(false);
     setSelectedImageUri(null);
     setCaption('');
+    setBlockedNotice(null);
     setCameraReady(false);
   };
 
@@ -228,9 +235,12 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         }
       }
 
-      const fileName = selectedImageUri.split('/').pop() || 'photo.jpg';
+      const imageUri = beautyFilter === 'none'
+        ? selectedImageUri
+        : await bakeFilteredJpeg(selectedImageUri, getBeautyFilter(beautyFilter).matrix);
+      const fileName = imageUri.split('/').pop() || 'photo.jpg';
       const fileType = fileName.includes('.') ? `image/${fileName.split('.').pop()}` : 'image/jpeg';
-      const formData = await buildImageFormData(selectedImageUri, fileName, fileType);
+      const formData = await buildImageFormData(imageUri, fileName, fileType);
 
       const uploadResult = await uploadMedia(formData);
       if (!uploadResult || !uploadResult.id) {
@@ -244,8 +254,8 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         postType: 'Image',
         visibility,
         mediaIds: [mediaId],
-        latitude,
-        longitude,
+        latitude: Math.round(latitude * 1e6) / 1e6,
+        longitude: Math.round(longitude * 1e6) / 1e6,
       };
 
       if (visibility === 'Anonymous') {
@@ -264,6 +274,12 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
       close();
     } catch (error) {
       setPosting(false);
+      if (isContentRejected(error)) {
+        const notice = t('moderation.body');
+        setBlockedNotice(notice);
+        Toast.show({ type: 'error', text1: t('moderation.title'), text2: notice, visibilityTime: 6500 });
+        return;
+      }
       Toast.show({ type: 'error', text1: String(error instanceof Error ? error.message : 'Upload failed') });
     }
   };
@@ -362,7 +378,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
 
           {captured && selectedImageUri && (
             <>
-              <Image source={{ uri: selectedImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              <FilteredPhoto uri={selectedImageUri} filterId={beautyFilter} />
               <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
                 style={styles.captionGradient}
@@ -371,7 +387,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                 <TextInput
                   style={styles.captionInput}
                   value={caption}
-                  onChangeText={text => setCaption(text.slice(0, CAPTION_MAX))}
+                  onChangeText={text => {
+                    setCaption(text.slice(0, CAPTION_MAX));
+                    setBlockedNotice(null);
+                  }}
                   placeholder={t('cam.captionPlaceholder')}
                   placeholderTextColor="rgba(255,255,255,0.55)"
                   multiline
@@ -401,35 +420,17 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
           {!captured ? (
             <>
               {showBeautyPanel && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.beautyRow}
-                >
-                  {BEAUTY_FILTERS.map(filter => {
-                    const active = beautyFilter === filter.id;
-                    return (
-                      <TouchableOpacity
-                        key={filter.id}
-                        onPress={() => {
-                          setBeautyFilter(filter.id);
-                          Toast.show({
-                            type: 'success',
-                            text1: t('cam.filter'),
-                            text2: t(filter.labelKey),
-                          });
-                        }}
-                        style={[styles.beautyChip, active && styles.beautyChipActive]}
-                        activeOpacity={0.88}
-                      >
-                        <Text style={styles.beautyEmoji}>{filter.emoji}</Text>
-                        <Text style={[styles.beautyChipText, active && styles.beautyChipTextActive]}>
-                          {t(filter.labelKey)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
+                <FilterStrip
+                  selectedId={beautyFilter}
+                  onSelect={id => {
+                    setBeautyFilter(id);
+                    Toast.show({
+                      type: 'success',
+                      text1: t('cam.filter'),
+                      text2: t(getBeautyFilter(id).labelKey),
+                    });
+                  }}
+                />
               )}
               <View style={styles.captureRow}>
                 <TouchableOpacity
@@ -477,6 +478,15 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  onPress={() => setVisibility('Private')}
+                  style={[styles.visibilityChip, visibility === 'Private' && styles.visibilityChipActive]}
+                >
+                  <Ionicons name="lock-closed-outline" size={14} color={visibility === 'Private' ? Colors.white : Colors.primary} />
+                  <Text style={[styles.visibilityText, visibility === 'Private' && styles.visibilityTextActive]}>
+                    {t('cam.visibilityPrivate')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => {
                     setVisibility('Anonymous');
                     setAnonymousAlias(pickRandomAlias());
@@ -494,7 +504,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   <TextInput
                     style={styles.aliasInput}
                     value={anonymousAlias}
-                    onChangeText={setAnonymousAlias}
+                    onChangeText={text => {
+                      setAnonymousAlias(text);
+                      setBlockedNotice(null);
+                    }}
                     placeholder={t('cam.aliasPlaceholder')}
                     placeholderTextColor="rgba(255,255,255,0.5)"
                     maxLength={32}
@@ -507,6 +520,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   </TouchableOpacity>
                 </View>
               )}
+              {blockedNotice ? <ContentRejectedBanner message={blockedNotice} onDark /> : null}
               <TouchableOpacity
                 onPress={handlePostNow}
                 activeOpacity={0.85}
@@ -762,6 +776,15 @@ const styles = StyleSheet.create({
   beautyChipActive: {
     backgroundColor: 'rgba(156,124,255,0.45)',
     borderColor: 'rgba(255,255,255,0.55)',
+  },
+  beautySwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
   },
   beautyEmoji: {
     fontSize: 16,

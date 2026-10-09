@@ -5,8 +5,13 @@ export const MAPBOX_ACCESS_TOKEN =
 export const MAP_DETAIL_MIN_ZOOM = 13;
 
 /**
- * User photos and posts appear from this zoom.
- * The normal map view stays below it and shows friends.
+ * Friend and public posts from the last 24 hours appear from this zoom.
+ * Older posts, and other visibilities, stay at MAP_POST_MIN_ZOOM.
+ */
+export const MAP_FRESH_POST_MIN_ZOOM = 10;
+
+/**
+ * Posts older than 24 hours appear from this zoom.
  */
 export const MAP_POST_MIN_ZOOM = 16.5;
 

@@ -14,6 +14,7 @@ import {
 } from '../services/friendsApi';
 import Toast from 'react-native-toast-message';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface BlockedUsersSheetProps {
   visible: boolean;
@@ -81,11 +82,21 @@ export default function BlockedUsersSheet({ visible, onClose, onChanged }: Block
               contentContainerStyle={styles.list}
               renderItem={({ item }) => (
                 <View style={styles.row}>
-                  <Image source={{ uri: avatarUri(item.avatarUrl) }} style={styles.avatar} />
-                  <View style={styles.info}>
-                    <Text style={styles.name}>{item.displayName}</Text>
-                    <Text style={styles.username}>@{item.username}</Text>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.person}
+                    activeOpacity={0.75}
+                    onPress={() => openUserProfile({
+                      userId: item.userId,
+                      displayName: item.displayName,
+                      avatarUrl: item.avatarUrl,
+                    })}
+                  >
+                    <Image source={{ uri: avatarUri(item.avatarUrl) }} style={styles.avatar} />
+                    <View style={styles.info}>
+                      <Text style={styles.name}>{item.displayName}</Text>
+                      <Text style={styles.username}>@{item.username}</Text>
+                    </View>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleUnblock(item)}
                     style={styles.unblockBtn}
@@ -157,6 +168,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
     paddingBottom: 16,
+  },
+  person: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
   },
   row: {
     flexDirection: 'row',

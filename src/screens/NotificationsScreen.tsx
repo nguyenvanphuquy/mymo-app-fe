@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 import {
   getFriendRequests,
   acceptFriend,
@@ -43,6 +44,7 @@ interface ScreenItem {
   body?: string;
   time: string;
   avatarUrl?: string | null;
+  senderId?: string;
   senders?: NotificationSender[];
   isGrouped?: boolean;
   count?: number;
@@ -270,6 +272,7 @@ export default function NotificationsScreen({
       body: nt.body,
       time: nt.createdAt ? new Date(nt.createdAt).toLocaleString() : t('common.now'),
       avatarUrl: nt.avatarUrl,
+      senderId: nt.senderId,
       senders: nt.senders,
       isGrouped: nt.isGrouped,
       count: nt.count,
@@ -443,7 +446,15 @@ function NotifItem({
   const content = (
     <View style={[styles.notifCard, !item.isRead && styles.notifUnread]}>
       <View style={styles.notifMainRow}>
-        <View style={styles.avatarWrap}>
+        <TouchableOpacity
+          style={styles.avatarWrap}
+          activeOpacity={0.75}
+          onPress={() => openUserProfile({
+            userId: item.senderId || item.senders?.[0]?.userId,
+            displayName: item.who,
+            avatarUrl: item.avatarUrl,
+          })}
+        >
           {item.isGrouped && item.senders && item.senders.length > 1 ? (
             <View style={styles.avatarStack}>
               <Image
@@ -481,14 +492,23 @@ function NotifItem({
                 : '🔔'}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.notifInfo}>
           {showBody ? (
             <Text style={styles.notifText}>{item.body}</Text>
           ) : (
             <Text style={styles.notifText}>
-              <Text style={styles.notifWho}>{item.who}</Text>{' '}
+              <Text
+                style={styles.notifWho}
+                onPress={() => openUserProfile({
+                  userId: item.senderId || item.senders?.[0]?.userId,
+                  displayName: item.who,
+                  avatarUrl: item.avatarUrl,
+                })}
+              >
+                {item.who}
+              </Text>{' '}
               <Text style={styles.notifSub}>{t(item.textKey as Parameters<typeof t>[0])}</Text>
             </Text>
           )}

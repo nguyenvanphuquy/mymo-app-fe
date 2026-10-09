@@ -12,7 +12,6 @@ import { useI18n } from '../i18n';
 import type { Lang } from '../i18n';
 import { getUserPublicProfile, type PublicUserProfile } from '../services/userApi';
 import { getUserPosts, toPostView, type FeedPost, type PostView } from '../services/postApi';
-import { filterActivePosts } from '../utils/postExpiration';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
@@ -55,7 +54,7 @@ export default function FriendProfileScreen({
         getUserPosts(userId),
       ]);
       setProfile(profileData);
-      setPosts(filterActivePosts(postsData));
+      setPosts(postsData);
     } catch (err) {
       const message = err instanceof Error ? err.message : t('friendProfile.loadError');
       setError(message);
@@ -69,6 +68,13 @@ export default function FriendProfileScreen({
     loadProfile();
   }, [loadProfile]);
 
+  const genderLabel = profile?.gender === 'Male'
+    ? t('auth.genderOptionMale')
+    : profile?.gender === 'Female'
+      ? t('auth.genderOptionFemale')
+      : profile?.gender === 'Other'
+        ? t('auth.genderOptionOther')
+        : profile?.gender;
   const name = profile?.displayName || initialName || t('friends.someone');
   const avatar = avatarUri(profile?.avatarUrl || initialAvatar);
   const cover = profile?.coverUrl || FALLBACK_COVER;
@@ -124,7 +130,7 @@ export default function FriendProfileScreen({
               ) : null}
               {profile && (
                 <View style={styles.metaRow}>
-                  {profile.gender ? <Text style={styles.metaText}>{profile.gender}</Text> : null}
+                  {genderLabel ? <Text style={styles.metaText}>{genderLabel}</Text> : null}
                   {profile.gender && profile.dateOfBirth ? <Text style={styles.metaDot}>•</Text> : null}
                   {profile.dateOfBirth ? (
                     <Text style={styles.metaText}>

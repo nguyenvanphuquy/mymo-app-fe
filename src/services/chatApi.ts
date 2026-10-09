@@ -28,6 +28,7 @@ export interface ConversationSummary {
   conversationId: string;
   conversationName: string;
   conversationAvatar?: string | null;
+  otherUserId?: string | null;
   conversationType: 'Private' | 'Group' | string;
   lastMessage?: string | null;
   lastMessageTime?: string | null;
@@ -115,6 +116,7 @@ function normalizeConversation(raw: Record<string, unknown>): ConversationSummar
     conversationId: String(raw.conversationId || raw.ConversationId || ''),
     conversationName: String(raw.conversationName || raw.ConversationName || 'Chat'),
     conversationAvatar: (raw.conversationAvatar ?? raw.ConversationAvatar ?? null) as string | null,
+    otherUserId: (raw.otherUserId ?? raw.OtherUserId ?? null) as string | null,
     conversationType: String(raw.conversationType || raw.ConversationType || 'Private'),
     lastMessage: (raw.lastMessage ?? raw.LastMessage ?? null) as string | null,
     lastMessageTime: raw.lastMessageTime ? String(raw.lastMessageTime) : raw.LastMessageTime ? String(raw.LastMessageTime) : null,

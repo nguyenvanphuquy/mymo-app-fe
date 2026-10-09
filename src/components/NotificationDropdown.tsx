@@ -24,6 +24,7 @@ import {
 } from '../services/notificationsApi';
 import { groupNotifications } from '../utils/notificationGrouping';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface DropdownItem {
   id: string;
@@ -33,6 +34,7 @@ interface DropdownItem {
   body?: string;
   time: string;
   avatarUrl?: string | null;
+  senderId?: string;
   isRead?: boolean;
   requesterId?: string;
   notificationId?: string;
@@ -147,6 +149,7 @@ export default function NotificationDropdown({
         body: nt.body,
         time: nt.createdAt ? new Date(nt.createdAt).toLocaleString() : t('common.now'),
         avatarUrl: nt.avatarUrl,
+        senderId: nt.senderId,
         isRead: nt.isRead,
         requesterId: nt.referenceId || nt.senderId,
         notificationId: nt.id,
@@ -324,16 +327,34 @@ export default function NotificationDropdown({
                     onPress={() => { if (isTappable) handlePress(item); }}
                     disabled={!isTappable}
                   >
-                    <Image
-                      source={{ uri: avatarUri(item.avatarUrl) }}
-                      style={styles.avatar}
-                    />
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={() => openUserProfile({
+                        userId: item.senderId,
+                        displayName: item.who,
+                        avatarUrl: item.avatarUrl,
+                      })}
+                    >
+                      <Image
+                        source={{ uri: avatarUri(item.avatarUrl) }}
+                        style={styles.avatar}
+                      />
+                    </TouchableOpacity>
                     <View style={styles.rowCopy}>
                       {showBody ? (
                         <Text style={styles.rowText} numberOfLines={2}>{item.body}</Text>
                       ) : (
                         <Text style={styles.rowText} numberOfLines={2}>
-                          <Text style={styles.rowWho}>{item.who}</Text>
+                          <Text
+                            style={styles.rowWho}
+                            onPress={() => openUserProfile({
+                              userId: item.senderId,
+                              displayName: item.who,
+                              avatarUrl: item.avatarUrl,
+                            })}
+                          >
+                            {item.who}
+                          </Text>
                           {' '}
                           <Text style={styles.rowSub}>{t(item.textKey as Parameters<typeof t>[0])}</Text>
                         </Text>

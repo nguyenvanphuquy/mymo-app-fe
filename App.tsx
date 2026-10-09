@@ -54,6 +54,7 @@ import {
 } from './src/utils/locationPrivacyStorage';
 import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
 import { disconnectMapHub, startPresenceHeartbeat, stopPresenceHeartbeat } from './src/services/mapHub';
+import { OPEN_USER_PROFILE } from './src/utils/openUserProfile';
 import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
 import type { BusinessSession } from './src/services/businessApi';
@@ -65,6 +66,7 @@ type ChatSession = {
   conversationId: string;
   title: string;
   avatarUrl?: string | null;
+  peerUserId?: string | null;
   sharePostId?: string;
   sharePlaceId?: string;
 } | null;
@@ -221,6 +223,32 @@ function AppInner() {
   }, [screen]);
 
   useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(OPEN_USER_PROFILE, (params: FriendProfileParams) => {
+      if (!params?.userId) return;
+      void (async () => {
+        const { getStoredAuthSession } = await import('./src/services/authApi');
+        const session = await getStoredAuthSession();
+        if (session?.userId && session.userId.toLowerCase() === params.userId.toLowerCase()) {
+          setFriendProfile(null);
+          setChatSession(null);
+          setSelectedFriend(null);
+          setNotifPost(null);
+          setTab('profile');
+          return;
+        }
+        setSelectedFriend(null);
+        setNotifPost(null);
+        setFriendProfile({
+          userId: params.userId,
+          displayName: params.displayName,
+          avatarUrl: params.avatarUrl,
+        });
+      })();
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
     if (screen !== 'app') return;
 
     const loadUnread = async () => {
@@ -365,6 +393,7 @@ function AppInner() {
         conversationId,
         title: params.title,
         avatarUrl: params.avatarUrl,
+        peerUserId: params.userId,
         sharePostId: params.sharePostId,
         sharePlaceId: params.sharePlaceId,
       });
@@ -503,6 +532,7 @@ function AppInner() {
         conversationId={chatSession.conversationId}
         title={chatSession.title}
         avatarUrl={chatSession.avatarUrl}
+        peerUserId={chatSession.peerUserId}
         sharePostId={chatSession.sharePostId}
         sharePlaceId={chatSession.sharePlaceId}
         onClose={() => {

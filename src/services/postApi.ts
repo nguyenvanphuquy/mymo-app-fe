@@ -94,6 +94,7 @@ export interface NearbyPost {
   latitude: number;
   longitude: number;
   createdAt: string;
+  visibility?: string;
   likeCount: number;
   commentCount: number;
   isExpired?: boolean;
@@ -128,6 +129,9 @@ export interface PostView {
   caption: string;
   likeCount: number;
   commentCount: number;
+  createdAt?: string | null;
+  userId?: string | null;
+  isAnonymous?: boolean;
 }
 
 export interface PostDetailOwner {
@@ -365,6 +369,9 @@ export function toPostView(
     caption: post.caption || '',
     likeCount: post.likeCount,
     commentCount: post.commentCount,
+    createdAt: post.createdAt,
+    userId: post.userId,
+    isAnonymous: 'isAnonymous' in post ? Boolean(post.isAnonymous) : post.visibility === 'Anonymous',
   };
 }
 
@@ -396,6 +403,7 @@ export function normalizeNearbyPost(raw: unknown): NearbyPost | null {
     latitude,
     longitude,
     createdAt: String(item.createdAt ?? item.CreatedAt ?? ''),
+    visibility: String(item.visibility ?? item.Visibility ?? ''),
     likeCount: Number(item.likeCount ?? item.LikeCount ?? 0),
     commentCount: Number(item.commentCount ?? item.CommentCount ?? 0),
     isExpired: Boolean(item.isExpired ?? item.IsExpired ?? false),
@@ -438,6 +446,7 @@ export function feedPostToNearbyPost(
     latitude: post.latitude,
     longitude: post.longitude,
     createdAt: post.createdAt,
+    visibility: post.visibility,
     likeCount: post.likeCount,
     commentCount: post.commentCount,
     isExpired: post.isExpired,

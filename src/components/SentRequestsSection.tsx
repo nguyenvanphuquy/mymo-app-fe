@@ -7,6 +7,7 @@ import { Colors, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import type { SentFriendRequest } from '../services/friendsApi';
 import { avatarUri } from '../constants/defaultAvatar';
+import { openUserProfile } from '../utils/openUserProfile';
 
 interface SentRequestsSectionProps {
   requests: SentFriendRequest[];
@@ -31,11 +32,21 @@ export default function SentRequestsSection({ requests, onCancel }: SentRequests
       {requests.map(request => (
         <View key={request.userId} style={styles.card}>
           <View style={styles.userRow}>
-            <Image source={{ uri: avatarUri(request.avatarUrl) }} style={styles.avatar} />
-            <View style={styles.info}>
-              <Text style={styles.name}>{request.displayName}</Text>
-              <Text style={styles.sub}>{t('friends.pendingSent')}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.person}
+              activeOpacity={0.75}
+              onPress={() => openUserProfile({
+                userId: request.userId,
+                displayName: request.displayName,
+                avatarUrl: request.avatarUrl,
+              })}
+            >
+              <Image source={{ uri: avatarUri(request.avatarUrl) }} style={styles.avatar} />
+              <View style={styles.info}>
+                <Text style={styles.name}>{request.displayName}</Text>
+                <Text style={styles.sub}>{t('friends.pendingSent')}</Text>
+              </View>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => onCancel(request)}
               style={styles.cancelBtn}
@@ -94,6 +105,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  person: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
   },
   avatar: {
     width: 40,

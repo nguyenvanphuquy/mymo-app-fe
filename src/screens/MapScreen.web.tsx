@@ -19,6 +19,7 @@ import PlaceSheet from '../components/PlaceSheet';
 import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from '../services/postApi';
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
+import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
 import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
@@ -31,7 +32,7 @@ import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
+import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_FRESH_POST_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
 import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
@@ -284,6 +285,12 @@ export default function MapScreen({
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
+  const [postClock, setPostClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setPostClock(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -441,7 +448,7 @@ export default function MapScreen({
     const unsubCreated = onMapPostCreated(raw => {
       if (cancelled) return;
       const post = normalizeNearbyPost(raw);
-      if (!post || post.isExpired) return;
+      if (!post) return;
       setNearbyPosts(prev => upsertMapNearbyPost(prev, post));
     });
 
@@ -472,11 +479,17 @@ export default function MapScreen({
 
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
+  const showFreshPosts = shownZoom >= MAP_FRESH_POST_MIN_ZOOM;
   const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
+  const visiblePosts = useMemo(
+    () => filteredPosts.filter(post => postVisibleAtZoom(post, shownZoom, postClock)),
+    [filteredPosts, shownZoom, postClock],
+  );
+
   const spreadMapPosts = useMemo(
-    () => (showPosts ? spreadOverlappingMarkers(filteredPosts) : []),
-    [filteredPosts, showPosts],
+    () => spreadOverlappingMarkers(visiblePosts),
+    [visiblePosts],
   );
 
   useEffect(() => {
@@ -485,10 +498,11 @@ export default function MapScreen({
   }, [showDetailPins]);
 
   useEffect(() => {
-    if (showPosts) return;
+    if (!selectedPost) return;
+    if (visiblePosts.some(post => post.postId === selectedPost.postId)) return;
     setSelectedPost(null);
     setSelectedPostIsOwn(false);
-  }, [showPosts]);
+  }, [visiblePosts, selectedPost]);
 
   // ── Inject mapbox-gl CSS once and wait for it to load ──────────────────────
   useEffect(() => {
@@ -669,7 +683,10 @@ export default function MapScreen({
     markersRef.current = [];
 
     friendPins.forEach(f => {
-      const el = createFriendMarkerEl(f, () => onFriendTap(f));
+      const el = createFriendMarkerEl(f, () => {
+        if (onViewProfile) onViewProfile(f);
+        else onFriendTap(f);
+      });
       const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([f.lng, f.lat])
         .addTo(map);
@@ -902,7 +919,11 @@ export default function MapScreen({
         <View style={styles.zoomBadge}>
           <Text style={styles.zoomBadgeValue}>{shownZoom.toFixed(1)}</Text>
           <Text style={styles.zoomBadgeHint} numberOfLines={1}>
-            {showPosts ? t('map.zoomPostsOn') : t('map.zoomFriendsOnly')}
+            {showPosts
+              ? t('map.zoomPostsOn')
+              : showFreshPosts
+                ? t('map.zoomFreshPosts')
+                : t('map.zoomFriendsOnly')}
           </Text>
         </View>
         <TouchableOpacity onPress={zoomIn}   style={styles.zoomBtn}>
@@ -922,19 +943,24 @@ export default function MapScreen({
       <View style={styles.chipWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {friendPins.map(f => (
-            <TouchableOpacity
-              key={f.id}
-              onPress={() => onFriendTap(f)}
-              style={styles.chip}
-            >
-              <View style={[styles.chipAvatar, { backgroundColor: f.color }]}>
-                <Image source={{ uri: avatarUri(f.avatarUrl) }} style={styles.chipAvatarImg} />
-              </View>
-              <View>
+            <View key={f.id} style={styles.chip}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (onViewProfile) onViewProfile(f);
+                  else onFriendTap(f);
+                }}
+                style={styles.chipPerson}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.chipAvatar, { backgroundColor: f.color }]}>
+                  <Image source={{ uri: avatarUri(f.avatarUrl) }} style={styles.chipAvatarImg} />
+                </View>
                 <Text style={styles.chipName}>{f.name}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => onFriendTap(f)} activeOpacity={0.75}>
                 <Text style={styles.chipDist}>{f.distance}</Text>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           ))}
         </ScrollView>
       </View>
@@ -1184,6 +1210,11 @@ const styles = StyleSheet.create({
   },
   chips: {
     paddingHorizontal: 16,
+    gap: 8,
+  },
+  chipPerson: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   chip: {
