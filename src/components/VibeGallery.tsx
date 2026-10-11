@@ -8,12 +8,13 @@ interface VibeGalleryProps {
   selectedId?: string | null;
   selectedIds?: readonly string[];
   lang?: string;
+  layout?: 'grid' | 'list';
   onSelect: (id: VibeId) => void;
 }
 
-export default function VibeGallery({ selectedId, selectedIds, lang = 'vi', onSelect }: VibeGalleryProps) {
+export default function VibeGallery({ selectedId, selectedIds, lang = 'vi', layout = 'grid', onSelect }: VibeGalleryProps) {
   return (
-    <View style={styles.grid}>
+    <View style={layout === 'list' ? styles.list : styles.grid}>
       {VIBES.map(vibe => {
         const selected = selectedIds ? selectedIds.includes(vibe.id) : selectedId === vibe.id;
         const description = lang === 'en' ? vibe.descriptionEn : vibe.description;
@@ -22,7 +23,7 @@ export default function VibeGallery({ selectedId, selectedIds, lang = 'vi', onSe
             key={vibe.id}
             activeOpacity={0.88}
             onPress={() => onSelect(vibe.id)}
-            style={styles.cell}
+            style={layout === 'list' ? styles.listCell : styles.cell}
           >
             <LinearGradient
               colors={[...vibe.grad]}
@@ -36,8 +37,8 @@ export default function VibeGallery({ selectedId, selectedIds, lang = 'vi', onSe
                 </View>
                 {selected ? <Text style={[styles.check, { color: vibe.color }]}>✓</Text> : null}
               </View>
-              <Text style={[styles.name, { color: vibe.color }]} numberOfLines={1}>{vibe.name}</Text>
-              <Text style={styles.desc} numberOfLines={2}>{description}</Text>
+              <Text style={[styles.name, { color: vibe.color }]}>{vibe.name}</Text>
+              <Text style={styles.desc}>{description}</Text>
             </LinearGradient>
           </TouchableOpacity>
         );
@@ -52,6 +53,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginHorizontal: -5,
     marginBottom: 18,
+  },
+  list: {
+    gap: 8,
+    marginBottom: 18,
+  },
+  listCell: {
+    width: '100%',
   },
   cell: {
     width: '50%',

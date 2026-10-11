@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Gradients, Shadows } from '../constants/colors';
-import { type VibeId } from '../constants/vibes';
+import { vibeById, type VibeId } from '../constants/vibes';
 import VibeStrip from '../components/VibeStrip';
 import { useI18n } from '../i18n';
 import { getUserProfile } from '../services/userApi';
@@ -23,7 +23,7 @@ interface HomeScreenProps {
   isActive?: boolean;
   locationGranted: boolean;
   unreadNotifCount?: number;
-  onGoMap: () => void;
+  onGoMap: (vibeId?: VibeId) => void;
   onGoFriends: () => void;
   onGoProfile: () => void;
   onUnreadCountChange?: (count: number) => void;
@@ -80,6 +80,7 @@ export default function HomeScreen({
   const [pendingRequests, setPendingRequests] = useState(0);
   const [suggestionCount, setSuggestionCount] = useState(0);
   const [nearbyPlace, setNearbyPlace] = useState<PlaceSummary | null>(null);
+  const [vibePlaces, setVibePlaces] = useState<PlaceSummary[]>([]);
 
   const loadData = useCallback(async () => {
     if (!isActive) return;
@@ -143,6 +144,51 @@ export default function HomeScreen({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    let cancelled = false;
+    (async () => {
+      let lat = 10.8382;
+      let lng = 106.8376;
+      if (locationGranted) {
+        try {
+          const position = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+        } catch {
+          // Keep the Thủ Đức fallback so MyMy can still suggest venues.
+        }
+      }
+      try {
+        let places = await getNearbyPlaces(lat, lng, 40, selectedVibe);
+        if (places.length === 0 && (lat !== 10.8382 || lng !== 106.8376)) {
+          places = await getNearbyPlaces(10.8382, 106.8376, 40, selectedVibe);
+        }
+        if (!cancelled) setVibePlaces(places.slice(0, 3));
+      } catch {
+        if (!cancelled) setVibePlaces([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isActive, locationGranted, selectedVibe]);
+
+  const selectedVibeDef = vibeById(selectedVibe);
+  const mymyLine = useMemo(() => {
+    const top = vibePlaces[0];
+    if (!top || !selectedVibeDef) {
+      return t('home.mymyEmpty').replace('{name}', selectedVibeDef?.name ?? selectedVibe);
+    }
+    const tags = top.vibes
+      .map(id => vibeById(id)?.name)
+      .filter((name): name is string => !!name)
+      .join(', ');
+    return t('home.mymyPick')
+      .replace('{name}', top.name)
+      .replace('{vibes}', tags || selectedVibeDef.name);
+  }, [selectedVibe, selectedVibeDef, t, vibePlaces]);
 
   const greeting = useMemo(() => {
     const name = displayName || t('home.you');
@@ -218,7 +264,7 @@ export default function HomeScreen({
           selectedId={selectedVibe}
           onSelect={id => {
             setSelectedVibe(id);
-            onGoMap();
+            onGoMap(id);
           }}
         />
 
@@ -232,7 +278,7 @@ export default function HomeScreen({
           <View style={styles.aiCardShine} />
           <View style={styles.aiBadge}>
             <LinearGradient colors={[...Gradients.primary]} style={styles.aiBadgeGrad}>
-              <Text style={styles.aiBadgeText}>AI ✨</Text>
+              <Text style={styles.aiBadgeText}>MyMy</Text>
             </LinearGradient>
           </View>
 
@@ -240,11 +286,12 @@ export default function HomeScreen({
             <View style={styles.aiCardCopy}>
               <Text style={styles.aiTitle}>{t('home.aiSuggest')}</Text>
               <Text style={styles.aiSub}>{t('home.aiSuggestSub')}</Text>
+              <Text style={styles.mymyLine}>{mymyLine}</Text>
             </View>
             <View style={styles.aiThumbWrap}>
               <LinearGradient colors={['#FFFFFF', '#F0E8FF']} style={styles.aiThumbRing}>
                 <Image
-                  source={{ uri: nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
+                  source={{ uri: vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
                   style={styles.aiThumb}
                 />
               </LinearGradient>
@@ -253,18 +300,30 @@ export default function HomeScreen({
           </View>
 
           <View style={styles.placeCard}>
-            <View style={styles.placeCardHeader}>
-              <Ionicons name="location" size={14} color={Colors.primary} />
-              <Text style={styles.placeName} numberOfLines={1}>
-                {nearbyPlace?.name || t('home.exploreMap')}
-              </Text>
-            </View>
-            <Text style={styles.placeMeta}>
-              {nearbyPlace
-                ? t('home.nearbyPlace')
-                : t('home.enableLocationHint')}
-            </Text>
-            <TouchableOpacity onPress={onGoMap} activeOpacity={0.88}>
+            {vibePlaces.length > 0 ? vibePlaces.map(place => (
+              <TouchableOpacity
+                key={place.placeId}
+                style={styles.mymyRow}
+                activeOpacity={0.88}
+                onPress={() => onGoMap(selectedVibe)}
+              >
+                <Text style={styles.mymyEmoji}>{selectedVibeDef?.emoji ?? '✨'}</Text>
+                <View style={styles.mymyCopy}>
+                  <Text style={styles.placeName} numberOfLines={1}>{place.name}</Text>
+                  <Text style={styles.placeMeta} numberOfLines={1}>
+                    {place.vibes.map(id => vibeById(id)?.name).filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )) : (
+              <View style={styles.placeCardHeader}>
+                <Ionicons name="location" size={14} color={Colors.primary} />
+                <Text style={styles.placeName} numberOfLines={1}>
+                  {nearbyPlace?.name || t('home.exploreMap')}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity onPress={() => onGoMap(selectedVibe)} activeOpacity={0.88}>
               <LinearGradient
                 colors={['#C9B8FF', '#8F78F0', '#B7A6F8']}
                 start={{ x: 0, y: 0 }}
@@ -556,6 +615,13 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontWeight: '500',
   },
+  mymyLine: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.textDark,
+    fontWeight: '700',
+  },
   aiThumbWrap: {
     position: 'relative',
   },
@@ -590,6 +656,14 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 4,
   },
+  mymyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  mymyEmoji: { fontSize: 18 },
+  mymyCopy: { flex: 1 },
   placeName: {
     flex: 1,
     fontSize: 16,

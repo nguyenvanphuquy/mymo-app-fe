@@ -13,6 +13,7 @@ import { useI18n } from '../../i18n';
 import {
   getMyBusinesses,
   updateBusiness,
+  updateBusinessVibes,
   type BusinessSession,
 } from '../../services/businessApi';
 import { uploadMedia } from '../../services/mediaApi';
@@ -182,17 +183,37 @@ export default function BusinessEditProfileScreen({
           </View>
           <Text style={styles.notifyHint}>{t('biz.profile.vibesHint')}</Text>
           <VibeGallery
+            layout="list"
             selectedIds={vibes}
             lang={lang}
             onSelect={id => {
-              setVibes(current => {
-                if (current.includes(id)) return current.filter(item => item !== id);
-                if (current.length >= 3) {
-                  Toast.show({ type: 'info', text1: t('biz.profile.vibesRequired') });
-                  return current;
-                }
-                return [...current, id];
-              });
+              if (!businessId) return;
+              const next = vibes.includes(id)
+                ? vibes.filter(item => item !== id)
+                : vibes.length >= 3
+                  ? vibes
+                  : [...vibes, id];
+              if (next.length === vibes.length && !vibes.includes(id)) {
+                Toast.show({ type: 'info', text1: t('biz.profile.vibesRequired') });
+                return;
+              }
+              if (next.length < 1) {
+                Toast.show({ type: 'info', text1: t('biz.profile.vibesRequired') });
+                return;
+              }
+              const previous = vibes;
+              setVibes(next);
+              void updateBusinessVibes(businessId, next)
+                .then(() => {
+                  Toast.show({ type: 'success', text1: t('biz.profile.vibesSaved') });
+                })
+                .catch(err => {
+                  setVibes(previous);
+                  Toast.show({
+                    type: 'error',
+                    text1: err instanceof Error ? err.message : t('biz.profile.saveError'),
+                  });
+                });
             }}
           />
           <Text style={styles.section}>{t('biz.profile.notifyPrefs')}</Text>

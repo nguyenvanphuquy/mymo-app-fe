@@ -13,6 +13,8 @@ export interface BusinessRegistrationDto {
   description?: string | null;
   phone?: string | null;
   address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status: string;
   rejectReason?: string | null;
   createdAt: string;
@@ -35,10 +37,18 @@ function normalize(raw: Record<string, unknown>): BusinessRegistrationDto {
     description: (raw.description ?? raw.Description ?? null) as string | null,
     phone: (raw.phone ?? raw.Phone ?? null) as string | null,
     address: (raw.address ?? raw.Address ?? null) as string | null,
+    latitude: numberOrNull(raw.latitude ?? raw.Latitude),
+    longitude: numberOrNull(raw.longitude ?? raw.Longitude),
     status: String(raw.status ?? raw.Status ?? ''),
     rejectReason: (raw.rejectReason ?? raw.RejectReason ?? null) as string | null,
     createdAt: String(raw.createdAt ?? raw.CreatedAt ?? ''),
   };
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  return null;
 }
 
 export async function registerBusiness(payload: {
@@ -46,6 +56,8 @@ export async function registerBusiness(payload: {
   description?: string;
   phone?: string;
   address: string;
+  latitude: number;
+  longitude: number;
 }): Promise<BusinessRegistrationDto> {
   const response = await fetch(`${API_URL}/business/register`, {
     method: 'POST',

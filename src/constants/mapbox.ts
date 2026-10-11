@@ -4,6 +4,12 @@ export const MAPBOX_ACCESS_TOKEN =
 /** Place pins appear from this zoom. Friend pins stay visible at every zoom. */
 export const MAP_DETAIL_MIN_ZOOM = 13;
 
+/** Business venue pins are visible to other users from this zoom. */
+export const MAP_BUSINESS_MIN_ZOOM = 9.5;
+
+/** Opening the map from a home vibe uses a broad venue overview. */
+export const MAP_VIBE_OVERVIEW_ZOOM = 10;
+
 /**
  * Friend and public posts from the last 24 hours appear from this zoom.
  * Older posts, and other visibilities, stay at MAP_POST_MIN_ZOOM.

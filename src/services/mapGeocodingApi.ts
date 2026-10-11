@@ -138,3 +138,22 @@ export async function searchMapboxPlaces(
 
   return searchWithGeocodingFallback(trimmed, options);
 }
+
+export async function reverseGeocodeMapbox(
+  lng: number,
+  lat: number,
+  language: 'vi' | 'en' = 'vi',
+): Promise<string | null> {
+  const params = new URLSearchParams({
+    access_token: MAPBOX_ACCESS_TOKEN,
+    language,
+    limit: '1',
+    types: 'address,neighborhood,locality,place,district',
+  });
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?${params}`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  const data = await response.json() as GeocodingResponse;
+  const feature = data.features?.[0];
+  return feature?.place_name?.trim() || null;
+}

@@ -21,6 +21,7 @@ import Toast from 'react-native-toast-message';
 
 import { I18nProvider, useI18n } from './src/i18n';
 import { Colors, Gradients, Shadows } from './src/constants/colors';
+import type { VibeId } from './src/constants/vibes';
 import type { Friend } from './src/constants/data';
 
 import AuthScreen from './src/screens/AuthScreen';
@@ -199,6 +200,7 @@ function AppInner() {
   }, []);
   const [screen, setScreen] = useState<Screen>('auth');
   const [tab, setTab] = useState<Tab>('home');
+  const [mapVibe, setMapVibe] = useState<VibeId | null>(null);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [shareLocationOnMap, setShareLocationOnMap] = useState(true);
   const [incognito, setIncognito] = useState(false);
@@ -552,7 +554,10 @@ function AppInner() {
             isActive={tab === 'home'}
             locationGranted={!!locationGranted}
             unreadNotifCount={unreadNotifCount}
-            onGoMap={() => setTab('map')}
+            onGoMap={(vibeId) => {
+              if (vibeId) setMapVibe(vibeId);
+              setTab('map');
+            }}
             onGoFriends={() => setTab('friends')}
             onGoProfile={() => setTab('profile')}
             onUnreadCountChange={setUnreadNotifCount}
@@ -573,6 +578,8 @@ function AppInner() {
         {tab === 'map' && (
           <MapScreen
             locationGranted={!!locationGranted}
+            vibeId={mapVibe}
+            onClearVibe={() => setMapVibe(null)}
             visibleOnMap={visibleOnMap}
             incognito={incognito}
             isActive={tab === 'map' && !cameraOpen}

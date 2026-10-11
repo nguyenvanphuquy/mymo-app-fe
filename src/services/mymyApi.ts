@@ -22,7 +22,11 @@ interface ChatData {
   Reply?: string;
 }
 
-export async function chatWithMymy(message: string, history: MymyTurn[]): Promise<string> {
+export async function chatWithMymy(
+  message: string,
+  history: MymyTurn[],
+  location?: { latitude: number; longitude: number },
+): Promise<string> {
   const token = await AsyncStorage.getItem('mymo.accessToken');
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -33,7 +37,12 @@ export async function chatWithMymy(message: string, history: MymyTurn[]): Promis
   const res = await fetch(`${API_URL}/mymy/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({
+      message,
+      history,
+      latitude: location?.latitude,
+      longitude: location?.longitude,
+    }),
   });
 
   const raw = await res.text();

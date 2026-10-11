@@ -13,6 +13,8 @@ export interface AdminBusinessItem {
   description?: string | null;
   phone?: string | null;
   address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status: string;
   ownerId: string;
   ownerEmail: string;
@@ -30,6 +32,12 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
 function normalizeItem(raw: Record<string, unknown>): AdminBusinessItem {
   return {
     businessId: String(raw.businessId ?? raw.BusinessId ?? ''),
@@ -37,6 +45,8 @@ function normalizeItem(raw: Record<string, unknown>): AdminBusinessItem {
     description: (raw.description ?? raw.Description ?? null) as string | null,
     phone: (raw.phone ?? raw.Phone ?? null) as string | null,
     address: (raw.address ?? raw.Address ?? null) as string | null,
+    latitude: numberOrNull(raw.latitude ?? raw.Latitude),
+    longitude: numberOrNull(raw.longitude ?? raw.Longitude),
     status: String(raw.status ?? raw.Status ?? ''),
     ownerId: String(raw.ownerId ?? raw.OwnerId ?? ''),
     ownerEmail: String(raw.ownerEmail ?? raw.OwnerEmail ?? ''),

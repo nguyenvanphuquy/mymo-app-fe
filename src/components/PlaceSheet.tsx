@@ -7,6 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
+import { vibeById } from '../constants/vibes';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
 import { avatarUri } from '../constants/defaultAvatar';
@@ -383,6 +384,19 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
               <View style={styles.hero}>
                 <View style={styles.heroInfo}>
                   <Text style={styles.placeName}>{name}</Text>
+                  {detail.vibes.length > 0 ? (
+                    <View style={styles.vibeRow}>
+                      {detail.vibes.map(id => {
+                        const vibe = vibeById(id);
+                        if (!vibe) return null;
+                        return (
+                          <View key={id} style={styles.vibeChip}>
+                            <Text style={styles.vibeChipText}>{vibe.emoji} {vibe.name}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                   {detail.category ? (
                     <View style={styles.categoryRow}>
                       <Ionicons name="pricetag-outline" size={12} color={Colors.primary} />
@@ -785,6 +799,23 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroInfo: { flex: 1 },
+  vibeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  vibeChip: {
+    backgroundColor: '#F4EEFF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  vibeChipText: {
+    color: '#5B3FD1',
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 12,
+  },
   placeName: {
     fontSize: 18,
     fontWeight: '800',

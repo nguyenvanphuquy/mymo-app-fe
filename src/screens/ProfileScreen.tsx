@@ -933,6 +933,7 @@ export default function ProfileScreen({
         <Modal
           visible={registerBusinessOpen}
           animationType="slide"
+          transparent
           statusBarTranslucent
           onRequestClose={() => setRegisterBusinessOpen(false)}
         >

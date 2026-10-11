@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
+import { APP_MAX_WIDTH } from '../constants/layout';
 import { useI18n } from '../i18n';
 import {
   getMyBusinessRegistration,
   registerBusiness,
   type BusinessRegistrationDto,
 } from '../services/businessRegistrationApi';
+import AddressMapPicker, { type AddressPick } from '../components/AddressMapPicker';
 
 export default function RegisterBusinessScreen({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -22,7 +24,7 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
   const [businessName, setBusinessName] = useState('');
   const [description, setDescription] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [place, setPlace] = useState<AddressPick | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -33,7 +35,11 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
         setBusinessName(reg.name);
         setDescription(reg.description ?? '');
         setPhone(reg.phone ?? '');
-        setAddress(reg.address ?? '');
+        if (reg.address && reg.latitude != null && reg.longitude != null) {
+          setPlace({ address: reg.address, latitude: reg.latitude, longitude: reg.longitude });
+        } else {
+          setPlace(null);
+        }
       }
     } catch (e) {
       Toast.show({ type: 'error', text1: e instanceof Error ? e.message : 'Load failed' });
@@ -45,7 +51,7 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
   useEffect(() => { load(); }, [load]);
 
   const submit = async () => {
-    if (!businessName.trim() || !address.trim()) {
+    if (!businessName.trim() || !place) {
       Toast.show({ type: 'error', text1: t('biz.register.required') });
       return;
     }
@@ -63,7 +69,9 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
         businessName: businessName.trim(),
         description: description.trim() || undefined,
         phone: phone.trim() || undefined,
-        address: address.trim(),
+        address: place.address.trim(),
+        latitude: place.latitude,
+        longitude: place.longitude,
       });
       setExisting(reg);
       Toast.show({ type: 'success', text1: t('biz.register.submitted') });
@@ -77,19 +85,25 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
   const showForm = !existing || existing.status === 'Rejected';
 
   return (
+    <View style={styles.host}>
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} hitSlop={12}>
           <Ionicons name="close" size={26} color={Colors.textDark} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('biz.register.title')}</Text>
+        <Text style={styles.title} numberOfLines={1}>{t('biz.register.title')}</Text>
         <View style={{ width: 26 }} />
       </View>
 
       {loading ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(32, insets.bottom + 24) }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           {existing?.status === 'Pending' && (
             <View style={styles.pendingCard}>
               <Ionicons name="time-outline" size={28} color={Colors.primary} />
@@ -114,7 +128,7 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
               <Field label={t('biz.register.businessName')} value={businessName} onChangeText={setBusinessName} />
               <Field label={t('biz.register.description')} value={description} onChangeText={setDescription} multiline />
               <Field label={t('biz.register.phone')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-              <Field label={t('biz.register.address')} value={address} onChangeText={setAddress} />
+              <AddressMapPicker value={place} onChange={setPlace} />
               <TouchableOpacity style={styles.btn} onPress={submit} disabled={saving} activeOpacity={0.88}>
                 {saving ? (
                   <ActivityIndicator color={Colors.white} />
@@ -126,6 +140,7 @@ export default function RegisterBusinessScreen({ onClose }: { onClose: () => voi
           )}
         </ScrollView>
       )}
+    </View>
     </View>
   );
 }
@@ -155,16 +170,40 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.primaryTint },
+  host: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  root: {
+    flex: 1,
+    width: '100%',
+    maxWidth: APP_MAX_WIDTH,
+    minHeight: 0,
+    backgroundColor: Colors.primaryTint,
+    overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderColor: '#EBE8F5',
+      },
+      default: {},
+    }),
+  },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingBottom: 12,
   },
-  title: { fontSize: 17, fontWeight: '800', color: Colors.textDark },
-  scroll: { padding: 20, paddingBottom: 40 },
-  field: { marginBottom: 14 },
+  title: { flex: 1, fontSize: 17, fontWeight: '800', color: Colors.textDark, textAlign: 'center' },
+  scrollView: { flex: 1, width: '100%', minHeight: 0 },
+  scroll: { padding: 20 },
+  field: { marginBottom: 14, width: '100%' },
   label: { fontSize: 13, fontWeight: '700', color: Colors.textMid, marginBottom: 6 },
   input: {
+    width: '100%',
+    maxWidth: '100%',
     backgroundColor: Colors.white, borderRadius: 14, padding: 14, fontSize: 15,
     color: Colors.textDark, ...Shadows.soft,
   },

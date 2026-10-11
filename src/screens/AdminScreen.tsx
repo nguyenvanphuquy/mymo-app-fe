@@ -1,13 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Platform, ActivityIndicator, Switch, DeviceEventEmitter,
+  ScrollView, Modal, Platform, ActivityIndicator, Switch, DeviceEventEmitter, Image, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../constants/colors';
+import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
+
+function businessMapUrl(lat: number, lng: number): string {
+  return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-s+7c3aed(${lng},${lat})/${lng},${lat},15,0/640x280@2x?access_token=${MAPBOX_ACCESS_TOKEN}`;
+}
 import { useI18n } from '../i18n';
 import {
   ADMIN_BOOTSTRAP,
@@ -1573,6 +1578,27 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                       <Text style={styles.businessTag}>{biz.address ?? '—'}</Text>
                     </View>
                   </View>
+                  {biz.latitude != null && biz.longitude != null ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        Linking.openURL(`https://www.google.com/maps?q=${biz.latitude},${biz.longitude}`);
+                      }}
+                      style={styles.businessMapWrap}
+                    >
+                      <Image
+                        source={{ uri: businessMapUrl(biz.latitude, biz.longitude) }}
+                        style={styles.businessMap}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.businessMapLabel}>
+                        <Ionicons name="location" size={14} color={Colors.white} />
+                        <Text style={styles.businessMapLabelText}>{t('admin.businessMap')}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.businessNoLocation}>{t('admin.businessNoLocation')}</Text>
+                  )}
                   <View style={styles.partnerActions}>
                     <TouchableOpacity
                       style={styles.approveBtn}
@@ -2008,6 +2034,28 @@ const styles = StyleSheet.create({
   userName: { fontSize: 15, fontWeight: '800', color: Colors.textDark },
   userHandle: { fontSize: 12, color: Colors.primary, marginTop: 2, fontWeight: '600' },
   userEmail: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  businessMapWrap: {
+    marginTop: 12,
+    borderRadius: 14,
+    overflow: 'hidden',
+    height: 150,
+    backgroundColor: Colors.primarySoft,
+  },
+  businessMap: { width: '100%', height: 150 },
+  businessMapLabel: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(42,23,88,0.72)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  businessMapLabelText: { color: Colors.white, fontSize: 12, fontWeight: '700' },
+  businessNoLocation: { marginTop: 10, fontSize: 12, color: Colors.textMuted },
   businessTag: {
     marginTop: 4,
     fontSize: 11,

@@ -97,7 +97,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
     if (!host) return;
 
     let video = videoRef.current;
-    if (!video) {
+    if (!video || !host.contains(video)) {
       video = document.createElement('video');
       video.autoplay = true;
       video.muted = true;
@@ -106,11 +106,11 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
       videoRef.current = video;
     }
 
-    video.style.cssText = `width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:${mirror ? 'scaleX(-1)' : 'none'};filter:${filterCss};`;
+    video.style.cssText = `width:100%;height:100%;object-fit:cover;position:absolute;inset:0;transform:${mirror ? 'scaleX(-1)' : 'none'};filter:${filterCss};opacity:1;`;
     video.srcObject = stream;
 
     let canvas = previewCanvasRef.current;
-    if (!canvas) {
+    if (!canvas || !host.contains(canvas)) {
       canvas = document.createElement('canvas');
       host.appendChild(canvas);
       previewCanvasRef.current = canvas;
@@ -230,6 +230,8 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
   useEffect(() => {
     if (captured) {
       stopStream();
+      videoRef.current = null;
+      previewCanvasRef.current = null;
       return;
     }
 

@@ -16,6 +16,13 @@ import { loginUser, registerUser, saveAuthSession, syncPortalFlagsForRole } from
 import { ADMIN_BOOTSTRAP, loginAdmin } from '../services/adminApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
+const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,29}$/;
+const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+function sanitizeUsername(value: string): string {
+  return value.replace(/[^A-Za-z0-9_]/g, '').slice(0, 30);
+}
+
 interface AuthScreenProps {
   onContinue: () => void;
   /** Called after mock admin (admin / admin123) signs in from this screen */
@@ -60,6 +67,14 @@ export default function AuthScreen({
         Toast.show({ type: 'error', text1: lang === 'vi' ? 'Vui lòng điền đầy đủ thông tin' : 'Please fill in all fields' });
         return;
       }
+      if (!USERNAME_PATTERN.test(username)) {
+        Toast.show({ type: 'error', text1: t('auth.usernameInvalid') });
+        return;
+      }
+      if (!EMAIL_PATTERN.test(email.trim())) {
+        Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
+        return;
+      }
       if (pw !== confirmPw) {
         Toast.show({ type: 'error', text1: lang === 'vi' ? 'Mật khẩu nhập lại không khớp' : 'Passwords do not match' });
         return;
@@ -95,6 +110,13 @@ export default function AuthScreen({
         (loginId === ADMIN_BOOTSTRAP.username || loginId === 'admin@mymo.app') &&
         pw === ADMIN_BOOTSTRAP.password;
       if (isMockAdmin) {
+        try {
+          const auth = await loginUser({ email: 'admin@mymo.app', password: pw });
+          await saveAuthSession(auth);
+          await syncPortalFlagsForRole(auth);
+        } catch {
+          // Local admin portal still opens if the API is unavailable.
+        }
         await loginAdmin(ADMIN_BOOTSTRAP.username, ADMIN_BOOTSTRAP.password);
         Toast.show({ type: 'success', text1: t('admin.loginSuccess') });
         onAdminContinue?.();
@@ -192,16 +214,24 @@ export default function AuthScreen({
           <View style={styles.inputs}>
             {mode === 'register' && (
               <>
-                <View style={styles.inputRow}>
-                  <Ionicons name="at-outline" size={16} color={Colors.primary} />
-                  <TextInput
-                    value={username}
-                    onChangeText={setUsername}
-                    placeholder={t('auth.username')}
-                    placeholderTextColor={Colors.textMuted}
-                    style={styles.input}
-                    autoCapitalize="none"
-                  />
+                <View>
+                  <View style={styles.inputRow}>
+                    <Ionicons name="id-card-outline" size={16} color={Colors.primary} />
+                    <TextInput
+                      value={username}
+                      onChangeText={(value) => setUsername(sanitizeUsername(value))}
+                      placeholder={t('auth.username')}
+                      placeholderTextColor={Colors.textMuted}
+                      style={styles.input}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="off"
+                      maxLength={30}
+                    />
+                  </View>
+                  {username.length > 0 && !USERNAME_PATTERN.test(username) ? (
+                    <Text style={[styles.fieldHint, styles.fieldHintError]}>{t('auth.usernameInvalid')}</Text>
+                  ) : null}
                 </View>
                 <View style={styles.inputRow}>
                   <Ionicons name="person-outline" size={16} color={Colors.primary} />
@@ -217,17 +247,25 @@ export default function AuthScreen({
               </>
             )}
 
-            <View style={styles.inputRow}>
-              <Ionicons name="mail-outline" size={16} color={Colors.primary} />
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder={t('auth.email')}
-                placeholderTextColor={Colors.textMuted}
-                style={styles.input}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+            <View>
+              <View style={styles.inputRow}>
+                <Ionicons name="mail-outline" size={16} color={Colors.primary} />
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder={t('auth.email')}
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.input}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="off"
+                  inputMode="email"
+                />
+              </View>
+              {mode === 'register' && email.trim().length > 0 && !EMAIL_PATTERN.test(email.trim()) ? (
+                <Text style={[styles.fieldHint, styles.fieldHintError]}>{t('auth.emailInvalid')}</Text>
+              ) : null}
             </View>
 
             <View style={styles.inputRow}>
@@ -533,6 +571,16 @@ const styles = StyleSheet.create({
   inputs: {
     gap: 10,
     marginBottom: 14,
+  },
+  fieldHint: {
+    marginTop: 4,
+    marginLeft: 4,
+    fontSize: 11,
+    lineHeight: 16,
+    color: Colors.textMuted,
+  },
+  fieldHintError: {
+    color: '#B45309',
   },
   inputRow: {
     flexDirection: 'row',

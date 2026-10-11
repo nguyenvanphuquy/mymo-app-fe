@@ -13,6 +13,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
@@ -73,7 +74,18 @@ export default function MymyChat({ visible, onClose }: Props) {
     setText('');
     setSending(true);
     try {
-      const reply = await chatWithMymy(value, history);
+      let coords = { latitude: 10.8382, longitude: 106.8376 };
+      try {
+        const position = await Location.getLastKnownPositionAsync()
+          ?? await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+      } catch {
+        // Thủ Đức fallback keeps map-grounded suggestions available.
+      }
+      const reply = await chatWithMymy(value, history, coords);
       setMessages(prev => [...prev, { id: nextId(), role: 'model', text: reply }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : t('bot.failed');

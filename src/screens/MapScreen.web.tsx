@@ -32,7 +32,16 @@ import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_FRESH_POST_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
+import {
+  MAPBOX_ACCESS_TOKEN,
+  MAP_BUSINESS_MIN_ZOOM,
+  MAP_DETAIL_MIN_ZOOM,
+  MAP_FRESH_POST_MIN_ZOOM,
+  MAP_POST_MIN_ZOOM,
+  MAP_VIBE_OVERVIEW_ZOOM,
+  shownMapZoom,
+} from '../constants/mapbox';
+import { vibeById, type VibeId } from '../constants/vibes';
 import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
@@ -60,6 +69,8 @@ interface MapScreenProps {
   onMessage: (f: Friend) => void;
   onDisableIncognito?: () => void;
   onViewProfile?: (f: Friend) => void;
+  vibeId?: VibeId | null;
+  onClearVibe?: () => void;
 }
 
 function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivElement {
@@ -108,15 +119,17 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
 
 function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivElement {
   const el = document.createElement('div');
-  el.style.cssText = 'display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:4; max-width:110px;';
+  el.style.cssText = `display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:${place.isOwnedByCurrentUser ? 9 : 4}; max-width:120px;`;
 
   const bubble = document.createElement('div');
   bubble.style.cssText = `
-    width:44px; height:44px; border-radius:50%;
-    background:linear-gradient(135deg, #E4DAFF, #A78BFA);
-    border:2.5px solid #fff;
+    width:${place.isOwnedByCurrentUser ? 52 : 44}px; height:${place.isOwnedByCurrentUser ? 52 : 44}px; border-radius:50%;
+    background:${place.isOwnedByCurrentUser
+      ? 'linear-gradient(135deg, #FFD6EC, #8F78F0)'
+      : 'linear-gradient(135deg, #E4DAFF, #A78BFA)'};
+    border:${place.isOwnedByCurrentUser ? 4 : 2.5}px solid #fff;
     display:flex; align-items:center; justify-content:center;
-    box-shadow:0 4px 16px rgba(124,91,255,0.45);
+    box-shadow:0 4px ${place.isOwnedByCurrentUser ? 24 : 16}px rgba(124,91,255,${place.isOwnedByCurrentUser ? 0.75 : 0.45});
   `;
 
   const inner = document.createElement('div');
@@ -134,7 +147,7 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
     img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
     inner.appendChild(img);
   } else {
-    inner.textContent = '📍';
+    inner.textContent = vibeById(place.vibes[0] ?? '')?.emoji ?? '📍';
   }
 
   bubble.appendChild(inner);
@@ -165,6 +178,13 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
   `;
   name.textContent = place.name;
   chip.appendChild(name);
+
+  if (place.isOwnedByCurrentUser) {
+    const mine = document.createElement('span');
+    mine.textContent = 'QUÁN CỦA BẠN';
+    mine.style.cssText = 'font-family:Nunito,sans-serif;font-size:7px;font-weight:900;color:#7C3AED;background:#F4EEFF;padding:2px 5px;border-radius:7px;white-space:nowrap;';
+    chip.appendChild(mine);
+  }
 
   if (place.averageRating && place.averageRating > 0) {
     const rating = document.createElement('span');
@@ -256,6 +276,7 @@ function createSearchMarkerEl(): HTMLDivElement {
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
   onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
+  vibeId = null, onClearVibe,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -411,12 +432,12 @@ export default function MapScreen({
     const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
-      const places = await getNearbyPlaces(lat, lng, 5);
+      const places = await getNearbyPlaces(lat, lng, vibeId ? 40 : 20, vibeId ?? undefined);
       setNearbyPlaces(places);
     } catch {
       setNearbyPlaces([]);
     }
-  }, []);
+  }, [vibeId]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -470,21 +491,30 @@ export default function MapScreen({
         p.displayName.toLowerCase().includes(searchLower) ||
         (p.caption || '').toLowerCase().includes(searchLower))
     : nearbyPosts;
+  const vibePlaces = vibeId
+    ? nearbyPlaces.filter(place => place.vibes.includes(vibeId))
+    : nearbyPlaces;
   const filteredPlaces = searchLower
-    ? nearbyPlaces.filter(p =>
+    ? vibePlaces.filter(p =>
         p.name.toLowerCase().includes(searchLower) ||
         (p.address || '').toLowerCase().includes(searchLower) ||
         (p.city || '').toLowerCase().includes(searchLower))
-    : nearbyPlaces;
+    : vibePlaces;
 
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
+  const showBusinessPins = shownZoom >= MAP_BUSINESS_MIN_ZOOM;
   const showFreshPosts = shownZoom >= MAP_FRESH_POST_MIN_ZOOM;
   const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
   const visiblePosts = useMemo(
     () => filteredPosts.filter(post => postVisibleAtZoom(post, shownZoom, postClock)),
     [filteredPosts, shownZoom, postClock],
+  );
+  const visiblePlaces = useMemo(
+    () => filteredPlaces.filter(place =>
+      place.isOwnedByCurrentUser || showBusinessPins),
+    [filteredPlaces, showBusinessPins],
   );
 
   const spreadMapPosts = useMemo(
@@ -643,14 +673,31 @@ export default function MapScreen({
       return;
     }
     const map = mapRef.current;
-    if (!map || !mapReady || !userCoords || hasCenteredOnUserRef.current) return;
+    if (vibeId || !map || !mapReady || !userCoords || hasCenteredOnUserRef.current) return;
     hasCenteredOnUserRef.current = true;
     map.flyTo({
       center: [userCoords.lng, userCoords.lat],
       zoom: DEFAULT_ZOOM,
       duration: 800,
     });
-  }, [isActive, mapReady, userCoords]);
+  }, [isActive, mapReady, userCoords, vibeId]);
+
+  const flownVibeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!vibeId) {
+      flownVibeRef.current = null;
+      return;
+    }
+    if (!isActive || !mapReady || flownVibeRef.current === vibeId) return;
+    const match = visiblePlaces[0] ?? filteredPlaces[0];
+    if (!match) return;
+    flownVibeRef.current = vibeId;
+    mapRef.current?.flyTo({
+      center: [match.longitude, match.latitude],
+      zoom: MAP_VIBE_OVERVIEW_ZOOM,
+      duration: 900,
+    });
+  }, [vibeId, isActive, mapReady, filteredPlaces, visiblePlaces]);
 
   // ── Sync place markers ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -660,9 +707,9 @@ export default function MapScreen({
     placeMarkersRef.current.forEach(m => m.remove());
     placeMarkersRef.current = [];
 
-    if (!showDetailPins) return;
+    if (!showBusinessPins && !filteredPlaces.some(place => place.isOwnedByCurrentUser)) return;
 
-    filteredPlaces.forEach(place => {
+    visiblePlaces.forEach(place => {
       const el = createPlaceMarkerEl(place, () => {
         setSelectedPost(null);
         setSelectedPlace(place);
@@ -672,7 +719,7 @@ export default function MapScreen({
         .addTo(map);
       placeMarkersRef.current.push(marker);
     });
-  }, [filteredPlaces, mapReady, showDetailPins]);
+  }, [visiblePlaces, filteredPlaces, mapReady, showBusinessPins]);
 
   // ── Sync friend markers ────────────────────────────────────────────────────
   useEffect(() => {
@@ -855,6 +902,27 @@ export default function MapScreen({
             onClose={() => setSearchFocused(false)}
           />
         </View>
+
+        {vibeId ? (
+          <View style={styles.vibeBanner}>
+            <View style={styles.vibeBannerRow}>
+              <Text style={styles.vibeBannerText}>
+                {vibeById(vibeId)?.emoji} {t('map.vibeFilter').replace('{name}', vibeById(vibeId)?.name ?? vibeId)}
+                {filteredPlaces.length > 0 ? ` · ${filteredPlaces.length}` : ''}
+              </Text>
+              <TouchableOpacity onPress={onClearVibe} activeOpacity={0.85}>
+                <Text style={styles.vibeBannerClear}>{t('map.vibeClear')}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.vibeBannerEmpty}>
+              {filteredPlaces[0]
+                ? t('home.mymyPick')
+                  .replace('{name}', filteredPlaces[0].name)
+                  .replace('{vibes}', filteredPlaces[0].vibes.map(id => vibeById(id)?.name).filter(Boolean).join(', '))
+                : t('map.vibeEmpty')}
+            </Text>
+          </View>
+        ) : null}
 
         <ScrollView
           horizontal
@@ -1054,6 +1122,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
     zIndex: 2,
+  },
+  vibeBanner: {
+    marginLeft: 78,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E4DAFF',
+    gap: 4,
+  },
+  vibeBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  vibeBannerText: {
+    flex: 1,
+    color: '#2A1758',
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+  },
+  vibeBannerEmpty: {
+    color: '#8B7EAE',
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 12,
+  },
+  vibeBannerClear: {
+    color: '#7C5BFF',
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 12,
   },
   filterRow: {
     gap: 8,

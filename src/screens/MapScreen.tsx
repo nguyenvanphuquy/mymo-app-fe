@@ -29,7 +29,16 @@ import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
-import { MAPBOX_ACCESS_TOKEN, MAP_DETAIL_MIN_ZOOM, MAP_FRESH_POST_MIN_ZOOM, MAP_POST_MIN_ZOOM, shownMapZoom } from '../constants/mapbox';
+import {
+  MAPBOX_ACCESS_TOKEN,
+  MAP_BUSINESS_MIN_ZOOM,
+  MAP_DETAIL_MIN_ZOOM,
+  MAP_FRESH_POST_MIN_ZOOM,
+  MAP_POST_MIN_ZOOM,
+  MAP_VIBE_OVERVIEW_ZOOM,
+  shownMapZoom,
+} from '../constants/mapbox';
+import { vibeById, type VibeId } from '../constants/vibes';
 import { avatarUri } from '../constants/defaultAvatar';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
@@ -52,6 +61,8 @@ interface MapScreenProps {
   onMessage: (f: Friend) => void;
   onDisableIncognito?: () => void;
   onViewProfile?: (f: Friend) => void;
+  vibeId?: VibeId | null;
+  onClearVibe?: () => void;
 }
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
@@ -61,6 +72,7 @@ const DEFAULT_ZOOM = 14.5;
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
   onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
+  vibeId = null, onClearVibe,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -222,12 +234,12 @@ export default function MapScreen({
     const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
-      const places = await getNearbyPlaces(lat, lng, 5);
+      const places = await getNearbyPlaces(lat, lng, vibeId ? 40 : 20, vibeId ?? undefined);
       setNearbyPlaces(places);
     } catch {
       setNearbyPlaces([]);
     }
-  }, []);
+  }, [vibeId]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -281,12 +293,15 @@ export default function MapScreen({
         p.displayName.toLowerCase().includes(searchLower) ||
         (p.caption || '').toLowerCase().includes(searchLower))
     : nearbyPosts;
+  const vibePlaces = vibeId
+    ? nearbyPlaces.filter(place => place.vibes.includes(vibeId))
+    : nearbyPlaces;
   const filteredPlaces = searchLower
-    ? nearbyPlaces.filter(p =>
+    ? vibePlaces.filter(p =>
         p.name.toLowerCase().includes(searchLower) ||
         (p.address || '').toLowerCase().includes(searchLower) ||
         (p.city || '').toLowerCase().includes(searchLower))
-    : nearbyPlaces;
+    : vibePlaces;
 
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
@@ -294,6 +309,12 @@ export default function MapScreen({
 
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
+  const showBusinessPins = shownZoom >= MAP_BUSINESS_MIN_ZOOM;
+  const visiblePlaces = useMemo(
+    () => filteredPlaces.filter(place =>
+      place.isOwnedByCurrentUser || showBusinessPins),
+    [filteredPlaces, showBusinessPins],
+  );
   const showFreshPosts = shownZoom >= MAP_FRESH_POST_MIN_ZOOM;
   const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
@@ -325,11 +346,25 @@ export default function MapScreen({
       hasCenteredOnUserRef.current = false;
       return;
     }
-    if (!userCoords || !cameraRef.current || hasCenteredOnUserRef.current) return;
+    if (vibeId || !userCoords || !cameraRef.current || hasCenteredOnUserRef.current) return;
     hasCenteredOnUserRef.current = true;
     cameraRef.current.flyTo([userCoords.lng, userCoords.lat], 800);
     cameraRef.current.zoomTo(DEFAULT_ZOOM, 800);
-  }, [isActive, userCoords]);
+  }, [isActive, userCoords, vibeId]);
+
+  const flownVibeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!vibeId) {
+      flownVibeRef.current = null;
+      return;
+    }
+    if (!isActive || !cameraRef.current || flownVibeRef.current === vibeId) return;
+    const match = visiblePlaces[0] ?? filteredPlaces[0];
+    if (!match) return;
+    flownVibeRef.current = vibeId;
+    cameraRef.current.flyTo([match.longitude, match.latitude], 900);
+    cameraRef.current.zoomTo(MAP_VIBE_OVERVIEW_ZOOM, 900);
+  }, [vibeId, isActive, filteredPlaces, visiblePlaces]);
 
   // ── Fly to selected friend ───────────────────────────────────────────────
   useEffect(() => {
@@ -424,7 +459,7 @@ export default function MapScreen({
         )}
 
         {/* Nearby place pins — only when zoomed in */}
-        {showDetailPins && filteredPlaces.map(place => (
+        {visiblePlaces.map(place => (
           <MarkerView
             key={`place-${place.placeId}`}
             coordinate={[place.longitude, place.latitude]}
@@ -436,7 +471,7 @@ export default function MapScreen({
                 setSelectedPost(null);
                 setSelectedPlace(place);
               }}
-              style={styles.placePin}
+              style={[styles.placePin, place.isOwnedByCurrentUser && styles.placePinMine]}
               activeOpacity={0.88}
             >
               <LinearGradient
@@ -449,13 +484,16 @@ export default function MapScreen({
                   {place.thumbnailUrl ? (
                     <Image source={{ uri: place.thumbnailUrl }} style={styles.placePinImg} />
                   ) : (
-                    <Ionicons name="location" size={18} color={Colors.primary} />
+                    <Text style={styles.placePinEmoji}>{vibeById(place.vibes[0] ?? '')?.emoji ?? '📍'}</Text>
                   )}
                 </View>
               </LinearGradient>
               <View style={styles.placePinTip} />
               <View style={styles.placeChip}>
                 <Text style={styles.placeChipName} numberOfLines={1}>{place.name}</Text>
+                {place.isOwnedByCurrentUser ? (
+                  <Text style={styles.placeMineText}>QUÁN CỦA BẠN</Text>
+                ) : null}
                 {place.averageRating != null && place.averageRating > 0 && (
                   <View style={styles.placeRatingPill}>
                     <Ionicons name="star" size={9} color="#F59E0B" />
@@ -606,6 +644,27 @@ export default function MapScreen({
             onClose={() => setSearchFocused(false)}
           />
         </View>
+
+        {vibeId ? (
+          <View style={styles.vibeBanner}>
+            <View style={styles.vibeBannerRow}>
+              <Text style={styles.vibeBannerText}>
+                {vibeById(vibeId)?.emoji} {t('map.vibeFilter').replace('{name}', vibeById(vibeId)?.name ?? vibeId)}
+                {filteredPlaces.length > 0 ? ` · ${filteredPlaces.length}` : ''}
+              </Text>
+              <TouchableOpacity onPress={onClearVibe} activeOpacity={0.85}>
+                <Text style={styles.vibeBannerClear}>{t('map.vibeClear')}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.vibeBannerEmpty}>
+              {filteredPlaces[0]
+                ? t('home.mymyPick')
+                  .replace('{name}', filteredPlaces[0].name)
+                  .replace('{vibes}', filteredPlaces[0].vibes.map(id => vibeById(id)?.name).filter(Boolean).join(', '))
+                : t('map.vibeEmpty')}
+            </Text>
+          </View>
+        ) : null}
 
         <ScrollView
           horizontal
@@ -898,6 +957,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     maxWidth: 110,
   },
+  placePinMine: {
+    transform: [{ scale: 1.15 }],
+    zIndex: 9,
+  },
   placePinBubble: {
     width: 44,
     height: 44,
@@ -952,6 +1015,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.textDark,
   },
+  placeMineText: {
+    fontSize: 7,
+    fontWeight: '900',
+    color: '#7C3AED',
+    backgroundColor: '#F4EEFF',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   placeRatingPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -990,6 +1062,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
     zIndex: 2,
+  },
+  placePinEmoji: { fontSize: 16 },
+  vibeBanner: {
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#E4DAFF',
+  },
+  vibeBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  vibeBannerText: {
+    flex: 1,
+    color: '#2A1758',
+    fontFamily: 'Nunito_700Bold',
+    fontSize: 13,
+  },
+  vibeBannerEmpty: {
+    color: '#8B7EAE',
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 12,
+  },
+  vibeBannerClear: {
+    color: '#7C5BFF',
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 12,
   },
   filterRow: {
     gap: 8,

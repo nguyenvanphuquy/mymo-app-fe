@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API_URL } from '../config/apiConfig';
+import { parseVibeIds, type VibeId } from '../constants/vibes';
 
 const BASE_URL = API_URL;
 
@@ -68,6 +69,8 @@ export interface PlaceSummary {
   distanceKm?: number;
   address?: string | null;
   city?: string | null;
+  vibes: VibeId[];
+  isOwnedByCurrentUser: boolean;
 }
 
 export interface PlaceDetailUser {
@@ -132,6 +135,7 @@ export interface PlaceDetail {
   reviewCount: number;
   checkInCount: number;
   postCount: number;
+  vibes: VibeId[];
   category: PlaceDetailCategory | null;
   business: PlaceDetailBusiness | null;
   recentPosts: PlaceRecentPost[];
@@ -173,6 +177,10 @@ function normalizePlaceSummary(raw: Record<string, unknown>): PlaceSummary {
     distanceKm: Number(raw.distanceKm ?? raw.DistanceKm ?? 0),
     address: (raw.address ?? raw.Address ?? null) as string | null,
     city: (raw.city ?? raw.City ?? null) as string | null,
+    vibes: parseVibeIds(raw.vibes ?? raw.Vibes),
+    isOwnedByCurrentUser: Boolean(
+      raw.isOwnedByCurrentUser ?? raw.IsOwnedByCurrentUser ?? false,
+    ),
   };
 }
 
@@ -234,6 +242,7 @@ function normalizePlaceDetail(raw: Record<string, unknown>): PlaceDetail {
     reviewCount: Number(raw.reviewCount ?? raw.ReviewCount ?? 0),
     checkInCount: Number(raw.checkInCount ?? raw.CheckInCount ?? 0),
     postCount: Number(raw.postCount ?? raw.PostCount ?? 0),
+    vibes: parseVibeIds(raw.vibes ?? raw.Vibes),
     category: categoryRaw
       ? {
           categoryId: String((categoryRaw as Record<string, unknown>).categoryId ?? (categoryRaw as Record<string, unknown>).CategoryId ?? (categoryRaw as Record<string, unknown>).placeCategoryId ?? ''),
@@ -288,8 +297,10 @@ export async function getNearbyPlaces(
   latitude: number,
   longitude: number,
   radiusKm = 5,
+  vibe?: string,
 ): Promise<PlaceSummary[]> {
-  const query = `?Latitude=${latitude}&Longitude=${longitude}&RadiusKm=${radiusKm}`;
+  const vibeQuery = vibe ? `&Vibe=${encodeURIComponent(vibe)}` : '';
+  const query = `?Latitude=${latitude}&Longitude=${longitude}&RadiusKm=${radiusKm}${vibeQuery}`;
   const response = await requestJson<ApiResponse<Record<string, unknown>[]>>(`/places/nearby${query}`, 'GET');
   return (response.data ?? []).map(item => normalizePlaceSummary(item));
 }

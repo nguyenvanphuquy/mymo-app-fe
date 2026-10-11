@@ -82,6 +82,19 @@ interface LoginPayload {
   password: string;
 }
 
+function readErrorMessage(data: unknown): string {
+  if (typeof data !== 'object' || data === null) return 'Unable to complete request';
+  const record = data as Record<string, unknown>;
+  const direct = record.message ?? record.Message;
+  if (typeof direct === 'string' && direct.trim()) return direct;
+  const errors = record.errors ?? record.Errors;
+  if (typeof errors === 'object' && errors !== null) {
+    const first = Object.values(errors as Record<string, unknown>)[0];
+    if (Array.isArray(first) && typeof first[0] === 'string') return first[0];
+  }
+  return 'Unable to complete request';
+}
+
 async function requestJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -104,10 +117,7 @@ async function requestJson<T>(path: string, body: unknown): Promise<T> {
   }
 
   if (!response.ok) {
-    const message = typeof data === 'object' && data !== null && 'message' in data
-      ? String((data as { message?: unknown }).message)
-      : 'Unable to complete request';
-    throw new Error(message);
+    throw new Error(readErrorMessage(data));
   }
 
   return data as T;

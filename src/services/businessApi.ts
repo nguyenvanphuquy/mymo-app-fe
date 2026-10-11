@@ -52,7 +52,13 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
     }
   }
   if (!response.ok) {
-    const message = String(
+    const errors = data?.errors ?? data?.Errors;
+    let fieldError = '';
+    if (errors && typeof errors === 'object') {
+      const first = Object.values(errors as Record<string, unknown>)[0];
+      if (Array.isArray(first) && typeof first[0] === 'string') fieldError = first[0];
+    }
+    const message = fieldError || String(
       data?.message
       ?? data?.title
       ?? (response.status === 403 ? 'Forbidden — check Business role and approved business profile'
@@ -219,6 +225,11 @@ export async function updateBusiness(
     website: payload.website?.trim() || null,
     vibes: payload.vibes,
   });
+  return normalizeBusiness(res.data ?? {});
+}
+
+export async function updateBusinessVibes(businessId: string, vibes: string[]): Promise<BusinessDto> {
+  const res = await requestJson<Record<string, unknown>>(`/business/${businessId}/vibes`, 'PUT', { vibes });
   return normalizeBusiness(res.data ?? {});
 }
 
