@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   title: { fontSize: 16, fontWeight: '900', color: Colors.textDark },

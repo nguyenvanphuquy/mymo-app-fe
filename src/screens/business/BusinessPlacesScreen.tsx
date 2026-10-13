@@ -36,6 +36,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
   const [editPlaceId, setEditPlaceId] = useState<string | null>(null);
   const [photosPlaceName, setPhotosPlaceName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [openModelPickerOnDetail, setOpenModelPickerOnDetail] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -83,8 +84,9 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
     setView('create');
   };
 
-  const openDetail = (placeId: string) => {
+  const openDetail = (placeId: string, selectModel = false) => {
     setSelectedPlaceId(placeId);
+    setOpenModelPickerOnDetail(selectModel);
     setView('detail');
   };
 
@@ -109,6 +111,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
     setSelectedPlaceId(null);
     setEditForm(null);
     setEditPlaceId(null);
+    setOpenModelPickerOnDetail(false);
     load();
   };
 
@@ -146,6 +149,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
     return (
       <BusinessPlaceDetailScreen
         placeId={selectedPlaceId}
+        openModelPickerOnLoad={openModelPickerOnDetail}
         onBack={backToList}
         onEdit={p => {
           openEditFromPlace(p);
@@ -187,7 +191,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#FFFEFF', '#F6F2FF', '#E8DFFF']}
+          colors={['#FFFEFF', '#FFF5FE', '#F2DAF0']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, { paddingTop: insets.top + 16 }]}
@@ -225,7 +229,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
             style={({ pressed }) => [styles.heroCta, pressed && { opacity: 0.95 }]}
           >
             <LinearGradient
-              colors={['#FFFFFF', '#F0EAFF']}
+              colors={['#FFFFFF', '#FBEAF9']}
               style={styles.heroCtaGrad}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -263,6 +267,7 @@ export default function BusinessPlacesScreen({ session: _session }: { session: B
                   index={index}
                   t={t}
                   onView={() => openDetail(place.placeId)}
+                  onModel={() => openDetail(place.placeId, true)}
                   onEdit={() => openEditFromPlace(place)}
                 />
               ))}
@@ -291,16 +296,17 @@ function HeroStat({
 }
 
 function PlaceCard({
-  place, index, t, onView, onEdit,
+  place, index, t, onView, onModel, onEdit,
 }: {
   place: BusinessPlaceDto;
   index: number;
   t: (k: string) => string;
   onView: () => void;
+  onModel: () => void;
   onEdit: () => void;
 }) {
   const st = placeStatusStyle(place.status);
-  const accent = index % 3 === 0 ? ['#DDD4FF', '#A78BFA'] : index % 3 === 1 ? ['#B7E4FF', '#7CC4FF'] : ['#FFD6EC', '#FFB8E0'];
+  const accent = index % 3 === 0 ? ['#F4C4F1', '#E39BDE'] : index % 3 === 1 ? ['#B7E4FF', '#7CC4FF'] : ['#FFD6EC', '#FFB8E0'];
 
   return (
     <TouchableOpacity activeOpacity={0.92} onPress={onView} style={styles.card}>
@@ -349,6 +355,12 @@ function PlaceCard({
             <Ionicons name="eye-outline" size={18} color={Colors.primary} />
             <Text style={styles.viewBtnText}>{t('biz.places.view')}</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.modelCardBtn} onPress={onModel} activeOpacity={0.88}>
+            <Ionicons name="cube-outline" size={17} color={Colors.primary} />
+            <Text style={styles.modelCardBtnText}>
+              {place.model3DKey ? 'Đổi nhà 3D' : 'Chọn nhà 3D'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.editBtn} onPress={onEdit} activeOpacity={0.88}>
             <LinearGradient colors={Gradients.primary} style={styles.editBtnGrad}>
               <Ionicons name="create-outline" size={18} color={Colors.white} />
@@ -383,7 +395,7 @@ const CARD_RADIUS = 22;
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAFAFC',
+    backgroundColor: '#FFF9FF',
     ...Platform.select({ web: { minHeight: '100%' as unknown as number } }),
   },
   hero: {
@@ -476,7 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   emptyIconRing: {
@@ -498,7 +510,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   cardMedia: { height: 148, position: 'relative' },
@@ -562,6 +574,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.primarySoft,
   },
   viewBtnText: { fontWeight: '800', color: Colors.primary, fontSize: 13 },
+  modelCardBtn: {
+    flex: 1.25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#FBEAF9',
+    borderWidth: 1,
+    borderColor: '#F4C4F1',
+  },
+  modelCardBtnText: { fontWeight: '900', color: Colors.primaryDark, fontSize: 12 },
   editBtn: { flex: 1.15, borderRadius: 14, overflow: 'hidden', ...Shadows.glow },
   editBtnGrad: {
     flexDirection: 'row',

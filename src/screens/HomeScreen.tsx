@@ -218,7 +218,7 @@ export default function HomeScreen({
               style={styles.notifBtnOuter}
             >
               <LinearGradient
-                colors={notifOpen ? ['#E8D4FF', '#D4B8FF'] : ['#FFFFFF', '#FAF6FF']}
+                colors={notifOpen ? ['#F4C4F1', '#DA70D6'] : ['#FFFFFF', '#FFF7FD']}
                 style={[styles.notifBtn, notifOpen && styles.notifBtnActive]}
               >
                 <Ionicons
@@ -237,7 +237,7 @@ export default function HomeScreen({
             </TouchableOpacity>
 
             <TouchableOpacity onPress={onGoProfile} activeOpacity={0.85}>
-              <LinearGradient colors={['#F4EEFF', '#FFD6EC', '#DDD4FF']} style={styles.avatarRing}>
+              <LinearGradient colors={['#FBEAF9', '#FFD6EC', '#F4C4F1']} style={styles.avatarRing}>
                 <Image
                   source={{ uri: avatarUri(avatarUrl) }}
                   style={styles.avatar}
@@ -254,7 +254,7 @@ export default function HomeScreen({
             <Text style={styles.greetingEmoji}>✨</Text>
           </View>
           <View style={styles.vibeQuestionWrap}>
-            <PulsingDot color="#C9A8FF" />
+            <PulsingDot color="#F4C4F1" />
             <Text style={styles.greetingSub}>{t('home.vibeQuestion')}</Text>
             <Text style={styles.vibeQuestionEmoji}>💫</Text>
           </View>
@@ -270,7 +270,7 @@ export default function HomeScreen({
 
         {/* AI suggestion card */}
         <LinearGradient
-          colors={['#FCFAFF', '#F6F2FF', '#FFF4FA', '#F4F8FF']}
+          colors={['#FFF9FF', '#FFF5FE', '#FFF4FA', '#F4F8FF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.aiCardOuter}
@@ -289,7 +289,7 @@ export default function HomeScreen({
               <Text style={styles.mymyLine}>{mymyLine}</Text>
             </View>
             <View style={styles.aiThumbWrap}>
-              <LinearGradient colors={['#FFFFFF', '#F0E8FF']} style={styles.aiThumbRing}>
+              <LinearGradient colors={['#FFFFFF', '#FBEAF9']} style={styles.aiThumbRing}>
                 <Image
                   source={{ uri: vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
                   style={styles.aiThumb}
@@ -325,7 +325,7 @@ export default function HomeScreen({
             )}
             <TouchableOpacity onPress={() => onGoMap(selectedVibe)} activeOpacity={0.88}>
               <LinearGradient
-                colors={['#C9B8FF', '#8F78F0', '#B7A6F8']}
+                colors={['#F4C4F1', '#DA70D6', '#E7A9E4']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.mapBtn}
@@ -394,13 +394,13 @@ export default function HomeScreen({
 
         <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
           <LinearGradient
-            colors={['#FCFAFF', '#F6F2FF', '#FCFAFF']}
+            colors={['#FFF9FF', '#FFF5FE', '#FFF9FF']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.signalCard, styles.signalPurple]}
           >
-            <LinearGradient colors={['#F7F3FF', '#E4DAFF']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
-              <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" />
+            <LinearGradient colors={['#FFF5FE', '#F3D4F1']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
+              <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" tintColor={Colors.sakuraPetal} />
             </LinearGradient>
             <View style={styles.signalCopy}>
               <Text style={styles.signalTitle}>{t('home.vibeMatch')} ✦</Text>
@@ -431,7 +431,7 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F8F0FF',
+    backgroundColor: '#F6EAF4',
     position: 'relative',
   },
   scrollView: {
@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     top: -4,
     right: -4,
     fontSize: 14,
-    color: '#C9A8FF',
+    color: '#F4C4F1',
   },
   placeCard: {
     backgroundColor: 'rgba(255,255,255,0.88)',

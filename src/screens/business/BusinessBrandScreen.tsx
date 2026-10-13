@@ -85,7 +85,7 @@ export default function BusinessBrandScreen({
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#FFFEFF', '#F6F2FF', '#E8DFFF']}
+          colors={['#FFFEFF', '#FFF5FE', '#F2DAF0']}
           style={[styles.hero, { paddingTop: insets.top + 12 }]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -103,7 +103,7 @@ export default function BusinessBrandScreen({
               {business?.logoUrl ? (
                 <Image source={{ uri: business.logoUrl }} style={styles.avatarImg} />
               ) : (
-                <LinearGradient colors={['#FFFFFF', '#F0EAFF']} style={styles.avatarFallback}>
+                <LinearGradient colors={['#FFFFFF', '#FBEAF9']} style={styles.avatarFallback}>
                   <Ionicons name="storefront" size={36} color={Colors.primary} />
                 </LinearGradient>
               )}
@@ -344,7 +344,7 @@ function StatusPill({ status, t }: { status: string; t: (k: string) => string })
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   hero: {
     paddingHorizontal: 20,
     paddingBottom: 28,
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   statVal: { fontSize: 20, fontWeight: '900', color: Colors.textDark, marginTop: 6 },
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   sectionTitle: {
@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   actionIcon: {
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   venueImg: { width: '100%', height: 88 },
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 4,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   contactRow: {
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     overflow: 'hidden',
     ...Shadows.soft,
   },

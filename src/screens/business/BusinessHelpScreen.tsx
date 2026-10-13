@@ -35,7 +35,7 @@ export default function BusinessHelpScreen({ onBack }: { onBack: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   contact: {
     flexDirection: 'row',
     gap: 14,
@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     marginBottom: 20,
     ...Shadows.soft,
   },
@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
   },
   faqText: { fontSize: 13, color: Colors.textMid, lineHeight: 20 },
 });

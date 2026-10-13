@@ -249,7 +249,7 @@ export default function BusinessBankPaymentScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   pkg: { fontSize: 16, fontWeight: '900', color: Colors.textDark },
   amount: { fontSize: 28, fontWeight: '900', color: Colors.primary, marginTop: 6, marginBottom: 16 },
   section: {
@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     gap: 12,
     ...Shadows.soft,
   },
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#EBE8F5',
+    borderColor: '#F2DAF0',
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'web' ? 10 : 12,
     fontSize: 14,

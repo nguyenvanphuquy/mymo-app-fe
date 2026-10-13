@@ -298,7 +298,14 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
       <Animated.View style={[styles.container, { transform: [{ translateY: slideAnim }] }]}>
-        <LinearGradient colors={['#1a0f33', '#2A1758', '#1a0f33']} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['#F4C4F1', '#DA70D6', '#FFF7FD']} style={StyleSheet.absoluteFill} />
+        <View pointerEvents="none" style={styles.blingLayer}>
+          <View style={[styles.glowOrb, styles.glowOrbTop]} />
+          <View style={[styles.glowOrb, styles.glowOrbBottom]} />
+          <Text style={[styles.bling, styles.blingOne]}>✦</Text>
+          <Text style={[styles.bling, styles.blingTwo]}>✧</Text>
+          <Text style={[styles.bling, styles.blingThree]}>⋆</Text>
+        </View>
 
         <View style={styles.topBar}>
           <TouchableOpacity onPress={close} style={styles.topBtn}>
@@ -553,8 +560,32 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#1a0f33',
+    backgroundColor: '#F2D2F0',
   },
+  blingLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  glowOrb: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    shadowColor: '#FFFFFF',
+    shadowOpacity: 0.7,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  glowOrbTop: { top: -80, right: -55 },
+  glowOrbBottom: { bottom: -70, left: -65 },
+  bling: {
+    position: 'absolute',
+    color: 'rgba(255,255,255,0.94)',
+    textShadowColor: 'rgba(255,255,255,0.95)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
+  },
+  blingOne: { top: 44, left: 78, fontSize: 20 },
+  blingTwo: { top: 104, right: 42, fontSize: 15 },
+  blingThree: { bottom: 72, left: 46, fontSize: 18 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -567,7 +598,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -579,7 +612,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -597,7 +632,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#2A1758',
+    backgroundColor: '#4F2852',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.62)',
+    shadowColor: '#C04BB8',
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
   },
   permissionBox: {
     alignItems: 'center',
@@ -747,7 +788,9 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -769,13 +812,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   beautyChipActive: {
-    backgroundColor: 'rgba(156,124,255,0.45)',
-    borderColor: 'rgba(255,255,255,0.55)',
+    backgroundColor: 'rgba(122,88,218,0.7)',
+    borderColor: 'rgba(255,255,255,0.82)',
   },
   beautySwatch: {
     width: 36,

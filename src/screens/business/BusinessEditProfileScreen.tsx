@@ -268,7 +268,7 @@ function Toggle({ label, value, onValueChange }: { label: string; value: boolean
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   noBiz: { fontSize: 13, color: '#E11D48', marginBottom: 12, fontWeight: '600' },
   logoBtn: {
     alignSelf: 'center',
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     color: Colors.textDark,
     ...Shadows.soft,
   },

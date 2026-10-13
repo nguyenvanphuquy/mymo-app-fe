@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../../constants/colors';
+import { APP_MAX_WIDTH } from '../../constants/layout';
 import { useI18n } from '../../i18n';
 import B2bPricingSection from '../../components/b2b/B2bPricingSection';
 import B2bMapPreview from '../../components/b2b/B2bMapPreview';
@@ -591,7 +592,7 @@ export default function BusinessAdvertisingScreen({
 const segStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    backgroundColor: '#EEEBF5',
+    backgroundColor: '#F2DAF0',
     borderRadius: 14,
     padding: 4,
     gap: 4,
@@ -649,8 +650,8 @@ const wizStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
-  headerBlock: { paddingHorizontal: 20, paddingBottom: 8, maxWidth: 720, width: '100%', alignSelf: 'center' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
+  headerBlock: { paddingHorizontal: 20, paddingBottom: 8, maxWidth: APP_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   compactHero: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -659,7 +660,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   compactHeroText: { flex: 1, fontSize: 12, color: Colors.textMuted, lineHeight: 18 },
-  scroll: { paddingHorizontal: 20, maxWidth: 720, width: '100%', alignSelf: 'center', paddingTop: 4 },
+  scroll: { paddingHorizontal: 20, maxWidth: APP_MAX_WIDTH, width: '100%', alignSelf: 'center', paddingTop: 4 },
   stepBlock: { marginBottom: 8 },
   stepTitle: { fontSize: 17, fontWeight: '900', color: Colors.textDark, marginBottom: 6 },
   stepHint: { fontSize: 12, color: Colors.textMuted, marginBottom: 14, lineHeight: 18 },
@@ -676,7 +677,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   fieldLabel: { fontSize: 12, fontWeight: '800', color: Colors.textDark, marginBottom: 8, marginTop: 4 },
@@ -686,7 +687,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: '#F5F3FA',
+    backgroundColor: '#FFF5FE',
     borderWidth: 1,
     borderColor: 'transparent',
   },
@@ -705,14 +706,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textDark,
     borderWidth: 1,
-    borderColor: '#EBE8F5',
+    borderColor: '#F2DAF0',
   },
   reviewCard: {
     backgroundColor: Colors.white,
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     marginBottom: 16,
     ...Shadows.soft,
   },
@@ -734,7 +735,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
   },
   historyTitle: { fontSize: 13, fontWeight: '800', color: Colors.textDark },
   historyMeta: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
@@ -781,10 +782,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: Colors.white,
     borderTopWidth: 1,
-    borderTopColor: '#EEEAF5',
+    borderTopColor: '#F2DAF0',
     paddingHorizontal: 20,
     paddingTop: 12,
-    maxWidth: 720,
+    maxWidth: APP_MAX_WIDTH,
     alignSelf: 'center',
     width: '100%',
     ...Shadows.soft,

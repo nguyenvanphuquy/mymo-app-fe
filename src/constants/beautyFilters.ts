@@ -100,8 +100,8 @@ export const BEAUTY_FILTERS: BeautyFilter[] = [
     labelKey: 'cam.beautyDreamy',
     emoji: '💜',
     cssFilter: 'brightness(1.1) contrast(0.9) saturate(1.22) hue-rotate(-12deg)',
-    overlay: 'rgba(196, 160, 255, 0.2)',
-    swatch: '#C9B0FF',
+    overlay: 'rgba(218, 112, 214, 0.2)',
+    swatch: '#DA70D6',
     matrix: mix(brightness(1.1), contrast(0.9), saturate(1.18), hueRotate(-0.2)),
   },
   {

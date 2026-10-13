@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Image,
-  Platform, ActivityIndicator,
+  Platform, ActivityIndicator, DeviceEventEmitter,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,12 @@ import { formatDateOnlyDisplay } from '../utils/dateOnly';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
 import { avatarUri } from '../constants/defaultAvatar';
+import {
+  acceptFriend,
+  getFriendStatus,
+  requestFriend,
+  type FriendStatusResponse,
+} from '../services/friendsApi';
 
 const FALLBACK_COVER = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&fit=crop';
 
@@ -44,17 +50,21 @@ export default function FriendProfileScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
+  const [friendStatus, setFriendStatus] = useState<FriendStatusResponse | null>(null);
+  const [friendActionLoading, setFriendActionLoading] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [profileData, postsData] = await Promise.all([
+      const [profileData, postsData, statusData] = await Promise.all([
         getUserPublicProfile(userId),
         getUserPosts(userId),
+        getFriendStatus(userId),
       ]);
       setProfile(profileData);
       setPosts(postsData);
+      setFriendStatus(statusData);
     } catch (err) {
       const message = err instanceof Error ? err.message : t('friendProfile.loadError');
       setError(message);
@@ -78,6 +88,35 @@ export default function FriendProfileScreen({
   const name = profile?.displayName || initialName || t('friends.someone');
   const avatar = avatarUri(profile?.avatarUrl || initialAvatar);
   const cover = profile?.coverUrl || FALLBACK_COVER;
+  const status = friendStatus?.status.toLowerCase() ?? 'none';
+  const isFriend = status === 'accepted';
+  const isIncomingRequest = status === 'pending' && friendStatus?.isIncoming;
+  const isOutgoingRequest = status === 'pending' && !friendStatus?.isIncoming;
+
+  const handleFriendAction = async () => {
+    if (friendActionLoading || isFriend || isOutgoingRequest) return;
+    setFriendActionLoading(true);
+    try {
+      if (isIncomingRequest) {
+        await acceptFriend(userId);
+        setFriendStatus({ userId, status: 'Accepted', isIncoming: false });
+        DeviceEventEmitter.emit('friend:accepted', { userId });
+        Toast.show({ type: 'success', text1: t('friendProfile.accepted') });
+      } else {
+        await requestFriend(userId);
+        setFriendStatus({ userId, status: 'Pending', isIncoming: false });
+        DeviceEventEmitter.emit('friend:requested', { userId });
+        Toast.show({ type: 'success', text1: t('friendProfile.requestSent') });
+      }
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('friendProfile.friendActionError'),
+      });
+    } finally {
+      setFriendActionLoading(false);
+    }
+  };
 
   const stats = [
     { n: String(posts.length || profile?.postCount || 0), l: t('profile.moments'), icon: 'trail-sign-outline' as const },
@@ -162,17 +201,50 @@ export default function FriendProfileScreen({
             ))}
           </View>
 
-          <TouchableOpacity onPress={onMessage} style={styles.messageBtn} activeOpacity={0.88}>
-            <LinearGradient
-              colors={Gradients.primary}
-              style={styles.messageGrad}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+          <View style={styles.actionRow}>
+            {status !== 'self' ? (
+              <TouchableOpacity
+                onPress={handleFriendAction}
+                style={[
+                  styles.friendBtn,
+                  (isFriend || isOutgoingRequest) && styles.friendBtnPassive,
+                ]}
+                activeOpacity={isFriend || isOutgoingRequest ? 1 : 0.85}
+                disabled={friendActionLoading || isFriend || isOutgoingRequest}
             >
-              <Ionicons name="chatbubble-ellipses-outline" size={18} color={Colors.white} />
-              <Text style={styles.messageText}>{t('friendProfile.message')}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+                {friendActionLoading ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Ionicons
+                    name={isFriend ? 'people' : isIncomingRequest ? 'person-add' : isOutgoingRequest ? 'time-outline' : 'person-add-outline'}
+                    size={17}
+                    color={Colors.primary}
+                  />
+                )}
+                <Text style={styles.friendBtnText}>
+                  {isFriend
+                    ? t('friendProfile.friends')
+                    : isIncomingRequest
+                      ? t('friendProfile.confirmFriend')
+                      : isOutgoingRequest
+                        ? t('friendProfile.requestPending')
+                        : t('friendProfile.addFriend')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity onPress={onMessage} style={styles.messageBtn} activeOpacity={0.88}>
+              <LinearGradient
+                colors={Gradients.primary}
+                style={styles.messageGrad}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={Colors.white} />
+                <Text style={styles.messageText}>{t('friendProfile.message')}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ProfileMomentsGrid
@@ -205,7 +277,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
       },
       default: {},
     }),
@@ -345,8 +417,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textMuted,
   },
-  messageBtn: {
+  actionRow: {
     marginTop: 14,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  friendBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: Colors.primarySoft,
+    backgroundColor: Colors.primaryTint,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  friendBtnPassive: {
+    backgroundColor: '#F7F4FF',
+  },
+  friendBtnText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  messageBtn: {
+    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
     ...Shadows.glow,

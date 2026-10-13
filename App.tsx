@@ -21,6 +21,7 @@ import Toast from 'react-native-toast-message';
 
 import { I18nProvider, useI18n } from './src/i18n';
 import { Colors, Gradients, Shadows } from './src/constants/colors';
+import { APP_MAX_WIDTH } from './src/constants/layout';
 import type { VibeId } from './src/constants/vibes';
 import type { Friend } from './src/constants/data';
 
@@ -93,11 +94,29 @@ export default function App() {
 
     const style = document.createElement('style');
     style.textContent = `
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+        min-height: 100dvh;
+      }
       body {
-        background-color: #F3F1F8 !important;
+        background-color: #F8EDF7 !important;
         margin: 0;
         padding: 0;
         font-family: Nunito, sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        justify-content: center;
+      }
+      /* React Native Web mounts Modal portals directly under body, outside
+         #root. Keep every modal inside the same phone-sized viewport. */
+      body > div:not(#root) > div {
+        width: 100% !important;
+        max-width: ${APP_MAX_WIDTH}px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
       }
       input, textarea, button {
         font-family: Nunito, sans-serif;
@@ -107,15 +126,17 @@ export default function App() {
   }, []);
 
   if (!fontsLoaded && !fontError) {
-    return <View style={{ flex: 1, backgroundColor: '#F3F1F8' }} />;
+    return <View style={{ flex: 1, backgroundColor: '#F8EDF7' }} />;
   }
 
   return (
     <SafeAreaProvider>
       <I18nProvider>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-        <AppInner />
-        <Toast />
+        <View style={styles.phoneViewport}>
+          <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+          <AppInner />
+          <Toast />
+        </View>
       </I18nProvider>
     </SafeAreaProvider>
   );
@@ -580,6 +601,10 @@ function AppInner() {
             locationGranted={!!locationGranted}
             vibeId={mapVibe}
             onClearVibe={() => setMapVibe(null)}
+            onChooseVibe={() => {
+              setMapVibe(null);
+              setTab('home');
+            }}
             visibleOnMap={visibleOnMap}
             incognito={incognito}
             isActive={tab === 'map' && !cameraOpen}
@@ -829,7 +854,7 @@ function NavItem({
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity onPress={handlePress} style={styles.navItem}>
         {active ? (
-          <LinearGradient colors={['#FCFAFF', '#F0E8FF']} style={[styles.navIconWrap, styles.navIconWrapActive]}>
+          <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={[styles.navIconWrap, styles.navIconWrapActive]}>
             <Ionicons name={item.iconActive as any} size={22} color={Colors.primary} />
           </LinearGradient>
         ) : (
@@ -844,6 +869,26 @@ function NavItem({
 }
 
 const styles = StyleSheet.create({
+  phoneViewport: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: Colors.primaryTint,
+    overflow: 'hidden',
+    position: 'relative',
+    ...Platform.select({
+      web: {
+        maxWidth: APP_MAX_WIDTH,
+        height: '100dvh' as any,
+        maxHeight: '100dvh' as any,
+        marginHorizontal: 'auto',
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderColor: Colors.border,
+        boxShadow: '0 18px 52px rgba(218,112,214,0.22)',
+      },
+      default: {},
+    }),
+  },
   root: {
     flex: 1,
     backgroundColor: Colors.primaryTint,
@@ -851,13 +896,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     ...Platform.select({
       web: {
-        maxWidth: 500,
+        maxWidth: APP_MAX_WIDTH,
         width: '100%',
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
-        boxShadow: '0 18px 50px rgba(124, 91, 255, 0.12)',
+        borderColor: Colors.border,
+        boxShadow: '0 18px 52px rgba(218,112,214,0.22)',
       },
       default: {},
     }),

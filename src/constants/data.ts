@@ -30,7 +30,7 @@ export const FRIENDS: Friend[] = [
   { id: '2', name: 'Noah', emoji: '🛹', color: '#7CC4FF', place: 'Skatepark',    distance: '1.2 km', status: 'moving',  battery: 47, x: 64, y: 28 },
   { id: '3', name: 'Maya', emoji: '🎧', color: '#FFB37C', place: 'Home',         distance: '2.8 km', status: 'idle',    battery: 91, x: 22, y: 70 },
   { id: '4', name: 'Kai',  emoji: '🏄', color: '#7CFFB8', place: 'Sunset Beach', distance: '5.1 km', status: 'active',  battery: 64, x: 78, y: 60 },
-  { id: '5', name: 'Zoe',  emoji: '📚', color: '#C8A8FF', place: 'Library',      distance: '0.9 km', status: 'idle',    battery: 30, x: 50, y: 80 },
+  { id: '5', name: 'Zoe',  emoji: '📚', color: '#F4C4F1', place: 'Library',      distance: '0.9 km', status: 'idle',    battery: 30, x: 50, y: 80 },
 ];
 
 export const NOTIFS: Notif[] = [

@@ -154,7 +154,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#FCFAFF', '#F6F2FF', '#EDE6FF']}
+        colors={['#FFF9FF', '#FFF5FE', '#F3D4F1']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
       },
       default: {},
     }),

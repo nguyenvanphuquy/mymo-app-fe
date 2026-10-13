@@ -156,7 +156,7 @@ export default function BusinessPlacePhotosScreen({
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#FAFAFC', '#F0EAFF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={StyleSheet.absoluteFill} />
       <View style={{ paddingTop: insets.top }}>
         <BusinessScreenHeader title={t('biz.places.photos.title')} onBack={onBack} />
       </View>
@@ -204,7 +204,7 @@ export default function BusinessPlacePhotosScreen({
             </View>
           ) : (
             <>
-              <LinearGradient colors={['#FFFFFF', '#F6F2FF']} style={styles.uploadIconRing}>
+              <LinearGradient colors={['#FFFFFF', '#FFF5FE']} style={styles.uploadIconRing}>
                 <Ionicons name="cloud-upload-outline" size={28} color={Colors.primary} />
               </LinearGradient>
               <Text style={styles.uploadTitle}>{t('biz.places.photos.add')}</Text>
@@ -283,7 +283,7 @@ function PhotoTile({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   scroll: { paddingHorizontal: H_PAD, paddingTop: 8 },
   hero: {
     borderRadius: 22,

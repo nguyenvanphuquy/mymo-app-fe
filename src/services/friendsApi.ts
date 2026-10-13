@@ -48,6 +48,7 @@ export interface BlockedUser {
 export interface FriendStatusResponse {
   userId: string;
   status: string;
+  isIncoming: boolean;
 }
 
 function normalizeFriend(raw: Record<string, unknown>): FriendSummary {
@@ -178,8 +179,13 @@ export async function getSentRequests(): Promise<SentFriendRequest[]> {
 }
 
 export async function getFriendStatus(userId: string): Promise<FriendStatusResponse> {
-  const response = await requestJson<ApiResponse<FriendStatusResponse>>(`/friends/status/${userId}`, 'GET');
-  return response.data;
+  const response = await requestJson<ApiResponse<Record<string, unknown>>>(`/friends/status/${userId}`, 'GET');
+  const raw = response.data || {};
+  return {
+    userId: String(raw.userId ?? raw.UserId ?? userId),
+    status: String(raw.status ?? raw.Status ?? 'None'),
+    isIncoming: Boolean(raw.isIncoming ?? raw.IsIncoming ?? false),
+  };
 }
 
 export async function getFriendSuggestions(): Promise<FriendSummary[]> {

@@ -107,7 +107,7 @@ export default function BusinessHomeScreen({
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#FAFAFC', '#F5F3FA']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FFF5FE']} style={StyleSheet.absoluteFill} />
       <SparkleField count={Platform.OS === 'web' ? 4 : 6} />
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12, paddingBottom: 120 }]}
@@ -246,18 +246,18 @@ function Stat({ n, l }: { n: string; l: string }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   scroll: { paddingHorizontal: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   notifBtn: {
     width: 40, height: 40, borderRadius: 14, backgroundColor: Colors.white,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#EEEAF5',
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F2DAF0',
   },
   shortcuts: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   shortcut: {
     flex: 1, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 14, alignItems: 'center', gap: 6,
-    borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   shortcutLabel: { fontSize: 10, fontWeight: '800', color: Colors.textMid },
   todoCard: {
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   stat: { flex: 1, alignItems: 'center' },
   statBox: {
     width: '100%', borderRadius: 16, paddingVertical: 14, alignItems: 'center',
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    backgroundColor: Colors.white, borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   statN: { color: Colors.primary, fontSize: 20, fontWeight: '900' },
   statL: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, marginTop: 6, textAlign: 'center' },
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   pendingText: { fontSize: 12, fontWeight: '700', color: '#92400E' },
   empty: {
     backgroundColor: Colors.white, borderRadius: 22, padding: 24, alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   emptyTitle: { fontSize: 14, fontWeight: '800', color: Colors.textDark },
   emptyDesc: { fontSize: 12, color: Colors.textMuted, textAlign: 'center', lineHeight: 18 },

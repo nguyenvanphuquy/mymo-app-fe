@@ -12,6 +12,7 @@ import { useI18n } from '../../i18n';
 import { createPlace, updatePlace } from '../../services/businessApi';
 import { uploadMedia } from '../../services/mediaApi';
 import { buildImageFormData, guessImageMeta } from '../../utils/imageFormData';
+import AddressMapPicker, { type AddressPick } from '../../components/AddressMapPicker';
 import type { BusinessPlaceFormValues } from './businessPlaceTypes';
 
 export default function BusinessPlaceFormScreen({
@@ -32,8 +33,24 @@ export default function BusinessPlaceFormScreen({
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [form, setForm] = useState<BusinessPlaceFormValues>(initial);
+  const [categoryQuery, setCategoryQuery] = useState(
+    categories.find(category => category.placeCategoryId === initial.categoryId)?.name ?? '',
+  );
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const visibleCategories = categories.filter(category =>
+    !categoryQuery.trim()
+    || category.name.toLocaleLowerCase().includes(categoryQuery.trim().toLocaleLowerCase()),
+  );
+  const currentAddress: AddressPick | null = form.address.trim()
+    && Number.isFinite(Number(form.latitude))
+    && Number.isFinite(Number(form.longitude))
+    ? {
+        address: form.address,
+        latitude: Number(form.latitude),
+        longitude: Number(form.longitude),
+      }
+    : null;
 
   const pickThumbnail = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -114,28 +131,45 @@ export default function BusinessPlaceFormScreen({
       </View>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Field label={t('biz.places.fieldName')} value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
-        <Text style={styles.label}>{t('biz.places.fieldCategory')}</Text>
+        <Field
+          label={t('biz.places.fieldCategory')}
+          value={categoryQuery}
+          placeholder="Nhập để tìm danh mục"
+          onChange={value => {
+            setCategoryQuery(value);
+            setForm(current => ({ ...current, categoryId: '' }));
+          }}
+        />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
-          {categories.map(cat => (
+          {visibleCategories.map(cat => (
             <TouchableOpacity
               key={cat.placeCategoryId}
               style={[styles.chip, form.categoryId === cat.placeCategoryId && styles.chipOn]}
-              onPress={() => setForm(f => ({ ...f, categoryId: cat.placeCategoryId }))}
+              onPress={() => {
+                setCategoryQuery(cat.name);
+                setForm(f => ({ ...f, categoryId: cat.placeCategoryId }));
+              }}
             >
               <Text style={[styles.chipText, form.categoryId === cat.placeCategoryId && styles.chipTextOn]}>{cat.name}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         <Field label={t('biz.places.fieldDescription')} value={form.description} onChange={v => setForm(f => ({ ...f, description: v }))} multiline />
-        <Field label={t('biz.places.fieldAddress')} value={form.address} onChange={v => setForm(f => ({ ...f, address: v }))} />
-        <View style={styles.row}>
-          <View style={styles.half}>
-            <Field label="Lat" value={form.latitude} onChange={v => setForm(f => ({ ...f, latitude: v }))} keyboard="decimal-pad" />
-          </View>
-          <View style={styles.half}>
-            <Field label="Lng" value={form.longitude} onChange={v => setForm(f => ({ ...f, longitude: v }))} keyboard="decimal-pad" />
-          </View>
-        </View>
+        <AddressMapPicker
+          value={currentAddress}
+          onChange={location => {
+            if (!location) {
+              setForm(current => ({ ...current, address: '' }));
+              return;
+            }
+            setForm(current => ({
+              ...current,
+              address: location.address,
+              latitude: String(location.latitude),
+              longitude: String(location.longitude),
+            }));
+          }}
+        />
         <Field label={t('biz.places.fieldPhone')} value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} keyboard="phone-pad" />
         <Field label={t('biz.places.hours')} value={form.openingHours} onChange={v => setForm(f => ({ ...f, openingHours: v }))} />
         <Text style={styles.label}>{t('biz.places.fieldThumbnail')}</Text>
@@ -163,13 +197,14 @@ export default function BusinessPlaceFormScreen({
 }
 
 function Field({
-  label, value, onChange, multiline, keyboard,
+  label, value, onChange, multiline, keyboard, placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
   keyboard?: 'default' | 'decimal-pad' | 'phone-pad';
+  placeholder?: string;
 }) {
   return (
     <View style={styles.field}>
@@ -180,6 +215,7 @@ function Field({
         onChangeText={onChange}
         multiline={multiline}
         keyboardType={keyboard}
+        placeholder={placeholder}
         placeholderTextColor={Colors.textMuted}
       />
     </View>
@@ -203,8 +239,6 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: Colors.primary },
   chipText: { fontSize: 12, fontWeight: '700', color: Colors.textMid },
   chipTextOn: { color: Colors.white },
-  row: { flexDirection: 'row', gap: 10 },
-  half: { flex: 1 },
   thumb: { width: '100%', height: 160, borderRadius: 16, marginBottom: 8, backgroundColor: Colors.primarySoft },
   uploadBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

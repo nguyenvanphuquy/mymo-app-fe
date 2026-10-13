@@ -1,6 +1,6 @@
 import type { Friend } from '../constants/data';
 
-const FRIEND_COLORS = ['#FF8FB8', '#7CC4FF', '#FFB37C', '#7CFFB8', '#C8A8FF'];
+const FRIEND_COLORS = ['#FF8FB8', '#7CC4FF', '#FFB37C', '#7CFFB8', '#F4C4F1'];
 
 export interface FriendLocation {
   userId: string;

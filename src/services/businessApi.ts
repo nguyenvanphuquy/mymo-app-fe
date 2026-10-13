@@ -143,6 +143,8 @@ export interface BusinessPlaceDto {
   phone?: string | null;
   openingHours?: string | null;
   thumbnailUrl?: string | null;
+  model3DKey?: string | null;
+  model3DUrl?: string | null;
   status: string;
   averageRating: number;
   reviewCount: number;
@@ -185,11 +187,49 @@ function normalizePlace(raw: Record<string, unknown>): BusinessPlaceDto {
     longitude: Number(raw.longitude ?? raw.Longitude ?? 0),
     openingHours: (raw.openingHours ?? raw.OpeningHours ?? null) as string | null,
     thumbnailUrl: (raw.thumbnailUrl ?? raw.ThumbnailUrl ?? null) as string | null,
+    model3DKey: (raw.model3DKey ?? raw.Model3DKey ?? null) as string | null,
+    model3DUrl: absoluteModelUrl(
+      (raw.model3DUrl ?? raw.Model3DUrl ?? null) as string | null,
+    ),
     status: String(raw.status ?? raw.Status ?? ''),
     averageRating: Number(raw.averageRating ?? raw.AverageRating ?? 0),
     reviewCount: Number(raw.reviewCount ?? raw.ReviewCount ?? 0),
     checkInCount: Number(raw.checkInCount ?? raw.CheckInCount ?? 0),
   };
+}
+
+function absoluteModelUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  const apiOrigin = API_URL.replace(/\/api\/?$/i, '');
+  return `${apiOrigin}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+export interface PlaceModel3D {
+  key: string;
+  name: string;
+  url: string;
+}
+
+export async function getPlaceModels(): Promise<PlaceModel3D[]> {
+  const res = await requestJson<Record<string, unknown>[]>('/business/place-models', 'GET');
+  return (res.data ?? []).map(raw => ({
+    key: String(raw.key ?? raw.Key ?? ''),
+    name: String(raw.name ?? raw.Name ?? ''),
+    url: absoluteModelUrl(String(raw.url ?? raw.Url ?? '')) ?? '',
+  }));
+}
+
+export async function updatePlaceModel3D(
+  placeId: string,
+  model3DKey: string | null,
+): Promise<BusinessPlaceDto> {
+  const res = await requestJson<Record<string, unknown>>(
+    `/business/places/${placeId}/model-3d`,
+    'PUT',
+    { model3DKey },
+  );
+  return normalizePlace(res.data ?? {});
 }
 
 export async function getMyBusinesses(): Promise<BusinessDto[]> {

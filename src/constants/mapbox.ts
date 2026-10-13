@@ -7,17 +7,20 @@ export const MAP_DETAIL_MIN_ZOOM = 13;
 /** Business venue pins are visible to other users from this zoom. */
 export const MAP_BUSINESS_MIN_ZOOM = 9.5;
 
+/** GLB house models replace the regular venue pin from this zoom. */
+export const MAP_3D_MODEL_MIN_ZOOM = 13;
+
 /** Opening the map from a home vibe uses a broad venue overview. */
 export const MAP_VIBE_OVERVIEW_ZOOM = 10;
 
 /**
  * Friend and public posts from the last 24 hours appear from this zoom.
- * Older posts, and other visibilities, stay at MAP_POST_MIN_ZOOM.
+ * Posts older than 24 hours are never shown on the map.
  */
 export const MAP_FRESH_POST_MIN_ZOOM = 10;
 
 /**
- * Posts older than 24 hours appear from this zoom.
+ * Anonymous fresh posts require a closer zoom.
  */
 export const MAP_POST_MIN_ZOOM = 16.5;
 

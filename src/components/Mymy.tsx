@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
     right: 8,
     width: 6,
     height: 6,
-    backgroundColor: '#C9A8FF',
+    backgroundColor: '#F4C4F1',
   },
   chatBadge: {
     position: 'absolute',
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#7C5BFF',
+    backgroundColor: '#DA70D6',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,

@@ -129,7 +129,7 @@ export default function BusinessMenuScreen({
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#FAFAFC', '#F0EAFF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={StyleSheet.absoluteFill} />
       <View style={{ paddingTop: insets.top }}>
         <BusinessScreenHeader title={t('biz.menu.title')} onBack={onBack} />
       </View>
@@ -161,7 +161,7 @@ export default function BusinessMenuScreen({
           <ActivityIndicator style={{ marginTop: 32 }} color={Colors.primary} />
         ) : !menu ? (
           <View style={styles.setupCard}>
-            <LinearGradient colors={['#FFFFFF', '#F6F2FF']} style={styles.setupIcon}>
+            <LinearGradient colors={['#FFFFFF', '#FFF5FE']} style={styles.setupIcon}>
               <Ionicons name="book-outline" size={32} color={Colors.primary} />
             </LinearGradient>
             <Text style={styles.setupTitle}>{t('biz.menu.noMenu')}</Text>
@@ -199,7 +199,7 @@ export default function BusinessMenuScreen({
               onPress={() => setItemForm('create')}
               activeOpacity={0.9}
             >
-              <LinearGradient colors={['#FFFFFF', '#F6F2FF']} style={styles.addIcon}>
+              <LinearGradient colors={['#FFFFFF', '#FFF5FE']} style={styles.addIcon}>
                 <Ionicons name="add" size={28} color={Colors.primary} />
               </LinearGradient>
               <View style={{ flex: 1 }}>
@@ -264,7 +264,7 @@ function MenuItemCard({
       {item.imageUrl ? (
         <Image source={{ uri: item.imageUrl }} style={styles.thumb} resizeMode="cover" />
       ) : (
-        <LinearGradient colors={['#F6F2FF', '#E4DAFF']} style={styles.thumbPlaceholder}>
+        <LinearGradient colors={['#FFF5FE', '#F3D4F1']} style={styles.thumbPlaceholder}>
           <Ionicons name="fast-food-outline" size={28} color={Colors.primary} />
         </LinearGradient>
       )}
@@ -302,7 +302,7 @@ function MenuItemCard({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   scroll: { paddingHorizontal: 20, paddingTop: 8 },
   hero: { borderRadius: 22, padding: 18, marginBottom: 16, overflow: 'hidden', ...Shadows.glow },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -321,15 +321,15 @@ const styles = StyleSheet.create({
   heroStatL: { fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.8)', marginTop: 2, textTransform: 'uppercase' },
   setupCard: {
     backgroundColor: Colors.white, borderRadius: 22, padding: 22,
-    borderWidth: 1, borderColor: '#EEEAF5', alignItems: 'center', ...Shadows.soft,
+    borderWidth: 1, borderColor: '#F2DAF0', alignItems: 'center', ...Shadows.soft,
   },
   setupIcon: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   setupTitle: { fontSize: 17, fontWeight: '900', color: Colors.textDark },
   setupDesc: { fontSize: 13, color: Colors.textMuted, textAlign: 'center', marginTop: 6, lineHeight: 20 },
   fieldLabel: { alignSelf: 'stretch', fontSize: 12, fontWeight: '700', color: Colors.textMuted, marginTop: 16, marginBottom: 6 },
   input: {
-    alignSelf: 'stretch', backgroundColor: '#FAFAFC', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#EEEAF5', fontSize: 15, color: Colors.textDark, marginBottom: 14,
+    alignSelf: 'stretch', backgroundColor: '#FFF9FF', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#F2DAF0', fontSize: 15, color: Colors.textDark, marginBottom: 14,
   },
   primaryGrad: { alignSelf: 'stretch', borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
   primaryGradText: { color: Colors.white, fontWeight: '900', fontSize: 15 },
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 18, marginBottom: 10,
-    overflow: 'hidden', borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    overflow: 'hidden', borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   thumb: { width: 96, minHeight: 96, backgroundColor: Colors.primarySoft },
   thumbPlaceholder: { width: 96, minHeight: 96, alignItems: 'center', justifyContent: 'center' },

@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet, Image,
-  SafeAreaView, Pressable, useWindowDimensions, Platform,
+  SafeAreaView, Pressable, useWindowDimensions, Platform, PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,26 +14,75 @@ import { avatarUri } from '../constants/defaultAvatar';
 import { openUserProfile } from '../utils/openUserProfile';
 
 interface FriendStoryViewerProps {
-  group: UserMomentGroup | null;
+  groups: UserMomentGroup[];
+  initialGroupIndex: number | null;
+  onStoryViewed?: (postId: string) => void;
   onClose: () => void;
 }
 
-export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerProps) {
+export default function FriendStoryViewer({
+  groups,
+  initialGroupIndex,
+  onStoryViewed,
+  onClose,
+}: FriendStoryViewerProps) {
   const appWidth = useAppContentWidth();
   const { height: windowHeight } = useWindowDimensions();
+  const [groupIndex, setGroupIndex] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [detailPostId, setDetailPostId] = useState<string | null>(null);
 
+  const group = groups[groupIndex] ?? null;
   const posts = group?.posts ?? [];
   const currentPost = posts[activeIndex];
 
   useEffect(() => {
-    if (!group) return;
+    if (initialGroupIndex == null) return;
+    setGroupIndex(initialGroupIndex);
     setActiveIndex(0);
     setProgress(0);
     setDetailPostId(null);
-  }, [group]);
+  }, [initialGroupIndex]);
+
+  useEffect(() => {
+    if (currentPost) onStoryViewed?.(currentPost.postId);
+  }, [currentPost?.postId, onStoryViewed]);
+
+  const goNext = useCallback(() => {
+    if (activeIndex < posts.length - 1) {
+      setActiveIndex(prev => prev + 1);
+      return;
+    }
+    if (groupIndex < groups.length - 1) {
+      setGroupIndex(prev => prev + 1);
+      setActiveIndex(0);
+      return;
+    }
+    onClose();
+  }, [activeIndex, posts.length, groupIndex, groups.length, onClose]);
+
+  const goPrev = useCallback(() => {
+    if (activeIndex > 0) {
+      setActiveIndex(prev => prev - 1);
+      return;
+    }
+    if (groupIndex > 0) {
+      const previousGroupIndex = groupIndex - 1;
+      setGroupIndex(previousGroupIndex);
+      setActiveIndex(Math.max(0, groups[previousGroupIndex].posts.length - 1));
+    }
+  }, [activeIndex, groupIndex, groups]);
+
+  const swipeResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => (
+      Math.abs(gesture.dx) > 20 && Math.abs(gesture.dx) > Math.abs(gesture.dy)
+    ),
+    onPanResponderRelease: (_, gesture) => {
+      if (gesture.dx <= -45) goNext();
+      else if (gesture.dx >= 45) goPrev();
+    },
+  }), [goNext, goPrev]);
 
   useEffect(() => {
     if (!group || posts.length === 0) return;
@@ -48,16 +97,12 @@ export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerP
       setProgress(ratio);
 
       if (ratio >= 1) {
-        if (activeIndex < posts.length - 1) {
-          setActiveIndex(prev => prev + 1);
-        } else {
-          onClose();
-        }
+        goNext();
       }
     }, 50);
 
     return () => clearInterval(timer);
-  }, [group, activeIndex, posts.length, onClose]);
+  }, [group, activeIndex, posts.length, goNext]);
 
   const detailPost = useMemo(() => {
     if (!detailPostId || !group) return null;
@@ -69,19 +114,14 @@ export default function FriendStoryViewer({ group, onClose }: FriendStoryViewerP
   if (!group || !currentPost) return null;
 
   const thumb = getPostThumbnail(currentPost);
-  const goNext = () => {
-    if (activeIndex < posts.length - 1) setActiveIndex(prev => prev + 1);
-    else onClose();
-  };
-  const goPrev = () => {
-    if (activeIndex > 0) setActiveIndex(prev => prev - 1);
-  };
-
   return (
     <>
       <Modal visible transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.backdrop}>
-          <SafeAreaView style={[styles.modal, { width: appWidth, maxWidth: APP_MAX_WIDTH, height: windowHeight }]}>
+          <SafeAreaView
+            style={[styles.modal, { width: appWidth, maxWidth: APP_MAX_WIDTH, height: windowHeight }]}
+            {...swipeResponder.panHandlers}
+          >
             <View style={styles.mediaStage}>
               {thumb ? (
                 <Image

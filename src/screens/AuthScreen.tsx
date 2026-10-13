@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
-import SparkleField from '../components/SparkleField';
+import AuthAtmosphere from '../components/AuthAtmosphere';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
@@ -155,20 +155,9 @@ export default function AuthScreen({
       style={styles.kav}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <AuthAtmosphere />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <LinearGradient
-          colors={[...Gradients.hero]}
-          style={styles.heroGrad}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <SparkleField count={Platform.OS === 'web' ? 6 : 10} />
-          <LinearGradient colors={Gradients.sheen} style={styles.heroSheen} pointerEvents="none" />
-
-          {/* Blob decorations */}
-          <View style={styles.blob1} />
-          <View style={styles.blob2} />
-
+        <View style={styles.heroGrad}>
           {/* Top bar */}
           <View style={styles.topBar}>
             <MymoLogo width={135} />
@@ -186,7 +175,7 @@ export default function AuthScreen({
             <Text style={styles.heroTitle}>{t('auth.heroTitle')}</Text>
             <Text style={styles.heroSub}>{t('auth.heroSub')}</Text>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Form card */}
         <View style={styles.card}>
@@ -440,7 +429,9 @@ function SocialBtn({
 const styles = StyleSheet.create({
   kav: {
     flex: 1,
-    backgroundColor: Colors.primaryTint,
+    backgroundColor: '#F3E3F2',
+    position: 'relative',
+    overflow: 'hidden',
     ...Platform.select({
       web: {
         maxWidth: 500,
@@ -448,8 +439,8 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
-        boxShadow: '0 18px 50px rgba(124, 91, 255, 0.12)',
+        borderColor: '#F2DAF0',
+        boxShadow: '0 18px 50px rgba(218, 112, 214, 0.2)',
       },
       default: {},
     }),
@@ -461,31 +452,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     minHeight: 360,
     overflow: 'hidden',
-  },
-  heroSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-  },
-  blob1: {
-    position: 'absolute',
-    top: -60,
-    left: -60,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  blob2: {
-    position: 'absolute',
-    top: 100,
-    right: -50,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(156,124,255,0.3)',
+    zIndex: 1,
   },
   topBar: {
     flexDirection: 'row',
@@ -527,7 +494,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   card: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'rgba(255,255,255,0.78)',
     marginHorizontal: 24,
     marginTop: -24,
     borderRadius: 28,
@@ -535,7 +502,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.95)',
-    ...Shadows.float,
+    zIndex: 1,
+    ...Shadows.glow,
   },
   tabs: {
     flexDirection: 'row',
@@ -615,10 +583,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderColor: '#F1E8FF',
+    borderColor: '#F2DAF0',
   },
   genderDropdownOptionActive: {
-    backgroundColor: 'rgba(124, 91, 255, 0.08)',
+    backgroundColor: 'rgba(218, 112, 214, 0.1)',
   },
   genderDropdownOptionText: {
     fontSize: 13,

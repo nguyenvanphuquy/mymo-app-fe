@@ -62,7 +62,7 @@ export default function BusinessCampaignSuccessScreen({
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
-      <LinearGradient colors={['#FAFAFC', '#EDE4FF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#F3D4F1']} style={StyleSheet.absoluteFill} />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <View style={[styles.iconWrap, isPaid && styles.iconWrapPaid]}>
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 18,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   pkg: { fontSize: 16, fontWeight: '900', color: Colors.textDark },

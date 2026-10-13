@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#EBE8F5',
+    borderColor: '#F2DAF0',
     zIndex: 50,
     overflow: 'hidden',
     ...Shadows.float,
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   rejectBtn: {
-    backgroundColor: '#F3F1F8',
+    backgroundColor: '#F8EDF7',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,

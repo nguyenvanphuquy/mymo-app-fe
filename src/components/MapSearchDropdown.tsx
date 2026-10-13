@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderWidth: 1,
-    borderColor: '#EBE8F5',
+    borderColor: '#F2DAF0',
     overflow: 'hidden',
     maxHeight: 260,
     zIndex: 20,
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F1F8',
+    borderBottomColor: '#F8EDF7',
   },
   iconWrap: {
     width: 30,

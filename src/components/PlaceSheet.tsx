@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
 import { vibeById } from '../constants/vibes';
+import Model3DViewer from './Model3DViewer';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
 import { avatarUri } from '../constants/defaultAvatar';
@@ -437,6 +438,16 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                   <Text style={styles.statLabel}>{t('place.posts')}</Text>
                 </View>
               </View>
+              {detail.model3DUrl ? (
+                <View style={styles.modelSection}>
+                  <View style={styles.modelSectionTitle}>
+                    <Ionicons name="cube-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.modelTitle}>Không gian 3D của quán</Text>
+                  </View>
+                  <Model3DViewer src={detail.model3DUrl} style={styles.modelViewer} />
+                  <Text style={styles.modelHint}>Kéo để xoay · cuộn để phóng to</Text>
+                </View>
+              ) : null}
 
               <View style={styles.checkInBlock}>
                 <Text style={styles.checkInMoodLabel}>{t('place.checkInMood')}</Text>
@@ -806,7 +817,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   vibeChip: {
-    backgroundColor: '#F4EEFF',
+    backgroundColor: '#FBEAF9',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -815,6 +826,37 @@ const styles = StyleSheet.create({
     color: '#5B3FD1',
     fontFamily: 'Nunito_700Bold',
     fontSize: 12,
+  },
+  modelSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    ...Shadows.soft,
+  },
+  modelSectionTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 10,
+  },
+  modelTitle: {
+    color: Colors.textDark,
+    fontFamily: 'Nunito_800ExtraBold',
+    fontSize: 15,
+  },
+  modelViewer: {
+    width: '100%',
+    height: Platform.OS === 'web' ? 260 : 150,
+    borderRadius: 16,
+  },
+  modelHint: {
+    marginTop: 7,
+    textAlign: 'center',
+    color: Colors.textMuted,
+    fontFamily: 'Nunito_600SemiBold',
+    fontSize: 11,
   },
   placeName: {
     fontSize: 18,

@@ -21,8 +21,8 @@ import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
 import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
-import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
-import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
+import { separatePostsFrom3DPlaces, spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
+import { getNearbyPlaces, getPlacePromotions, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
 import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
@@ -34,6 +34,7 @@ import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
 import {
   MAPBOX_ACCESS_TOKEN,
+  MAP_3D_MODEL_MIN_ZOOM,
   MAP_BUSINESS_MIN_ZOOM,
   MAP_DETAIL_MIN_ZOOM,
   MAP_FRESH_POST_MIN_ZOOM,
@@ -47,6 +48,8 @@ import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
 import { getUserProfile } from '../services/userApi';
+import { ensureModelViewerLoaded } from '../components/Model3DViewer';
+import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
 
 // ─── Mapbox GL JS (web-only) ──────────────────────────────────────────────────
 import mapboxgl from 'mapbox-gl';
@@ -71,7 +74,10 @@ interface MapScreenProps {
   onViewProfile?: (f: Friend) => void;
   vibeId?: VibeId | null;
   onClearVibe?: () => void;
+  onChooseVibe?: () => void;
 }
+
+type MapContentFilter = 'all' | 'friends' | 'events';
 
 function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivElement {
   const el = document.createElement('div');
@@ -106,7 +112,7 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
   nameTag.style.cssText = `
     margin-top:4px; background:rgba(255,255,255,0.95);
     padding:2px 8px; border-radius:10px;
-    font-family:Nunito,sans-serif; font-size:10px; font-weight:700; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:10px; font-weight:700; color:#4F2852;
     box-shadow:0 2px 8px rgba(124,91,255,0.12); white-space:nowrap;
   `;
   nameTag.textContent = friend.name;
@@ -117,48 +123,33 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
   return el;
 }
 
-function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivElement {
+function createPlaceMarkerEl(
+  place: PlaceSummary,
+  onTap: () => void,
+  show3DModel: boolean,
+): HTMLDivElement {
+  const rendersModel = show3DModel && !!place.model3DUrl;
   const el = document.createElement('div');
-  el.style.cssText = `display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:${place.isOwnedByCurrentUser ? 9 : 4}; max-width:120px;`;
+  el.style.cssText = `display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:${rendersModel ? 12 : place.isOwnedByCurrentUser ? 9 : 4}; max-width:120px;`;
 
-  const bubble = document.createElement('div');
-  bubble.style.cssText = `
-    width:${place.isOwnedByCurrentUser ? 52 : 44}px; height:${place.isOwnedByCurrentUser ? 52 : 44}px; border-radius:50%;
-    background:${place.isOwnedByCurrentUser
-      ? 'linear-gradient(135deg, #FFD6EC, #8F78F0)'
-      : 'linear-gradient(135deg, #E4DAFF, #A78BFA)'};
-    border:${place.isOwnedByCurrentUser ? 4 : 2.5}px solid #fff;
-    display:flex; align-items:center; justify-content:center;
-    box-shadow:0 4px ${place.isOwnedByCurrentUser ? 24 : 16}px rgba(124,91,255,${place.isOwnedByCurrentUser ? 0.75 : 0.45});
+  const vibes = document.createElement('div');
+  vibes.style.cssText = `
+    display:flex; align-items:center; justify-content:center; gap:3px;
+    margin-bottom:${rendersModel ? -5 : 2}px; z-index:2; max-width:120px;
   `;
-
-  const inner = document.createElement('div');
-  inner.style.cssText = `
-    width:34px; height:34px; border-radius:50%;
-    background:#fff; overflow:hidden;
-    display:flex; align-items:center; justify-content:center;
-    font-size:16px;
-  `;
-
-  if (place.thumbnailUrl) {
-    const img = document.createElement('img');
-    img.src = place.thumbnailUrl;
-    img.alt = place.name;
-    img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
-    inner.appendChild(img);
-  } else {
-    inner.textContent = vibeById(place.vibes[0] ?? '')?.emoji ?? '📍';
-  }
-
-  bubble.appendChild(inner);
-
-  const tip = document.createElement('div');
-  tip.style.cssText = `
-    width:0; height:0; margin-top:-1px;
-    border-left:7px solid transparent;
-    border-right:7px solid transparent;
-    border-top:9px solid #A78BFA;
-  `;
+  place.vibes.slice(0, 3).forEach(vibeId => {
+    const vibe = vibeById(vibeId);
+    const badge = document.createElement('span');
+    badge.title = vibe?.name ?? vibeId;
+    badge.textContent = vibe?.emoji ?? '✨';
+    badge.style.cssText = `
+      width:27px; height:27px; border-radius:14px;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.97); border:2px solid #F2DAF0;
+      box-shadow:0 3px 10px rgba(92,61,171,0.3); font-size:14px;
+    `;
+    vibes.appendChild(badge);
+  });
 
   const chip = document.createElement('div');
   chip.style.cssText = `
@@ -166,13 +157,13 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
     display:flex; align-items:center; gap:4px;
     background:rgba(255,255,255,0.96);
     padding:5px 8px; border-radius:12px;
-    border:1px solid #E8DFFF;
+    border:1px solid #F2DAF0;
     box-shadow:0 2px 8px rgba(124,91,255,0.12);
   `;
 
   const name = document.createElement('span');
   name.style.cssText = `
-    font-family:Nunito,sans-serif; font-size:9px; font-weight:800; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:9px; font-weight:800; color:#4F2852;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     flex:1; min-width:0;
   `;
@@ -182,23 +173,55 @@ function createPlaceMarkerEl(place: PlaceSummary, onTap: () => void): HTMLDivEle
   if (place.isOwnedByCurrentUser) {
     const mine = document.createElement('span');
     mine.textContent = 'QUÁN CỦA BẠN';
-    mine.style.cssText = 'font-family:Nunito,sans-serif;font-size:7px;font-weight:900;color:#7C3AED;background:#F4EEFF;padding:2px 5px;border-radius:7px;white-space:nowrap;';
+    mine.style.cssText = 'font-family:Nunito,sans-serif;font-size:7px;font-weight:900;color:#DA70D6;background:#FBEAF9;padding:2px 5px;border-radius:7px;white-space:nowrap;';
     chip.appendChild(mine);
   }
 
   if (place.averageRating && place.averageRating > 0) {
     const rating = document.createElement('span');
     rating.style.cssText = `
-      font-family:Nunito,sans-serif; font-size:8px; font-weight:800; color:#4E3A87;
-      background:#F6F2FF; padding:2px 5px; border-radius:8px;
+      font-family:Nunito,sans-serif; font-size:8px; font-weight:800; color:#7D4E80;
+      background:#FFF5FE; padding:2px 5px; border-radius:8px;
       white-space:nowrap; flex-shrink:0;
     `;
     rating.textContent = `★ ${place.averageRating.toFixed(1)}`;
     chip.appendChild(rating);
   }
 
-  el.appendChild(bubble);
-  el.appendChild(tip);
+  el.appendChild(vibes);
+
+  if (rendersModel && place.model3DUrl) {
+    const model = document.createElement('model-viewer');
+    model.setAttribute('src', place.model3DUrl);
+    model.setAttribute('camera-controls', '');
+    model.setAttribute('camera-orbit', '0deg 65deg auto');
+    model.setAttribute('min-camera-orbit', 'auto 45deg auto');
+    model.setAttribute('max-camera-orbit', 'auto 82deg auto');
+    model.setAttribute('shadow-intensity', '1');
+    // Mapbox positions markers with CSS transforms, which can make
+    // model-viewer's lazy visibility detection incorrectly stay off-screen.
+    model.setAttribute('loading', 'eager');
+    model.setAttribute('reveal', 'auto');
+    model.setAttribute('exposure', '1');
+    model.setAttribute('interaction-prompt', 'none');
+    model.style.cssText = `
+      width:${place.isOwnedByCurrentUser ? 112 : 92}px;
+      height:${place.isOwnedByCurrentUser ? 92 : 76}px;
+      display:block;
+      position:relative; z-index:1; visibility:visible; opacity:1;
+      filter:drop-shadow(0 7px 8px rgba(77,48,156,0.35));
+      pointer-events:auto; touch-action:none; cursor:grab;
+    `;
+    // Rotate the model without also dragging the map or opening the place.
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(eventName => {
+      model.addEventListener(eventName, event => event.stopPropagation());
+    });
+    el.appendChild(model);
+    chip.style.cssText += `
+      position:absolute; top:100%; left:50%; transform:translateX(-50%);
+      margin-top:2px; width:max-content;
+    `;
+  }
   el.appendChild(chip);
   el.addEventListener('click', onTap);
   return el;
@@ -231,7 +254,7 @@ function createPostMarkerEl(post: NearbyPost, onTap: () => void): HTMLDivElement
   nameTag.style.cssText = `
     margin-top:4px; max-width:72px; background:rgba(255,255,255,0.95);
     padding:2px 6px; border-radius:8px;
-    font-family:Nunito,sans-serif; font-size:9px; font-weight:700; color:#2A1758;
+    font-family:Nunito,sans-serif; font-size:9px; font-weight:700; color:#4F2852;
     box-shadow:0 2px 8px rgba(124,91,255,0.12);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   `;
@@ -250,7 +273,7 @@ function createSearchMarkerEl(): HTMLDivElement {
   const bubble = document.createElement('div');
   bubble.style.cssText = `
     width:40px; height:40px; border-radius:50%;
-    background:linear-gradient(135deg, #E4DAFF, #A78BFA);
+    background:linear-gradient(135deg, #F3D4F1, #E39BDE);
     border:2.5px solid #fff;
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 4px 16px rgba(124,91,255,0.5);
@@ -263,7 +286,7 @@ function createSearchMarkerEl(): HTMLDivElement {
     width:0; height:0; margin-top:-1px;
     border-left:7px solid transparent;
     border-right:7px solid transparent;
-    border-top:9px solid #A78BFA;
+    border-top:9px solid #E39BDE;
   `;
 
   el.appendChild(bubble);
@@ -276,9 +299,10 @@ function createSearchMarkerEl(): HTMLDivElement {
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
   onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
-  vibeId = null, onClearVibe,
+  vibeId = null, onClearVibe, onChooseVibe,
 }: MapScreenProps) {
   const { t } = useI18n();
+  useEffect(ensureModelViewerLoaded, []);
   const [searchText, setSearchText] = useState('');
   const [cssLoaded, setCssLoaded] = useState(false);
   const [mapTheme, setMapTheme] = useState<MapTheme>('purple');
@@ -286,10 +310,10 @@ export default function MapScreen({
   const mapFilters = [
     { id: 'all', label: t('map.filterAll') },
     { id: 'friends', label: t('map.filterFriends') },
-    { id: 'public', label: t('map.filterPublic') },
     { id: 'events', label: t('map.filterEvents') },
     { id: 'vibe', label: t('map.filterVibe') },
-  ];
+  ] as const;
+  const [contentFilter, setContentFilter] = useState<MapContentFilter>('all');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const userCoordsRef = useRef(userCoords);
   userCoordsRef.current = userCoords;
@@ -303,6 +327,7 @@ export default function MapScreen({
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
+  const [eventPlaceIds, setEventPlaceIds] = useState<Set<string>>(new Set());
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
@@ -320,6 +345,7 @@ export default function MapScreen({
   const searchMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const hasCenteredOnUserRef = useRef(false);
+  const hasCenteredOnOwnedPlaceRef = useRef(false);
   const skipInitialThemeRef = useRef(true);
   const MAP_CONTAINER_ID = 'mymo-mapbox-container';
 
@@ -485,25 +511,67 @@ export default function MapScreen({
     };
   }, [isActive, coordsBucket]);
 
+  useEffect(() => {
+    if (contentFilter !== 'events') return;
+    let cancelled = false;
+    void Promise.all(nearbyPlaces.map(async place => {
+      const promotions = await getPlacePromotions(place.placeId);
+      const hasEvent = promotions.some(promotion =>
+        promotion.status === 'Active' || promotion.status === 'Upcoming');
+      return hasEvent ? place.placeId : null;
+    })).then(ids => {
+      if (!cancelled) setEventPlaceIds(new Set(ids.filter((id): id is string => !!id)));
+    });
+    return () => { cancelled = true; };
+  }, [contentFilter, nearbyPlaces]);
+
+  useEffect(() => {
+    if (!vibeId) return;
+    setContentFilter('all');
+  }, [vibeId]);
+
   const searchLower = searchText.trim().toLowerCase();
+  const friendIds = useMemo(
+    () => new Set(friendPins.map(friend => friend.id.toLowerCase())),
+    [friendPins],
+  );
+  const postsForFilter = contentFilter === 'friends'
+    ? nearbyPosts.filter(post => friendIds.has(post.userId.toLowerCase()))
+    : contentFilter === 'events'
+      ? []
+      : nearbyPosts;
   const filteredPosts = searchLower
-    ? nearbyPosts.filter(p =>
+    ? postsForFilter.filter(p =>
         p.displayName.toLowerCase().includes(searchLower) ||
         (p.caption || '').toLowerCase().includes(searchLower))
-    : nearbyPosts;
-  const vibePlaces = vibeId
-    ? nearbyPlaces.filter(place => place.vibes.includes(vibeId))
-    : nearbyPlaces;
-  const filteredPlaces = searchLower
-    ? vibePlaces.filter(p =>
-        p.name.toLowerCase().includes(searchLower) ||
-        (p.address || '').toLowerCase().includes(searchLower) ||
-        (p.city || '').toLowerCase().includes(searchLower))
-    : vibePlaces;
+    : postsForFilter;
+  const filteredPlaces = useMemo(
+    () => {
+      const contentPlaces = contentFilter === 'events'
+          ? nearbyPlaces.filter(place => eventPlaceIds.has(place.placeId))
+          : nearbyPlaces;
+      const vibePlaces = vibeId
+        ? contentPlaces.filter(place => place.vibes.includes(vibeId))
+        : contentPlaces;
+      const searchedPlaces = searchLower
+        ? vibePlaces.filter(p =>
+            p.name.toLowerCase().includes(searchLower) ||
+            (p.address || '').toLowerCase().includes(searchLower) ||
+            (p.city || '').toLowerCase().includes(searchLower))
+        : vibePlaces;
+      return dedupeMapPlaces(searchedPlaces);
+    },
+    [nearbyPlaces, vibeId, searchLower, contentFilter, eventPlaceIds],
+  );
+  const visibleFriendPins = useMemo(
+    () => contentFilter === 'events' ? [] : friendPins,
+    [contentFilter, friendPins],
+  );
 
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
   const showBusinessPins = shownZoom >= MAP_BUSINESS_MIN_ZOOM;
+  const show3DModels = shownZoom >= MAP_3D_MODEL_MIN_ZOOM;
   const showFreshPosts = shownZoom >= MAP_FRESH_POST_MIN_ZOOM;
   const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
@@ -520,6 +588,13 @@ export default function MapScreen({
   const spreadMapPosts = useMemo(
     () => spreadOverlappingMarkers(visiblePosts),
     [visiblePosts],
+  );
+  const displayedMapPosts = useMemo(
+    () => separatePostsFrom3DPlaces(
+      spreadMapPosts,
+      show3DModels ? visiblePlaces : [],
+    ),
+    [spreadMapPosts, visiblePlaces, show3DModels],
   );
 
   useEffect(() => {
@@ -651,7 +726,7 @@ export default function MapScreen({
     postMarkersRef.current.forEach(m => m.remove());
     postMarkersRef.current = [];
 
-    spreadMapPosts.forEach(({ post, latitude, longitude }) => {
+    displayedMapPosts.forEach(({ post, latitude, longitude, markerOffsetX = 0, markerOffsetY = 0 }) => {
       const el = createPostMarkerEl(post, () => {
         setSelectedPlace(null);
         setSelectedPostIsOwn(
@@ -659,17 +734,22 @@ export default function MapScreen({
         );
         setSelectedPost(toPostView(post));
       });
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: 'bottom',
+        offset: [markerOffsetX, markerOffsetY],
+      })
         .setLngLat([longitude, latitude])
         .addTo(map);
       postMarkersRef.current.push(marker);
     });
-  }, [spreadMapPosts, mapReady, myUserId]);
+  }, [displayedMapPosts, mapReady, myUserId]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
     if (!isActive) {
       hasCenteredOnUserRef.current = false;
+      hasCenteredOnOwnedPlaceRef.current = false;
       return;
     }
     const map = mapRef.current;
@@ -681,6 +761,21 @@ export default function MapScreen({
       duration: 800,
     });
   }, [isActive, mapReady, userCoords, vibeId]);
+
+  // Business owners should land on their own venue so zooming in does not
+  // push its 3D house outside the viewport.
+  useEffect(() => {
+    if (!isActive || !mapReady || vibeId || hasCenteredOnOwnedPlaceRef.current) return;
+    const ownedPlace = visiblePlaces.find(place => place.isOwnedByCurrentUser);
+    if (!ownedPlace) return;
+    hasCenteredOnOwnedPlaceRef.current = true;
+    hasCenteredOnUserRef.current = true;
+    mapRef.current?.flyTo({
+      center: [ownedPlace.longitude, ownedPlace.latitude],
+      zoom: Math.max(mapRef.current.getZoom(), DEFAULT_ZOOM),
+      duration: 900,
+    });
+  }, [isActive, mapReady, vibeId, visiblePlaces]);
 
   const flownVibeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -713,13 +808,13 @@ export default function MapScreen({
       const el = createPlaceMarkerEl(place, () => {
         setSelectedPost(null);
         setSelectedPlace(place);
-      });
+      }, show3DModels);
       const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
         .setLngLat([place.longitude, place.latitude])
         .addTo(map);
       placeMarkersRef.current.push(marker);
     });
-  }, [visiblePlaces, filteredPlaces, mapReady, showBusinessPins]);
+  }, [visiblePlaces, filteredPlaces, mapReady, showBusinessPins, show3DModels]);
 
   // ── Sync friend markers ────────────────────────────────────────────────────
   useEffect(() => {
@@ -729,7 +824,7 @@ export default function MapScreen({
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    friendPins.forEach(f => {
+    visibleFriendPins.forEach(f => {
       const el = createFriendMarkerEl(f, () => {
         if (onViewProfile) onViewProfile(f);
         else onFriendTap(f);
@@ -739,7 +834,7 @@ export default function MapScreen({
         .addTo(map);
       markersRef.current.push(marker);
     });
-  }, [friendPins, mapReady, onFriendTap]);
+  }, [visibleFriendPins, mapReady, onFriendTap]);
 
   // ── Sync search result marker ────────────────────────────────────────────
   useEffect(() => {
@@ -773,7 +868,7 @@ export default function MapScreen({
   // ── Fly to selected friend ───────────────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend || !mapRef.current) return;
-    const friend = friendPins.find(f => f.id === selectedFriend.id);
+    const friend = visibleFriendPins.find(f => f.id === selectedFriend.id);
     if (friend) {
       mapRef.current.flyTo({
         center: [friend.lng, friend.lat],
@@ -781,7 +876,7 @@ export default function MapScreen({
         duration: 1000,
       });
     }
-  }, [selectedFriend, friendPins]);
+  }, [selectedFriend, visibleFriendPins]);
 
   // ── Recenter ───────────────────────────────────────────────────────────────
   const recenter = useCallback(() => {
@@ -929,33 +1024,48 @@ export default function MapScreen({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
         >
-          {mapFilters.map((chip, index) => {
-            const active = index === 0;
-            return active ? (
-              <LinearGradient
+          {mapFilters.map(chip => {
+            const active = chip.id !== 'vibe' && contentFilter === chip.id;
+            return (
+              <TouchableOpacity
                 key={chip.id}
-                colors={[...themeUi.chipActive]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.filterChipActive}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (chip.id === 'vibe') {
+                    onChooseVibe?.();
+                    return;
+                  }
+                  setContentFilter(chip.id);
+                  setSelectedPost(null);
+                  setSelectedPlace(null);
+                  onCloseSheet();
+                }}
               >
-                <Text style={styles.filterChipActiveText}>
-                  {chip.label}{index === 0 ? ' ✨' : ''}
-                </Text>
-              </LinearGradient>
-            ) : (
-              <View
-                key={chip.id}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: themeUi.chipInactiveBg,
-                    borderColor: themeUi.chipInactiveBorder,
-                  },
-                ]}
-              >
-                <Text style={styles.filterChipText}>{chip.label}</Text>
-              </View>
+                {active ? (
+                  <LinearGradient
+                    colors={[...themeUi.chipActive]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.filterChipActive}
+                  >
+                    <Text style={styles.filterChipActiveText}>
+                      {chip.label}{chip.id === 'all' ? ' ✨' : ''}
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: themeUi.chipInactiveBg,
+                        borderColor: themeUi.chipInactiveBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.filterChipText}>{chip.label}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
@@ -1010,7 +1120,7 @@ export default function MapScreen({
       {/* ── Bottom friend chips ── */}
       <View style={styles.chipWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {friendPins.map(f => (
+          {visibleFriendPins.map(f => (
             <View key={f.id} style={styles.chip}>
               <TouchableOpacity
                 onPress={() => {
@@ -1061,7 +1171,7 @@ export default function MapScreen({
       {/* ── Friend detail sheet ── */}
       {selectedFriend && (
         <FriendSheet
-          friend={friendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
+          friend={visibleFriendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
           onClose={onCloseSheet}
           onMessage={f => { onCloseSheet(); onMessage(f); }}
           onViewProfile={onViewProfile ? f => { onCloseSheet(); onViewProfile(f); } : undefined}
@@ -1075,7 +1185,7 @@ export default function MapScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF8FF',
+    backgroundColor: '#FFF9FF',
     overflow: 'hidden',
     ...Platform.select({
       web: {
@@ -1084,7 +1194,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
         position: 'relative',
         boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
       },
@@ -1130,7 +1240,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#E4DAFF',
+    borderColor: '#F3D4F1',
     gap: 4,
   },
   vibeBannerRow: {
@@ -1140,7 +1250,7 @@ const styles = StyleSheet.create({
   },
   vibeBannerText: {
     flex: 1,
-    color: '#2A1758',
+    color: '#4F2852',
     fontFamily: 'Nunito_700Bold',
     fontSize: 13,
   },
@@ -1150,7 +1260,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   vibeBannerClear: {
-    color: '#7C5BFF',
+    color: '#DA70D6',
     fontFamily: 'Nunito_800ExtraBold',
     fontSize: 12,
   },

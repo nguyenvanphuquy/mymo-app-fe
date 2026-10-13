@@ -34,6 +34,7 @@ import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import { getStoredAuthSession } from '../services/authApi';
 import { avatarUri } from '../constants/defaultAvatar';
 import { openUserProfile } from '../utils/openUserProfile';
+import { getFriendStatus } from '../services/friendsApi';
 
 export interface ChatScreenProps {
   conversationId: string;
@@ -68,6 +69,7 @@ export default function ChatScreen({
   const [attachOpen, setAttachOpen] = useState(false);
   const [typingName, setTypingName] = useState<string | null>(null);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [isFriend, setIsFriend] = useState<boolean | null>(null);
   const [recallingId, setRecallingId] = useState<string | null>(null);
   const flatRef = useRef<FlatList>(null);
   const sharedOnce = useRef(false);
@@ -124,6 +126,29 @@ export default function ChatScreen({
       if (session?.userId) setMyUserId(session.userId);
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!peerUserId) {
+      setIsFriend(true);
+      return;
+    }
+    setIsFriend(null);
+    getFriendStatus(peerUserId)
+      .then(result => setIsFriend(result.status.toLowerCase() === 'accepted'))
+      .catch(() => setIsFriend(false));
+  }, [peerUserId]);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      'friend:accepted',
+      ({ userId }: { userId?: string }) => {
+        if (userId && peerUserId && userId.toLowerCase() === peerUserId.toLowerCase()) {
+          setIsFriend(true);
+        }
+      },
+    );
+    return () => subscription.remove();
+  }, [peerUserId]);
 
   useEffect(() => {
     loadMessages();
@@ -201,9 +226,24 @@ export default function ChatScreen({
     })();
   }, [sharePostId, sharePlaceId, loading, conversationId, loadMessages, t]);
 
+  const isNonFriendChat = Boolean(peerUserId && isFriend === false);
+  const nonFriendSentCount = isNonFriendChat
+    ? messages.filter(message => message.sender.userId === myUserId).length
+    : 0;
+  const nonFriendRemaining = Math.max(0, 3 - nonFriendSentCount);
+  const nonFriendLimitReached = isNonFriendChat && nonFriendRemaining === 0;
+
   const handleSendText = async () => {
     const v = text.trim();
     if (!v || sending) return;
+    if (isNonFriendChat && v.length > 100) {
+      Toast.show({ type: 'info', text1: t('chat.nonFriendCharacterLimit') });
+      return;
+    }
+    if (nonFriendLimitReached) {
+      Toast.show({ type: 'info', text1: t('chat.nonFriendMessageLimit') });
+      return;
+    }
 
     setSending(true);
     setText('');
@@ -227,6 +267,10 @@ export default function ChatScreen({
 
   const handlePickImage = async () => {
     setAttachOpen(false);
+    if (nonFriendLimitReached) {
+      Toast.show({ type: 'info', text1: t('chat.nonFriendMessageLimit') });
+      return;
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Toast.show({ type: 'info', text1: t('chat.photoDenied') });
@@ -264,6 +308,10 @@ export default function ChatScreen({
 
   const handleShareLocation = async () => {
     setAttachOpen(false);
+    if (nonFriendLimitReached) {
+      Toast.show({ type: 'info', text1: t('chat.nonFriendMessageLimit') });
+      return;
+    }
     setSending(true);
     try {
       let latitude: number;
@@ -484,11 +532,25 @@ export default function ChatScreen({
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {isNonFriendChat ? (
+          <View style={styles.nonFriendNotice}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+            <Text style={styles.nonFriendNoticeText}>
+              {nonFriendLimitReached
+                ? t('chat.nonFriendMessageLimit')
+                : t('chat.nonFriendNotice')
+                  .replace('{remaining}', String(nonFriendRemaining))}
+            </Text>
+            {!nonFriendLimitReached ? (
+              <Text style={styles.nonFriendCharCount}>{text.length}/100</Text>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.inputBar}>
           <TouchableOpacity
             onPress={() => setAttachOpen(true)}
             style={styles.attachBtn}
-            disabled={sending}
+            disabled={sending || nonFriendLimitReached}
           >
             <Ionicons name="add-circle-outline" size={24} color={Colors.primary} />
           </TouchableOpacity>
@@ -500,13 +562,14 @@ export default function ChatScreen({
             style={styles.input}
             returnKeyType="send"
             onSubmitEditing={handleSendText}
-            editable={!sending}
+            editable={!sending && !nonFriendLimitReached}
+            maxLength={isNonFriendChat ? 100 : undefined}
           />
           <TouchableOpacity
             onPress={handleSendText}
             activeOpacity={0.85}
             style={styles.sendBtn}
-            disabled={sending || !text.trim()}
+            disabled={sending || !text.trim() || nonFriendLimitReached}
           >
             <LinearGradient
               colors={Gradients.primary}
@@ -554,7 +617,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
       },
       default: {},
     }),
@@ -715,6 +778,28 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingBottom: Platform.OS === 'ios' ? 30 : 10,
     ...Shadows.float,
+  },
+  nonFriendNotice: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#FBEAF9',
+    borderTopWidth: 1,
+    borderTopColor: '#F3D4F1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nonFriendNoticeText: {
+    flex: 1,
+    color: Colors.textMid,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  nonFriendCharCount: {
+    color: Colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
   },
   attachBtn: {
     width: 36,

@@ -114,7 +114,7 @@ export default function BusinessPromotionsScreen({
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#FAFAFC', '#F0EAFF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={StyleSheet.absoluteFill} />
       <View style={{ paddingTop: insets.top }}>
         <BusinessScreenHeader title={t('biz.promo.title')} onBack={onBack} />
       </View>
@@ -155,7 +155,7 @@ export default function BusinessPromotionsScreen({
           <ActivityIndicator style={{ marginTop: 32 }} color={Colors.primary} />
         ) : items.length === 0 ? (
           <View style={styles.empty}>
-            <LinearGradient colors={['#FFFFFF', '#F6F2FF']} style={styles.emptyIcon}>
+            <LinearGradient colors={['#FFFFFF', '#FFF5FE']} style={styles.emptyIcon}>
               <Ionicons name="gift-outline" size={36} color={Colors.primary} />
             </LinearGradient>
             <Text style={styles.emptyTitle}>{t('biz.promo.empty')}</Text>
@@ -260,7 +260,7 @@ function PromoCard({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   scroll: { paddingHorizontal: 20, paddingTop: 8 },
   hero: { borderRadius: 22, padding: 18, marginBottom: 16, overflow: 'hidden', ...Shadows.glow },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   emptyDesc: { fontSize: 13, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
   card: {
     backgroundColor: Colors.white, borderRadius: 20, marginBottom: 14,
-    overflow: 'hidden', borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    overflow: 'hidden', borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   heroImg: { width: '100%', height: 130, alignItems: 'center', justifyContent: 'center' },
   statusBadge: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Colors, Gradients, Shadows } from '../constants/colors';
+import { APP_MAX_WIDTH } from '../constants/layout';
 import { MAPBOX_ACCESS_TOKEN } from '../constants/mapbox';
 
 function businessMapUrl(lat: number, lng: number): string {
@@ -572,7 +573,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <LinearGradient colors={Gradients.primary} style={styles.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
         <View style={styles.headerTop}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.headerEyebrow}>{t('admin.badge')}</Text>
             <Text style={styles.headerTitle}>{t('admin.dashboardTitle')}</Text>
             <Text style={styles.headerSub}>
@@ -643,7 +644,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
               {stats.byRole.map(({ role, count }) => (
                 <View key={role.id} style={styles.roleStatRow}>
                   <View style={[styles.roleDot, { backgroundColor: role.color }]} />
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.roleStatName}>{role.name}</Text>
                     <Text style={styles.roleStatDesc} numberOfLines={1}>
                       {segmentLabel(role.segment)} · {role.description}
@@ -907,7 +908,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                                 {reportBusyId === report.reportId ? (
                                   <ActivityIndicator color={Colors.white} />
                                 ) : (
-                                  <Text style={styles.approveBtnText}>{t('admin.reportsMarkReviewed')}</Text>
+                                  <Text style={styles.approveBtnText} numberOfLines={2}>{t('admin.reportsMarkReviewed')}</Text>
                                 )}
                               </TouchableOpacity>
                             ) : null}
@@ -916,14 +917,14 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                               disabled={reportBusyId === report.reportId}
                               onPress={() => handleReportStatus(report.reportId, 'Resolved')}
                             >
-                              <Text style={styles.approveBtnText}>{t('admin.reportsResolve')}</Text>
+                              <Text style={styles.approveBtnText} numberOfLines={2}>{t('admin.reportsResolve')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={styles.rejectBtn}
                               disabled={reportBusyId === report.reportId}
                               onPress={() => handleReportStatus(report.reportId, 'Dismissed')}
                             >
-                              <Text style={styles.rejectBtnText}>{t('admin.reportsDismiss')}</Text>
+                              <Text style={styles.rejectBtnText} numberOfLines={2}>{t('admin.reportsDismiss')}</Text>
                             </TouchableOpacity>
                           </View>
                         ) : null}
@@ -1069,7 +1070,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                   {selectedRole && (
                     <View style={styles.matrixCard}>
                       <View style={styles.matrixHeader}>
-                        <View style={{ flex: 1 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={styles.matrixTitle}>{selectedRole.name}</Text>
                           <Text style={styles.matrixDesc}>{selectedRole.description}</Text>
                         </View>
@@ -1121,7 +1122,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                         return (
                           <View key={group} style={styles.groupBlock}>
                             <View style={styles.groupHeader}>
-                              <View style={{ flex: 1 }}>
+                              <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text style={styles.groupTitle}>{groupLabel(group)}</Text>
                                 <Text style={styles.groupSub}>
                                   {enabledCount}/{items.length} · {t(`admin.groupDesc.${group}`)}
@@ -1286,7 +1287,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                             size={18}
                             color={ok ? Colors.activeGreen : '#E11D48'}
                           />
-                          <View style={{ flex: 1 }}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={styles.permName}>{permLabel(meta.id)}</Text>
                             <Text style={styles.permDesc}>{permDesc(meta.id)}</Text>
                           </View>
@@ -1798,12 +1799,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryTint,
     ...Platform.select({
       web: {
-        maxWidth: 980,
+        maxWidth: APP_MAX_WIDTH,
         width: '100%',
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
         minHeight: '100vh' as unknown as number,
       },
       default: {},
@@ -1963,9 +1964,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.primarySoft,
   },
   quickLinkText: { flex: 1, fontWeight: '700', color: Colors.primary, fontSize: 13 },
-  toolbar: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
   searchRow: {
     flex: 1,
+    flexBasis: 200,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1977,7 +1980,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primarySoft,
   },
   searchInput: { flex: 1, fontSize: 14, color: Colors.textDark },
-  addBtn: { borderRadius: 14, overflow: 'hidden', ...Shadows.soft },
+  addBtn: { flexShrink: 0, borderRadius: 14, overflow: 'hidden', ...Shadows.soft },
   addBtnGrad: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2030,7 +2033,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: 16, fontWeight: '800' },
-  userMeta: { flex: 1 },
+  userMeta: { flex: 1, minWidth: 0 },
   userName: { fontSize: 15, fontWeight: '800', color: Colors.textDark },
   userHandle: { fontSize: 12, color: Colors.primary, marginTop: 2, fontWeight: '600' },
   userEmail: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
@@ -2102,7 +2105,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
-  queueModalTitle: { fontSize: 17, fontWeight: '900', color: Colors.textDark },
+  queueModalTitle: { flex: 1, fontSize: 17, fontWeight: '900', color: Colors.textDark, textAlign: 'center' },
   queueModalHint: {
     fontSize: 12,
     color: Colors.textMuted,
@@ -2118,23 +2121,29 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   partnerPanelEmptyText: { fontSize: 13, color: Colors.textMuted, fontWeight: '600', textAlign: 'center' },
-  partnerActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  partnerActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   approveBtn: {
     flex: 1,
+    flexBasis: '45%' as unknown as number,
+    minWidth: 0,
     backgroundColor: Colors.primary,
     borderRadius: 14,
     paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
-  approveBtnText: { color: Colors.white, fontWeight: '800', fontSize: 12 },
+  approveBtnText: { color: Colors.white, fontWeight: '800', fontSize: 12, textAlign: 'center' },
   rejectBtn: {
     flex: 1,
+    flexBasis: '45%' as unknown as number,
+    minWidth: 0,
     backgroundColor: '#FFE4E6',
     borderRadius: 14,
     paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
-  rejectBtnText: { color: '#E11D48', fontWeight: '800', fontSize: 12 },
+  rejectBtnText: { color: '#E11D48', fontWeight: '800', fontSize: 12, textAlign: 'center' },
   rejectInput: {
     minHeight: 80,
     borderWidth: 1,
@@ -2217,12 +2226,14 @@ const styles = StyleSheet.create({
   lockedText: { fontSize: 11, color: Colors.textMuted, fontWeight: '700' },
   matrixSummary: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E8FF',
+    borderBottomColor: '#F2DAF0',
   },
   matrixSummaryText: { fontSize: 12, fontWeight: '700', color: Colors.textMid },
   matrixQuick: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -2252,9 +2263,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E8FF',
+    borderBottomColor: '#F2DAF0',
   },
-  permInfo: { flex: 1, paddingRight: 12 },
+  permInfo: { flex: 1, minWidth: 0, paddingRight: 12 },
   permTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   permName: { fontSize: 13, fontWeight: '700', color: Colors.textDark },
   permDesc: { fontSize: 11, color: Colors.textMuted, marginTop: 3, lineHeight: 15 },
@@ -2284,7 +2295,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.primarySoft,
     overflow: 'hidden',
   },
-  compareRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1E8FF' },
+  compareRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F2DAF0' },
   compareCell: {
     width: 88,
     paddingVertical: 10,
@@ -2325,9 +2336,10 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E8FF',
+    borderBottomColor: '#F2DAF0',
   },
   accessTag: {
+    flexShrink: 0,
     fontSize: 10,
     fontWeight: '800',
     paddingHorizontal: 8,

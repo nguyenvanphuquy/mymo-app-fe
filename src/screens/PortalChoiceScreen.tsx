@@ -55,7 +55,7 @@ export default function PortalChoiceScreen({
           activeOpacity={0.88}
           onPress={onChooseBusiness}
         >
-          <LinearGradient colors={['#F4EEFF', '#A78BFA']} style={styles.cardIcon}>
+          <LinearGradient colors={['#FBEAF9', '#E39BDE']} style={styles.cardIcon}>
             <Ionicons name="storefront" size={28} color={Colors.white} />
           </LinearGradient>
           <View style={styles.cardText}>

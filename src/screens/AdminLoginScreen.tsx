@@ -164,7 +164,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
         boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
       },
       default: {},

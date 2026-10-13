@@ -31,7 +31,7 @@ export default function BusinessOnboardingScreen({ onDone }: { onDone: () => voi
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 24 }]}>
-      <LinearGradient colors={['#FAFAFC', '#F0EAFF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={StyleSheet.absoluteFill} />
       <View style={styles.dots}>
         {STEPS.map((_, i) => (
           <View key={i} style={[styles.dot, i === step && styles.dotOn]} />

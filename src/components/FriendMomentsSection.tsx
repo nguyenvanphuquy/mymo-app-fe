@@ -21,6 +21,8 @@ import {
 } from '../utils/friendMomentsGrouping';
 import { avatarUri } from '../constants/defaultAvatar';
 import { openUserProfile } from '../utils/openUserProfile';
+import { isPostWithin24Hours } from '../utils/mapPostZoom';
+import { getViewedStoryIds, markStoryViewed } from '../utils/storyViewStorage';
 
 interface CurrentUser {
   userId: string;
@@ -55,7 +57,7 @@ export default function FriendMomentsSection({
 }: FriendMomentsSectionProps) {
   const { t } = useI18n();
   const [groups, setGroups] = useState<UserMomentGroup[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<UserMomentGroup | null>(null);
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadPosts = useCallback(async () => {
@@ -98,7 +100,11 @@ export default function FriendMomentsSection({
       }
     }
 
-    setGroups(groupPostsByUser(feed, namesLookup));
+    const viewedIds = await getViewedStoryIds(currentUser?.userId ?? '');
+    const availableStories = feed.filter(post => (
+      isPostWithin24Hours(post.createdAt) && !viewedIds.has(post.postId)
+    ));
+    setGroups(groupPostsByUser(availableStories, namesLookup));
   }, [friendNames, currentUser]);
 
   useEffect(() => {
@@ -153,7 +159,7 @@ export default function FriendMomentsSection({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        {visibleGroups.map(group => {
+        {visibleGroups.map((group, groupIndex) => {
           const thumb = getGroupThumbnail(group);
           const avatar = avatarUri(group.avatarUrl);
 
@@ -162,7 +168,7 @@ export default function FriendMomentsSection({
               key={group.userId}
               style={styles.card}
               activeOpacity={0.9}
-              onPress={() => setSelectedGroup(group)}
+              onPress={() => setSelectedGroupIndex(groupIndex)}
             >
               {thumb ? (
                 <Image source={{ uri: thumb }} style={styles.thumb} resizeMode="cover" />
@@ -215,8 +221,17 @@ export default function FriendMomentsSection({
       </ScrollView>
 
       <FriendStoryViewer
-        group={selectedGroup}
-        onClose={() => setSelectedGroup(null)}
+        groups={visibleGroups}
+        initialGroupIndex={selectedGroupIndex}
+        onStoryViewed={postId => {
+          if (currentUser?.userId) {
+            void markStoryViewed(currentUser.userId, postId);
+          }
+        }}
+        onClose={() => {
+          setSelectedGroupIndex(null);
+          void loadPosts();
+        }}
       />
     </View>
   );
@@ -286,7 +301,7 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     borderWidth: 2.5,
-    borderColor: '#C9A8FF',
+    borderColor: '#F4C4F1',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFF',

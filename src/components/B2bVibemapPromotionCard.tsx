@@ -32,6 +32,6 @@ export function B2bSubscribeButton() {
 
 const styles = StyleSheet.create({
   wrap: { gap: 12 },
-  title: { fontSize: 18, fontWeight: '900', color: '#2A1758', textAlign: 'center' },
+  title: { fontSize: 18, fontWeight: '900', color: '#4F2852', textAlign: 'center' },
   sub: { fontSize: 13, color: '#9C8EC0', textAlign: 'center', marginBottom: 8 },
 });

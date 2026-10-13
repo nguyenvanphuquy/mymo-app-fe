@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     padding: 28,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   title: { fontSize: 15, fontWeight: '900', color: Colors.textDark, marginTop: 12 },

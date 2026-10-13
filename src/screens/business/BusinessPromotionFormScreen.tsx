@@ -145,7 +145,7 @@ export default function BusinessPromotionFormScreen({
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={['#FAFAFC', '#F0EAFF']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FFF9FF', '#FBEAF9']} style={StyleSheet.absoluteFill} />
       <View style={{ paddingTop: insets.top }}>
         <BusinessScreenHeader title={headerTitle} onBack={onBack} />
       </View>
@@ -245,11 +245,11 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   form: { padding: 20 },
   placeBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.white, borderRadius: 14,
-    padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   placeBannerLabel: { fontSize: 11, fontWeight: '800', color: Colors.textMuted, textTransform: 'uppercase' },
   placeBannerName: { fontSize: 15, fontWeight: '800', color: Colors.textDark, marginTop: 2 },
@@ -274,12 +274,12 @@ const styles = StyleSheet.create({
   section: { fontSize: 13, fontWeight: '800', color: Colors.textDark, marginTop: 4, marginBottom: 8 },
   input: {
     backgroundColor: Colors.white, borderRadius: 14, padding: 14, fontSize: 15, color: Colors.textDark,
-    borderWidth: 1, borderColor: '#EEEAF5', ...Shadows.soft,
+    borderWidth: 1, borderColor: '#F2DAF0', ...Shadows.soft,
   },
   inputMulti: { minHeight: 88, textAlignVertical: 'top' },
   switchRow: {
     flexDirection: 'row', alignItems: 'center', marginBottom: 22, padding: 14,
-    backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#EEEAF5',
+    backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#F2DAF0',
   },
   switchLabel: { fontSize: 15, fontWeight: '800', color: Colors.textDark },
   switchSub: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },

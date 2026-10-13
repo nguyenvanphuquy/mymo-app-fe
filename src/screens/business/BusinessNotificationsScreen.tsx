@@ -88,7 +88,7 @@ export default function BusinessNotificationsScreen({ onBack }: { onBack: () => 
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   mark: { fontSize: 11, fontWeight: '800', color: Colors.primary },
   demoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 4 },
   demoHint: { fontSize: 11, color: Colors.textMuted, flex: 1 },
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   unread: { borderColor: Colors.primarySoft, backgroundColor: '#FDFCFF' },

@@ -166,7 +166,7 @@ export default function BusinessBillingScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAFAFC' },
+  root: { flex: 1, backgroundColor: '#FFF9FF' },
   hint: { fontSize: 11, color: Colors.textMuted, paddingHorizontal: 20, marginBottom: 4 },
   card: {
     backgroundColor: Colors.white,
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#EEEAF5',
+    borderColor: '#F2DAF0',
     ...Shadows.soft,
   },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },

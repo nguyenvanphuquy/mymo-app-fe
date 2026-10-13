@@ -106,7 +106,7 @@ const MOCK_ROLES: AdminRole[] = [
     name: 'Admin',
     segment: 'internal',
     description: 'Quản trị hệ thống — truy cập cổng Admin, quản lý user & actor',
-    color: '#7C5BFF',
+    color: '#DA70D6',
     permissions: [
       'admin.portal',
       'admin.users.manage',

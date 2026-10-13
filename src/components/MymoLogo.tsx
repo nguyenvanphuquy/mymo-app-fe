@@ -2,118 +2,37 @@ import React, { useEffect, useRef } from 'react';
 import {
   View,
   Image,
-  StyleSheet,
   Animated,
   Easing,
   Pressable,
+  Platform,
   type StyleProp,
   type ViewStyle,
-  type ImageStyle,
 } from 'react-native';
 
-const LOGO_COLOR = '#6A3BAF';
-const ASPECT = 1024 / 271;
+// logo.png: 1024 x 271px
+const LOGO_PNG = require('../../assets/logo.png');
+const ASPECT   = 1024 / 271; // ≈ 3.778
 
-const LEFT_EYE = { cx: 0.3475, cy: 0.228 };
-const RIGHT_EYE = { cx: 0.4194, cy: 0.29 };
+// Eye positions as fraction of (width, height) — measured from logo.png
+// Left eye  = dot circle  (inside the "y" smiley)
+// Right eye = wink chevron < (inside the "y" smiley)
+const LEFT_EYE  = { cx: 0.3475, cy: 0.228 };
+const RIGHT_EYE = { cx: 0.4194, cy: 0.29  };
 
-/** Soft ease — slow in, slow out, no hard edges. */
-const soft = Easing.bezier(0.4, 0.0, 0.2, 1);
+// Eyelid colour matching the purple logo fill
+const LID_COLOR = '#6A3BAF';
+
+const soft      = Easing.bezier(0.4, 0.0, 0.2, 1);
+const softOut   = Easing.bezier(0.22, 1, 0.36, 1);
 const softInOut = Easing.bezier(0.45, 0.05, 0.25, 1);
-const softOut = Easing.bezier(0.22, 1, 0.36, 1);
 
 type Props = {
   width: number;
-  style?: StyleProp<ViewStyle>;
   height?: number;
+  style?: StyleProp<ViewStyle>;
   animated?: boolean;
 };
-
-type EyeMotion = {
-  open: Animated.Value;
-  lid: Animated.Value;
-  lookX: Animated.Value;
-  lookY: Animated.Value;
-  squash: Animated.Value;
-};
-
-function CircleEye({
-  size, color, motion,
-}: { size: number; color: string; motion: EyeMotion }) {
-  return (
-    <Animated.View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: color,
-        transform: [
-          { translateX: motion.lookX },
-          { translateY: motion.lookY },
-          { scaleX: motion.squash },
-          { scaleY: motion.open },
-        ],
-      }}
-    />
-  );
-}
-
-function WinkEye({
-  size, color, motion,
-}: { size: number; color: string; motion: EyeMotion }) {
-  const stroke = Math.max(2, size * 0.26);
-  const arm = size * 0.6;
-  return (
-    <Animated.View
-      style={{
-        width: size,
-        height: size,
-        alignItems: 'center',
-        justifyContent: 'center',
-        transform: [
-          { translateX: motion.lookX },
-          { translateY: motion.lookY },
-          { scaleX: motion.squash },
-          { scaleY: motion.open },
-        ],
-      }}
-    >
-      <View
-        style={{
-          width: arm,
-          height: arm,
-          borderRightWidth: stroke,
-          borderBottomWidth: stroke,
-          borderColor: color,
-          transform: [{ rotate: '-45deg' }],
-          marginTop: -size * 0.05,
-        }}
-      />
-    </Animated.View>
-  );
-}
-
-function ClosedLid({
-  size, color, opacity,
-}: { size: number; color: string; opacity: Animated.Value }) {
-  const lidW = size * 0.82;
-  const lidH = Math.max(2, size * 0.16);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: (size - lidW) / 2,
-        top: (size - lidH) / 2,
-        width: lidW,
-        height: lidH,
-        borderRadius: 99,
-        backgroundColor: color,
-        opacity,
-      }}
-    />
-  );
-}
 
 function animTo(
   value: Animated.Value,
@@ -125,42 +44,94 @@ function animTo(
     toValue,
     duration,
     easing,
-    useNativeDriver: true,
+    useNativeDriver: Platform.OS !== 'web',
   });
 }
 
-export default function MymoLogo({ width, height, style, animated = true }: Props) {
+/** Circular eyelid that sweeps down over the eye (scaleY 0→1) */
+function Eyelid({
+  size,
+  lidProgress,
+  color,
+}: {
+  size: number;
+  lidProgress: Animated.Value;
+  color: string;
+}) {
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+        transform: [{ scaleY: lidProgress }],
+        opacity: 1,
+      }}
+      pointerEvents="none"
+    />
+  );
+}
+
+/** Pill-shaped wink cover that hides the < chevron when the eye is "open" */
+function WinkLid({
+  width: w,
+  height: h,
+  opacity,
+  color,
+}: {
+  width: number;
+  height: number;
+  opacity: Animated.Value;
+  color: string;
+}) {
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        top: h * 0.32,
+        left: 0,
+        width: w,
+        height: h * 0.30,
+        borderRadius: h * 0.15,
+        backgroundColor: color,
+        opacity,
+      }}
+      pointerEvents="none"
+    />
+  );
+}
+
+export default function MymoLogo({
+  width,
+  height,
+  style,
+  animated = true,
+}: Props) {
   const h = height ?? width / ASPECT;
-  const eyeSize = Math.max(5, h * 0.2);
 
-  const floatY = useRef(new Animated.Value(0)).current;
-  const floatX = useRef(new Animated.Value(0)).current;
+  // Eye overlay sizes (tuned for logo.png proportions)
+  const eyeSize = width * 0.042;  // dot eye diameter
+  const winkW   = width * 0.058;  // wink < width
+  const winkH   = width * 0.034;  // wink < height
+
+  // Body animation values
+  const floatY  = useRef(new Animated.Value(0)).current;
+  const floatX  = useRef(new Animated.Value(0)).current;
   const breathe = useRef(new Animated.Value(1)).current;
-  const tilt = useRef(new Animated.Value(0)).current;
+  const tilt    = useRef(new Animated.Value(0)).current;
 
-  const leftMotion: EyeMotion = {
-    open: useRef(new Animated.Value(1)).current,
-    lid: useRef(new Animated.Value(0)).current,
-    lookX: useRef(new Animated.Value(0)).current,
-    lookY: useRef(new Animated.Value(0)).current,
-    squash: useRef(new Animated.Value(1)).current,
-  };
-  const rightMotion: EyeMotion = {
-    open: useRef(new Animated.Value(1)).current,
-    lid: useRef(new Animated.Value(0)).current,
-    lookX: useRef(new Animated.Value(0)).current,
-    lookY: useRef(new Animated.Value(0)).current,
-    squash: useRef(new Animated.Value(1)).current,
-  };
+  // Eye animation values
+  const leftLid  = useRef(new Animated.Value(0)).current; // 0=open, 1=closed
+  const rightLid = useRef(new Animated.Value(0)).current;
+  const winkOp   = useRef(new Animated.Value(0)).current; // wink cover opacity
 
-  const leftIsWink = useRef(new Animated.Value(0)).current;
-  const leftCircleOpacity = useRef(new Animated.Value(1)).current;
-  const rightIsWink = useRef(new Animated.Value(1)).current;
-  const rightCircleOpacity = useRef(new Animated.Value(0)).current;
-
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const loops    = useRef<Animated.CompositeAnimation[]>([]);
+  const timers   = useRef<ReturnType<typeof setTimeout>[]>([]);
   const cancelled = useRef(false);
-  const bodyLoops = useRef<Animated.CompositeAnimation[]>([]);
 
   const clearTimers = () => {
     timers.current.forEach(clearTimeout);
@@ -173,70 +144,59 @@ export default function MymoLogo({ width, height, style, animated = true }: Prop
       timers.current.push(id);
     });
 
-  const blinkEye = (motion: EyeMotion, closeMs = 140, openMs = 220, holdMs = 40) =>
+  /** Blink a single eyelid closed then open */
+  const blink = (
+    lid: Animated.Value,
+    closeMs = 140,
+    holdMs  = 40,
+    openMs  = 220,
+  ) =>
     new Promise<void>((resolve) => {
       Animated.sequence([
-        Animated.parallel([
-          animTo(motion.open, 0.12, closeMs, softInOut),
-          animTo(motion.squash, 1.12, closeMs, softInOut),
-          animTo(motion.lid, 1, closeMs, softInOut),
-        ]),
+        animTo(lid, 1, closeMs, soft),
         Animated.delay(holdMs),
-        Animated.parallel([
-          animTo(motion.open, 1, openMs, softOut),
-          animTo(motion.squash, 1, openMs, softOut),
-          animTo(motion.lid, 0, openMs, softOut),
-        ]),
+        animTo(lid, 0, openMs, softOut),
       ]).start(() => resolve());
     });
 
-  const softBlinkBoth = async (stagger = 35) => {
-    const left = blinkEye(leftMotion, 150, 240, 50);
+  /** Blink both eyes with a subtle stagger */
+  const blinkBoth = async (stagger = 30) => {
+    const leftBlink = blink(leftLid, 150, 45, 240);
     await wait(stagger);
     if (cancelled.current) return;
-    await Promise.all([left, blinkEye(rightMotion, 160, 250, 45)]);
+    await Promise.all([leftBlink, blink(rightLid, 160, 50, 250)]);
   };
 
-  const setWinkMode = (leftWink: boolean, rightWink: boolean) =>
+  /** Fade the wink-cover in or out */
+  const setWink = (show: boolean, ms = 380) =>
     new Promise<void>((resolve) => {
-      Animated.parallel([
-        animTo(leftIsWink, leftWink ? 1 : 0, 420, soft),
-        animTo(leftCircleOpacity, leftWink ? 0 : 1, 420, soft),
-        animTo(rightIsWink, rightWink ? 1 : 0, 420, soft),
-        animTo(rightCircleOpacity, rightWink ? 0 : 1, 420, soft),
-      ]).start(() => resolve());
-    });
-
-  const glance = (x: number, y = 0, ms = 520) =>
-    new Promise<void>((resolve) => {
-      Animated.parallel([
-        animTo(leftMotion.lookX, x, ms, soft),
-        animTo(rightMotion.lookX, x * 0.92, ms, soft),
-        animTo(leftMotion.lookY, y, ms, soft),
-        animTo(rightMotion.lookY, y * 0.9, ms, soft),
-      ]).start(() => resolve());
+      animTo(winkOp, show ? 1 : 0, ms, soft).start(() => resolve());
     });
 
   useEffect(() => {
     if (!animated) return undefined;
     cancelled.current = false;
 
+    // Start with wink eye showing (right eye winked, wink cover hidden so < is visible)
+    winkOp.setValue(0);
+
+    // ── Floating body loop ──────────────────────────────────────
     const floatLoop = Animated.loop(
       Animated.sequence([
         Animated.parallel([
           animTo(floatY, -1.2, 2600, softInOut),
-          animTo(floatX, 0.6, 2600, softInOut),
-          animTo(tilt, 0.4, 2600, softInOut),
+          animTo(floatX,  0.6, 2600, softInOut),
+          animTo(tilt,    0.4, 2600, softInOut),
         ]),
         Animated.parallel([
-          animTo(floatY, 1.0, 2800, softInOut),
+          animTo(floatY,  1.0, 2800, softInOut),
           animTo(floatX, -0.5, 2800, softInOut),
-          animTo(tilt, -0.35, 2800, softInOut),
+          animTo(tilt,  -0.35, 2800, softInOut),
         ]),
         Animated.parallel([
           animTo(floatY, -0.4, 2400, softInOut),
           animTo(floatX, 0.25, 2400, softInOut),
-          animTo(tilt, 0.15, 2400, softInOut),
+          animTo(tilt,   0.15, 2400, softInOut),
         ]),
       ]),
     );
@@ -250,46 +210,44 @@ export default function MymoLogo({ width, height, style, animated = true }: Prop
 
     floatLoop.start();
     breatheLoop.start();
-    bodyLoops.current = [floatLoop, breatheLoop];
+    loops.current = [floatLoop, breatheLoop];
 
+    // ── Idle eye-blink behaviour ────────────────────────────────
     const run = async () => {
-      await setWinkMode(false, true);
-      await wait(900);
+      await wait(1000);
 
       while (!cancelled.current) {
-        // Longer, calmer pauses between gestures
-        await wait(2400 + Math.random() * 2200);
+        await wait(1800 + Math.random() * 2400);
         if (cancelled.current) break;
 
         const roll = Math.random();
 
-        if (roll < 0.38) {
-          await softBlinkBoth(40 + Math.random() * 40);
-        } else if (roll < 0.55) {
-          await softBlinkBoth(30);
-          await wait(160 + Math.random() * 80);
+        if (roll < 0.40) {
+          // Simple blink both
+          await blinkBoth(35 + Math.random() * 30);
+        } else if (roll < 0.58) {
+          // Double blink
+          await blinkBoth(30);
+          await wait(130 + Math.random() * 60);
           if (cancelled.current) break;
-          await softBlinkBoth(50);
-        } else if (roll < 0.72) {
-          // Soft single wink on the open eye
-          await blinkEye(leftMotion, 160, 280, 60);
-        } else if (roll < 0.88) {
-          // Gentle glance, pause, blink, return
-          const dir = Math.random() > 0.5 ? 1 : -1;
-          await glance(eyeSize * 0.22 * dir, eyeSize * 0.06 * (Math.random() > 0.5 ? 1 : -1), 560);
-          await wait(420 + Math.random() * 280);
+          await blinkBoth(45);
+        } else if (roll < 0.73) {
+          // Left eye only
+          await blink(leftLid, 160, 55, 280);
+        } else if (roll < 0.87) {
+          // Momentarily close wink, blink, re-open wink
+          await setWink(true);   // cover the < so right eye looks "open"
+          await wait(500 + Math.random() * 300);
           if (cancelled.current) break;
-          await softBlinkBoth(45);
-          await wait(200);
-          await glance(0, 0, 640);
+          await blinkBoth(40);
+          await wait(180);
+          await setWink(false);  // reveal wink again
         } else {
-          // Slow wink-side swap
-          await setWinkMode(true, false);
-          await wait(1100 + Math.random() * 500);
+          // Slow sequential blink
+          await blink(leftLid, 200, 80, 300);
+          await wait(80);
           if (cancelled.current) break;
-          await blinkEye(rightMotion, 150, 260, 50);
-          await wait(800);
-          await setWinkMode(false, true);
+          await blink(rightLid, 180, 70, 280);
         }
       }
     };
@@ -298,40 +256,33 @@ export default function MymoLogo({ width, height, style, animated = true }: Prop
     return () => {
       cancelled.current = true;
       clearTimers();
-      bodyLoops.current.forEach((loop) => loop.stop());
-      floatY.stopAnimation();
-      floatX.stopAnimation();
-      breathe.stopAnimation();
-      tilt.stopAnimation();
+      loops.current.forEach((l) => l.stop());
+      [floatY, floatX, breathe, tilt, leftLid, rightLid, winkOp].forEach(
+        (v) => v.stopAnimation(),
+      );
     };
-  }, [animated, eyeSize]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animated]);
 
-  const triggerPlayful = () => {
-    if (!animated) return;
-    (async () => {
-      await softBlinkBoth(40);
-      await wait(120);
-      await blinkEye(leftMotion, 140, 240, 50);
-    })();
+  // ── Eye overlay positions ──────────────────────────────────────
+  const leftEyeStyle = {
+    position: 'absolute' as const,
+    left:     LEFT_EYE.cx * width  - eyeSize / 2,
+    top:      LEFT_EYE.cy * h      - eyeSize / 2,
+    width:    eyeSize,
+    height:   eyeSize,
+    overflow: 'hidden' as const,
+    borderRadius: eyeSize / 2,
   };
 
-  const leftStyle = {
+  const rightEyeStyle = {
     position: 'absolute' as const,
-    left: LEFT_EYE.cx * width - eyeSize / 2,
-    top: LEFT_EYE.cy * h - eyeSize / 2,
-    width: eyeSize,
-    height: eyeSize,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  };
-  const rightStyle = {
-    position: 'absolute' as const,
-    left: RIGHT_EYE.cx * width - eyeSize / 2,
-    top: RIGHT_EYE.cy * h - eyeSize / 2,
-    width: eyeSize,
-    height: eyeSize,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    left:     RIGHT_EYE.cx * width - winkW / 2,
+    top:      RIGHT_EYE.cy * h     - winkH / 2,
+    width:    winkW,
+    height:   winkH,
+    overflow: 'hidden' as const,
+    borderRadius: winkH / 2,
   };
 
   const content = (
@@ -354,30 +305,22 @@ export default function MymoLogo({ width, height, style, animated = true }: Prop
         },
       ]}
     >
+      {/* Base logo */}
       <Image
-        source={require('../../assets/logo-base.png')}
-        style={{ width, height: h } as ImageStyle}
+        source={LOGO_PNG}
+        style={{ width, height: h }}
         resizeMode="contain"
       />
 
-      <View style={leftStyle} pointerEvents="none">
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: leftCircleOpacity, alignItems: 'center', justifyContent: 'center' }]}>
-          <CircleEye size={eyeSize * 0.72} color={LOGO_COLOR} motion={leftMotion} />
-        </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: leftIsWink, alignItems: 'center', justifyContent: 'center' }]}>
-          <WinkEye size={eyeSize} color={LOGO_COLOR} motion={leftMotion} />
-        </Animated.View>
-        <ClosedLid size={eyeSize} color={LOGO_COLOR} opacity={leftMotion.lid} />
+      {/* Left eye (dot) — blink lid */}
+      <View style={leftEyeStyle} pointerEvents="none">
+        <Eyelid size={eyeSize} lidProgress={leftLid} color={LID_COLOR} />
       </View>
 
-      <View style={rightStyle} pointerEvents="none">
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: rightCircleOpacity, alignItems: 'center', justifyContent: 'center' }]}>
-          <CircleEye size={eyeSize * 0.72} color={LOGO_COLOR} motion={rightMotion} />
-        </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: rightIsWink, alignItems: 'center', justifyContent: 'center' }]}>
-          <WinkEye size={eyeSize * 1.05} color={LOGO_COLOR} motion={rightMotion} />
-        </Animated.View>
-        <ClosedLid size={eyeSize} color={LOGO_COLOR} opacity={rightMotion.lid} />
+      {/* Right eye (wink <) — blink lid + wink cover */}
+      <View style={rightEyeStyle} pointerEvents="none">
+        <Eyelid size={winkH} lidProgress={rightLid} color={LID_COLOR} />
+        <WinkLid width={winkW} height={winkH} opacity={winkOp} color={LID_COLOR} />
       </View>
     </Animated.View>
   );
@@ -385,7 +328,18 @@ export default function MymoLogo({ width, height, style, animated = true }: Prop
   if (!animated) return content;
 
   return (
-    <Pressable onPress={triggerPlayful} accessibilityRole="image" accessibilityLabel="MYMO">
+    <Pressable
+      accessibilityRole="image"
+      accessibilityLabel="MYMO"
+      onPress={() => {
+        // Tap → rapid playful blink
+        (async () => {
+          await blinkBoth(25);
+          await wait(80);
+          await blink(leftLid, 130, 30, 200);
+        })();
+      }}
+    >
       {content}
     </Pressable>
   );

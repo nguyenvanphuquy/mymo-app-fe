@@ -8,6 +8,9 @@ export interface MapPositionedPost<T> {
   post: T;
   latitude: number;
   longitude: number;
+  /** Pixel offsets keep a venue's vibe above its 3D house without changing its location. */
+  markerOffsetX?: number;
+  markerOffsetY?: number;
 }
 
 interface HasCoords {
@@ -77,4 +80,44 @@ export function spreadOverlappingMarkers<T extends HasCoords>(
   }
 
   return result;
+}
+
+interface ModelPlaceCoords {
+  latitude: number;
+  longitude: number;
+  model3DUrl?: string | null;
+}
+
+/**
+ * Keep a venue and its vibe/post at the same real coordinate, then lift the
+ * vibe visually above the 3D house. A small deterministic horizontal offset
+ * keeps multiple vibes at one venue tappable.
+ */
+export function separatePostsFrom3DPlaces<T extends HasCoords>(
+  posts: MapPositionedPost<T>[],
+  places: ModelPlaceCoords[],
+): MapPositionedPost<T>[] {
+  const modelPlaces = places.filter(place => !!place.model3DUrl);
+  if (modelPlaces.length === 0) return posts;
+
+  return posts.map(item => {
+    const overlap = modelPlaces.find(place =>
+      Math.abs(item.latitude - place.latitude) < 0.00014
+      && Math.abs(item.longitude - place.longitude) < 0.00014);
+    if (!overlap) return item;
+
+    const hash = [...item.post.postId].reduce(
+      (value, char) => ((value * 31) + char.charCodeAt(0)) >>> 0,
+      7,
+    );
+    const angle = (hash % 360) * (Math.PI / 180);
+
+    return {
+      ...item,
+      latitude: overlap.latitude,
+      longitude: overlap.longitude,
+      markerOffsetX: Math.round(Math.cos(angle) * 28),
+      markerOffsetY: -145 - Math.round(Math.abs(Math.sin(angle)) * 12),
+    };
+  });
 }

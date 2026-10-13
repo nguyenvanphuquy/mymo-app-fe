@@ -15,11 +15,11 @@ import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
 import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from '../services/postApi';
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
-import { spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
+import { separatePostsFrom3DPlaces, spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
 import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
-import { getNearbyPlaces, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
+import { getNearbyPlaces, getPlacePromotions, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
 import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
@@ -31,6 +31,7 @@ import MapSearchDropdown from '../components/MapSearchDropdown';
 import { useMapGeocodeSearch } from '../hooks/useMapGeocodeSearch';
 import {
   MAPBOX_ACCESS_TOKEN,
+  MAP_3D_MODEL_MIN_ZOOM,
   MAP_BUSINESS_MIN_ZOOM,
   MAP_DETAIL_MIN_ZOOM,
   MAP_FRESH_POST_MIN_ZOOM,
@@ -44,6 +45,7 @@ import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
 import { getUserProfile } from '../services/userApi';
+import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -63,7 +65,10 @@ interface MapScreenProps {
   onViewProfile?: (f: Friend) => void;
   vibeId?: VibeId | null;
   onClearVibe?: () => void;
+  onChooseVibe?: () => void;
 }
+
+type MapContentFilter = 'all' | 'friends' | 'events';
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
@@ -72,7 +77,7 @@ const DEFAULT_ZOOM = 14.5;
 export default function MapScreen({
   locationGranted, visibleOnMap, incognito, isActive = true,
   onFriendTap, selectedFriend, onCloseSheet, onMessage, onDisableIncognito, onViewProfile,
-  vibeId = null, onClearVibe,
+  vibeId = null, onClearVibe, onChooseVibe,
 }: MapScreenProps) {
   const { t } = useI18n();
   const [searchText, setSearchText] = useState('');
@@ -82,10 +87,10 @@ export default function MapScreen({
   const mapFilters = [
     { id: 'all', label: t('map.filterAll') },
     { id: 'friends', label: t('map.filterFriends') },
-    { id: 'public', label: t('map.filterPublic') },
     { id: 'events', label: t('map.filterEvents') },
     { id: 'vibe', label: t('map.filterVibe') },
-  ];
+  ] as const;
+  const [contentFilter, setContentFilter] = useState<MapContentFilter>('all');
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const userCoordsRef = useRef(userCoords);
   userCoordsRef.current = userCoords;
@@ -100,6 +105,7 @@ export default function MapScreen({
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
+  const [eventPlaceIds, setEventPlaceIds] = useState<Set<string>>(new Set());
   const [searchPin, setSearchPin] = useState<MapGeocodeResult | null>(null);
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM);
   const [postClock, setPostClock] = useState(() => Date.now());
@@ -110,6 +116,7 @@ export default function MapScreen({
   }, []);
   const cameraRef = useRef<Camera>(null);
   const hasCenteredOnUserRef = useRef(false);
+  const hasCenteredOnOwnedPlaceRef = useRef(false);
 
   const searchProximity = userCoords
     ? { lng: userCoords.lng, lat: userCoords.lat }
@@ -287,21 +294,62 @@ export default function MapScreen({
     };
   }, [isActive, coordsBucket]);
 
+  useEffect(() => {
+    if (contentFilter !== 'events') return;
+    let cancelled = false;
+    void Promise.all(nearbyPlaces.map(async place => {
+      const promotions = await getPlacePromotions(place.placeId);
+      const hasEvent = promotions.some(promotion =>
+        promotion.status === 'Active' || promotion.status === 'Upcoming');
+      return hasEvent ? place.placeId : null;
+    })).then(ids => {
+      if (!cancelled) setEventPlaceIds(new Set(ids.filter((id): id is string => !!id)));
+    });
+    return () => { cancelled = true; };
+  }, [contentFilter, nearbyPlaces]);
+
+  useEffect(() => {
+    if (!vibeId) return;
+    setContentFilter('all');
+  }, [vibeId]);
+
   const searchLower = searchText.trim().toLowerCase();
+  const friendIds = useMemo(
+    () => new Set(friendPins.map(friend => friend.id.toLowerCase())),
+    [friendPins],
+  );
+  const postsForFilter = contentFilter === 'friends'
+    ? nearbyPosts.filter(post => friendIds.has(post.userId.toLowerCase()))
+    : contentFilter === 'events'
+      ? []
+      : nearbyPosts;
   const filteredPosts = searchLower
-    ? nearbyPosts.filter(p =>
+    ? postsForFilter.filter(p =>
         p.displayName.toLowerCase().includes(searchLower) ||
         (p.caption || '').toLowerCase().includes(searchLower))
-    : nearbyPosts;
-  const vibePlaces = vibeId
-    ? nearbyPlaces.filter(place => place.vibes.includes(vibeId))
-    : nearbyPlaces;
-  const filteredPlaces = searchLower
-    ? vibePlaces.filter(p =>
-        p.name.toLowerCase().includes(searchLower) ||
-        (p.address || '').toLowerCase().includes(searchLower) ||
-        (p.city || '').toLowerCase().includes(searchLower))
-    : vibePlaces;
+    : postsForFilter;
+  const filteredPlaces = useMemo(
+    () => {
+      const contentPlaces = contentFilter === 'events'
+          ? nearbyPlaces.filter(place => eventPlaceIds.has(place.placeId))
+          : nearbyPlaces;
+      const vibePlaces = vibeId
+        ? contentPlaces.filter(place => place.vibes.includes(vibeId))
+        : contentPlaces;
+      const searchedPlaces = searchLower
+        ? vibePlaces.filter(p =>
+            p.name.toLowerCase().includes(searchLower) ||
+            (p.address || '').toLowerCase().includes(searchLower) ||
+            (p.city || '').toLowerCase().includes(searchLower))
+        : vibePlaces;
+      return dedupeMapPlaces(searchedPlaces);
+    },
+    [nearbyPlaces, vibeId, searchLower, contentFilter, eventPlaceIds],
+  );
+  const visibleFriendPins = useMemo(
+    () => contentFilter === 'events' ? [] : friendPins,
+    [contentFilter, friendPins],
+  );
 
   const mapCenter: [number, number] = userCoords
     ? [userCoords.lng, userCoords.lat]
@@ -310,6 +358,7 @@ export default function MapScreen({
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
   const showBusinessPins = shownZoom >= MAP_BUSINESS_MIN_ZOOM;
+  const show3DModels = shownZoom >= MAP_3D_MODEL_MIN_ZOOM;
   const visiblePlaces = useMemo(
     () => filteredPlaces.filter(place =>
       place.isOwnedByCurrentUser || showBusinessPins),
@@ -326,6 +375,13 @@ export default function MapScreen({
   const spreadMapPosts = useMemo(
     () => spreadOverlappingMarkers(visiblePosts),
     [visiblePosts],
+  );
+  const displayedMapPosts = useMemo(
+    () => separatePostsFrom3DPlaces(
+      spreadMapPosts,
+      show3DModels ? visiblePlaces : [],
+    ),
+    [spreadMapPosts, visiblePlaces, show3DModels],
   );
 
   useEffect(() => {
@@ -344,6 +400,7 @@ export default function MapScreen({
   useEffect(() => {
     if (!isActive) {
       hasCenteredOnUserRef.current = false;
+      hasCenteredOnOwnedPlaceRef.current = false;
       return;
     }
     if (vibeId || !userCoords || !cameraRef.current || hasCenteredOnUserRef.current) return;
@@ -351,6 +408,18 @@ export default function MapScreen({
     cameraRef.current.flyTo([userCoords.lng, userCoords.lat], 800);
     cameraRef.current.zoomTo(DEFAULT_ZOOM, 800);
   }, [isActive, userCoords, vibeId]);
+
+  // Keep a business owner's venue centered when entering the map so its
+  // house remains visible while the user zooms in past the 9.5 threshold.
+  useEffect(() => {
+    if (!isActive || vibeId || !cameraRef.current || hasCenteredOnOwnedPlaceRef.current) return;
+    const ownedPlace = visiblePlaces.find(place => place.isOwnedByCurrentUser);
+    if (!ownedPlace) return;
+    hasCenteredOnOwnedPlaceRef.current = true;
+    hasCenteredOnUserRef.current = true;
+    cameraRef.current.flyTo([ownedPlace.longitude, ownedPlace.latitude], 900);
+    cameraRef.current.zoomTo(Math.max(mapZoom, DEFAULT_ZOOM), 900);
+  }, [isActive, vibeId, visiblePlaces, mapZoom]);
 
   const flownVibeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -369,12 +438,12 @@ export default function MapScreen({
   // ── Fly to selected friend ───────────────────────────────────────────────
   useEffect(() => {
     if (!selectedFriend || !cameraRef.current) return;
-    const friend = friendPins.find(f => f.id === selectedFriend.id);
+    const friend = visibleFriendPins.find(f => f.id === selectedFriend.id);
     if (friend) {
       cameraRef.current.flyTo([friend.lng, friend.lat], 800);
       cameraRef.current.zoomTo(15, 800);
     }
-  }, [selectedFriend, friendPins]);
+  }, [selectedFriend, visibleFriendPins]);
 
   const recenter = useCallback(() => {
     cameraRef.current?.flyTo(mapCenter, 800);
@@ -474,22 +543,36 @@ export default function MapScreen({
               style={[styles.placePin, place.isOwnedByCurrentUser && styles.placePinMine]}
               activeOpacity={0.88}
             >
-              <LinearGradient
-                colors={Gradients.primary}
-                style={styles.placePinBubble}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.placePinInner}>
-                  {place.thumbnailUrl ? (
-                    <Image source={{ uri: place.thumbnailUrl }} style={styles.placePinImg} />
-                  ) : (
-                    <Text style={styles.placePinEmoji}>{vibeById(place.vibes[0] ?? '')?.emoji ?? '📍'}</Text>
-                  )}
+              {place.vibes.length > 0 ? (
+                <View style={styles.placeModelVibes}>
+                  {place.vibes.slice(0, 3).map(placeVibeId => (
+                    <View key={placeVibeId} style={styles.placeModelVibeBadge}>
+                      <Text style={styles.placeModelVibeEmoji}>
+                        {vibeById(placeVibeId)?.emoji ?? '✨'}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              </LinearGradient>
-              <View style={styles.placePinTip} />
-              <View style={styles.placeChip}>
+              ) : null}
+              {place.model3DUrl && show3DModels ? (
+                <>
+                  <LinearGradient
+                    colors={Gradients.primary}
+                    style={styles.placePinBubble}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.placePinInner}>
+                    <Text style={styles.placeModelEmoji}>🏠</Text>
+                    </View>
+                  </LinearGradient>
+                  <View style={styles.placePinTip} />
+                </>
+              ) : null}
+              <View style={[
+                styles.placeChip,
+                place.model3DUrl && show3DModels && styles.placeChipModel,
+              ]}>
                 <Text style={styles.placeChipName} numberOfLines={1}>{place.name}</Text>
                 {place.isOwnedByCurrentUser ? (
                   <Text style={styles.placeMineText}>QUÁN CỦA BẠN</Text>
@@ -506,7 +589,7 @@ export default function MapScreen({
         ))}
 
         {/* Nearby post pins */}
-        {spreadMapPosts.map(({ post, latitude, longitude }) => (
+        {displayedMapPosts.map(({ post, latitude, longitude, markerOffsetX = 0, markerOffsetY = 0 }) => (
           <MarkerView
             key={`post-${post.postId}`}
             coordinate={[longitude, latitude]}
@@ -521,7 +604,15 @@ export default function MapScreen({
                 );
                 setSelectedPost(toPostView(post));
               }}
-              style={styles.postPin}
+              style={[
+                styles.postPin,
+                (markerOffsetX !== 0 || markerOffsetY !== 0) && {
+                  transform: [
+                    { translateX: markerOffsetX },
+                    { translateY: markerOffsetY },
+                  ],
+                },
+              ]}
             >
               <View style={[styles.postThumbWrap, Shadows.glow as any]}>
                 {post.thumbnailUrl ? (
@@ -544,7 +635,7 @@ export default function MapScreen({
         ))}
 
         {/* Friend pins */}
-        {friendPins.map(f => (
+        {visibleFriendPins.map(f => (
           <MarkerView
             key={`friend-${f.id}`}
             coordinate={[f.lng, f.lat]}
@@ -672,33 +763,48 @@ export default function MapScreen({
           contentContainerStyle={styles.filterRow}
           pointerEvents="auto"
         >
-          {mapFilters.map((chip, index) => {
-            const active = index === 0;
-            return active ? (
-              <LinearGradient
+          {mapFilters.map(chip => {
+            const active = chip.id !== 'vibe' && contentFilter === chip.id;
+            return (
+              <TouchableOpacity
                 key={chip.id}
-                colors={[...themeUi.chipActive]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.filterChipActive}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (chip.id === 'vibe') {
+                    onChooseVibe?.();
+                    return;
+                  }
+                  setContentFilter(chip.id);
+                  setSelectedPost(null);
+                  setSelectedPlace(null);
+                  onCloseSheet();
+                }}
               >
-                <Text style={styles.filterChipActiveText}>
-                  {chip.label}{index === 0 ? ' ✨' : ''}
-                </Text>
-              </LinearGradient>
-            ) : (
-              <View
-                key={chip.id}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: themeUi.chipInactiveBg,
-                    borderColor: themeUi.chipInactiveBorder,
-                  },
-                ]}
-              >
-                <Text style={styles.filterChipText}>{chip.label}</Text>
-              </View>
+                {active ? (
+                  <LinearGradient
+                    colors={[...themeUi.chipActive]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.filterChipActive}
+                  >
+                    <Text style={styles.filterChipActiveText}>
+                      {chip.label}{chip.id === 'all' ? ' ✨' : ''}
+                    </Text>
+                  </LinearGradient>
+                ) : (
+                  <View
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: themeUi.chipInactiveBg,
+                        borderColor: themeUi.chipInactiveBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.filterChipText}>{chip.label}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
@@ -762,7 +868,7 @@ export default function MapScreen({
       {/* ── Bottom friend chips ── */}
       <View style={styles.chipWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {friendPins.map(f => (
+          {visibleFriendPins.map(f => (
             <View key={f.id} style={styles.chip}>
               <TouchableOpacity
                 onPress={() => {
@@ -820,7 +926,7 @@ export default function MapScreen({
       {/* ── Friend detail sheet ── */}
       {selectedFriend && (
         <FriendSheet
-          friend={friendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
+          friend={visibleFriendPins.find(f => f.id === selectedFriend.id) ?? selectedFriend}
           onClose={onCloseSheet}
           onMessage={(f) => { onCloseSheet(); onMessage(f); }}
           onViewProfile={onViewProfile ? (f) => { onCloseSheet(); onViewProfile(f); } : undefined}
@@ -834,7 +940,7 @@ export default function MapScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF8FF',
+    backgroundColor: '#FFF9FF',
     overflow: 'hidden',
   },
   map: {
@@ -961,6 +1067,28 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.15 }],
     zIndex: 9,
   },
+  placeModelVibes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    marginBottom: -4,
+    zIndex: 2,
+  },
+  placeModelVibeBadge: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderWidth: 2,
+    borderColor: '#F2DAF0',
+    ...Shadows.soft,
+  },
+  placeModelVibeEmoji: {
+    fontSize: 14,
+  },
   placePinBubble: {
     width: 44,
     height: 44,
@@ -1009,6 +1137,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.primarySoft,
     ...Shadows.soft,
   },
+  placeChipModel: {
+    position: 'absolute',
+    top: '100%',
+    marginTop: 2,
+  },
   placeChipName: {
     flexShrink: 1,
     fontSize: 9,
@@ -1018,8 +1151,8 @@ const styles = StyleSheet.create({
   placeMineText: {
     fontSize: 7,
     fontWeight: '900',
-    color: '#7C3AED',
-    backgroundColor: '#F4EEFF',
+    color: '#DA70D6',
+    backgroundColor: '#FBEAF9',
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderRadius: 6,
@@ -1064,6 +1197,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   placePinEmoji: { fontSize: 16 },
+  placeModelEmoji: { fontSize: 25 },
   vibeBanner: {
     gap: 4,
     backgroundColor: 'rgba(255,255,255,0.94)',
@@ -1071,7 +1205,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#E4DAFF',
+    borderColor: '#F3D4F1',
   },
   vibeBannerRow: {
     flexDirection: 'row',
@@ -1080,7 +1214,7 @@ const styles = StyleSheet.create({
   },
   vibeBannerText: {
     flex: 1,
-    color: '#2A1758',
+    color: '#4F2852',
     fontFamily: 'Nunito_700Bold',
     fontSize: 13,
   },
@@ -1090,7 +1224,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   vibeBannerClear: {
-    color: '#7C5BFF',
+    color: '#DA70D6',
     fontFamily: 'Nunito_800ExtraBold',
     fontSize: 12,
   },

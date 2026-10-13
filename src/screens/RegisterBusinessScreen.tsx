@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
       web: {
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#EBE8F5',
+        borderColor: '#F2DAF0',
       },
       default: {},
     }),

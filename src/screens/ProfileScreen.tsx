@@ -1340,7 +1340,7 @@ const styles = StyleSheet.create({
   },
   moodTabActive: {
     backgroundColor: '#EBE5FF',
-    borderColor: '#7C5BFF',
+    borderColor: '#DA70D6',
   },
   moodEmoji: {
     fontSize: 16,
