@@ -18,6 +18,7 @@ import NotificationDropdown from '../components/NotificationDropdown';
 import HomeAtmosphere from '../components/HomeAtmosphere';
 import MymoLogo from '../components/MymoLogo';
 import { avatarUri } from '../constants/defaultAvatar';
+import { hasActivePremium } from '../utils/premiumStorage';
 
 interface HomeScreenProps {
   isActive?: boolean;
@@ -163,11 +164,18 @@ export default function HomeScreen({
         }
       }
       try {
-        let places = await getNearbyPlaces(lat, lng, 40, selectedVibe);
+        const premium = await hasActivePremium();
+        const radiusKm = premium ? 80 : 40;
+        let places = await getNearbyPlaces(lat, lng, radiusKm, selectedVibe);
         if (places.length === 0 && (lat !== 10.8382 || lng !== 106.8376)) {
-          places = await getNearbyPlaces(10.8382, 106.8376, 40, selectedVibe);
+          places = await getNearbyPlaces(10.8382, 106.8376, radiusKm, selectedVibe);
         }
-        if (!cancelled) setVibePlaces(places.slice(0, 3));
+        if (premium) {
+          places = [...places].sort(
+            (a, b) => (b.checkInCount ?? 0) - (a.checkInCount ?? 0),
+          );
+        }
+        if (!cancelled) setVibePlaces(places.slice(0, premium ? 8 : 3));
       } catch {
         if (!cancelled) setVibePlaces([]);
       }

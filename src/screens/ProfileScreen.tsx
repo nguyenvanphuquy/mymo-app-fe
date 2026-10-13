@@ -395,7 +395,7 @@ export default function ProfileScreen({
         <View style={styles.avatarRow}>
           <TouchableOpacity
             onPress={() => pickImage('avatar')}
-            style={styles.avatarBorder}
+            style={[styles.avatarBorder, isPremiumActive(premiumPlan) && styles.avatarBorderPremium]}
             activeOpacity={0.9}
           >
             <Image
@@ -1065,6 +1065,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.white,
     backgroundColor: '#EEE',
     ...Shadows.glow,
+  },
+  avatarBorderPremium: {
+    borderColor: '#C084FC',
   },
   avatarImg: {
     width: 64,

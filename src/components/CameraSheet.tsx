@@ -19,6 +19,7 @@ import FilteredPhoto from './FilteredPhoto';
 import FilterStrip from './FilterStrip';
 import { bakeFilteredJpeg } from '../utils/bakeFilteredJpeg';
 import { pickRandomAlias } from '../utils/anonymousAlias';
+import { hasActivePremium } from '../utils/premiumStorage';
 import ContentRejectedBanner from './ContentRejectedBanner';
 import { isContentRejected } from '../utils/contentRejected';
 import { ensureLocationForPosting } from '../utils/ensureLocation';
@@ -495,8 +496,14 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
-                    setVisibility('Anonymous');
-                    setAnonymousAlias(pickRandomAlias());
+                    void (async () => {
+                      if (!(await hasActivePremium())) {
+                        Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.anonymous') });
+                        return;
+                      }
+                      setVisibility('Anonymous');
+                      setAnonymousAlias(pickRandomAlias());
+                    })();
                   }}
                   style={[styles.visibilityChip, visibility === 'Anonymous' && styles.visibilityChipActive]}
                 >

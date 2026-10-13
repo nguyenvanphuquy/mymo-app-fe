@@ -142,7 +142,10 @@ export default function UserPremiumBankPaymentScreen({
         <View style={styles.backBtn} />
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
-        <Text style={styles.pkg}>{t(premiumPlanNameKey(order.planId))}</Text>
+        <Text style={styles.pkg}>
+          {order.planLabel
+            || (premiumPlanNameKey(order.planId) ? t(premiumPlanNameKey(order.planId)) : order.planId)}
+        </Text>
         <Text style={styles.amount}>{formatVnd(amount, lang)}</Text>
 
         {loading ? <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} /> : null}

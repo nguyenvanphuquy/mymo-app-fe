@@ -1,14 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPremiumStatus } from '../services/userPremiumApi';
 
-export type PremiumPlanId = 'free' | 'monthly' | 'yearly';
+export type PremiumPlanId = string;
 
 const STORAGE_KEY = 'mymo.premiumPlan';
 
 export async function getPremiumPlan(): Promise<PremiumPlanId> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (raw === 'monthly' || raw === 'yearly') return raw;
-  return 'free';
+  const raw = (await AsyncStorage.getItem(STORAGE_KEY))?.trim();
+  return raw && raw.length > 0 ? raw : 'free';
 }
 
 export async function setPremiumPlan(plan: PremiumPlanId): Promise<void> {
@@ -16,7 +15,12 @@ export async function setPremiumPlan(plan: PremiumPlanId): Promise<void> {
 }
 
 export function isPremiumActive(plan: PremiumPlanId): boolean {
-  return plan === 'monthly' || plan === 'yearly';
+  return plan.trim().length > 0 && plan !== 'free';
+}
+
+export async function hasActivePremium(): Promise<boolean> {
+  const plan = await syncPremiumPlanFromServer();
+  return isPremiumActive(plan);
 }
 
 /** Khi đã đăng nhập: đồng bộ gói MYMO+ từ server (sau thanh toán SePay). */

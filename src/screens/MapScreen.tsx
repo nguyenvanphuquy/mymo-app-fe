@@ -17,6 +17,7 @@ import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from 
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
 import { separatePostsFrom3DPlaces, spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
+import { isPremiumActive, syncPremiumPlanFromServer } from '../utils/premiumStorage';
 import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
 import { getNearbyPlaces, getPlacePromotions, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
@@ -711,12 +712,22 @@ export default function MapScreen({
             </View>
             <TouchableOpacity
               onPress={() => {
-                const nextTheme = nextMapTheme(mapTheme);
-                setMapTheme(nextTheme);
-                Toast.show({
-                  type: 'success',
-                  text1: mapThemeLabel(nextTheme),
-                });
+                void (async () => {
+                  const nextTheme = nextMapTheme(mapTheme);
+                  if (nextTheme !== 'purple') {
+                    const plan = await syncPremiumPlanFromServer();
+                    if (!isPremiumActive(plan)) {
+                      Toast.show({ type: 'info', text1: t('premium.benefitLocked') });
+                      if (mapTheme !== 'purple') setMapTheme('purple');
+                      return;
+                    }
+                  }
+                  setMapTheme(nextTheme);
+                  Toast.show({
+                    type: 'success',
+                    text1: mapThemeLabel(nextTheme),
+                  });
+                })();
               }}
               style={styles.mapBtn}
               activeOpacity={0.88}

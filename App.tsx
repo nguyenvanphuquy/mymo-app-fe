@@ -20,7 +20,9 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import Toast from 'react-native-toast-message';
 
 import { I18nProvider, useI18n } from './src/i18n';
+import { WebGoogleAuthProvider } from './src/components/auth/WebGoogleAuthProvider';
 import { Colors, Gradients, Shadows } from './src/constants/colors';
+import { hasActivePremium } from './src/utils/premiumStorage';
 import { APP_MAX_WIDTH } from './src/constants/layout';
 import type { VibeId } from './src/constants/vibes';
 import type { Friend } from './src/constants/data';
@@ -132,11 +134,13 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <I18nProvider>
-        <View style={styles.phoneViewport}>
-          <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-          <AppInner />
-          <Toast />
-        </View>
+        <WebGoogleAuthProvider>
+          <View style={styles.phoneViewport}>
+            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+            <AppInner />
+            <Toast />
+          </View>
+        </WebGoogleAuthProvider>
       </I18nProvider>
     </SafeAreaProvider>
   );
@@ -686,13 +690,15 @@ function AppInner() {
                 setPermissionAsked(true);
                 setLocationBlockedOpen(false);
               }
-              setIncognito(v => {
-                const next = !v;
-                applyLocationPrivacy(true, next);
-                if (next) Toast.show({ type: 'info', text1: t('loc.incognitoOn'), text2: t('loc.incognitoOnDesc') });
-                else Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
-                return next;
-              });
+              const turningOn = !incognito;
+              if (turningOn && !(await hasActivePremium())) {
+                Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.anonymous') });
+                return;
+              }
+              setIncognito(turningOn);
+              applyLocationPrivacy(true, turningOn);
+              if (turningOn) Toast.show({ type: 'info', text1: t('loc.incognitoOn'), text2: t('loc.incognitoOnDesc') });
+              else Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
             }}
             onLogout={() => {
               void hideUserLocation().catch(() => {});

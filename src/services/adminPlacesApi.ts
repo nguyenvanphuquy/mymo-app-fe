@@ -7,6 +7,7 @@ import {
   getStoredAuthSession,
   syncPortalFlagsForRole,
 } from './authApi';
+import { persistAdminPermissions } from './adminApi';
 
 import { ADMIN_PORTAL_KEY } from './authApi';
 export const ADMIN_ROLE = 'Admin';
@@ -75,8 +76,10 @@ export async function loginAdminWithBackend(email: string, password: string): Pr
     await clearAuthSession();
     throw new Error('NOT_ADMIN');
   }
-  await saveAuthSession({ ...auth, role: String(role) });
-  await syncPortalFlagsForRole({ ...auth, role: String(role) });
+  const session = { ...auth, role: String(role) };
+  await saveAuthSession(session);
+  await persistAdminPermissions(session);
+  await syncPortalFlagsForRole(session);
 }
 
 export async function isBackendAdminSession(): Promise<boolean> {

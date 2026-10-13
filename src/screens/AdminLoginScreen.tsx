@@ -10,7 +10,7 @@ import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import SparkleField from '../components/SparkleField';
 import MymoLogo from '../components/MymoLogo';
-import { loginAdmin } from '../services/adminApi';
+import { syncAdminSessionAfterBackendLogin } from '../services/adminApi';
 import { loginAdminWithBackend } from '../services/adminPlacesApi';
 
 interface AdminLoginScreenProps {
@@ -33,12 +33,9 @@ export default function AdminLoginScreen({ onSuccess, onBack }: AdminLoginScreen
     try {
       setSubmitting(true);
       const email = username.includes('@') ? username.trim() : `${username.trim()}@mymo.app`;
-      try {
-        await loginAdminWithBackend(email, password);
-      } catch {
-        await loginAdmin(username, password);
-      }
-      Toast.show({ type: 'success', text1: t('admin.loginSuccess') });
+      await loginAdminWithBackend(email, password);
+      await syncAdminSessionAfterBackendLogin(email);
+      Toast.show({ type: 'success', text1: t('admin.loginSuccessLive') });
       onSuccess();
     } catch {
       Toast.show({ type: 'error', text1: t('admin.loginFailed') });

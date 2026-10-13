@@ -65,6 +65,7 @@ export interface AuthResponse {
   role?: string;
   accessToken: string;
   refreshToken: string;
+  permissions?: string[];
 }
 
 interface RegisterPayload {
@@ -75,6 +76,7 @@ interface RegisterPayload {
   gender: string;
   phoneNumber: string;
   dateOfBirth: string;
+  otpCode: string;
 }
 
 interface LoginPayload {
@@ -127,8 +129,29 @@ export async function registerUser(payload: RegisterPayload): Promise<AuthRespon
   return requestJson<AuthResponse>('/register', payload);
 }
 
-export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
-  const raw = await requestJson<Record<string, unknown>>('/login', payload);
+export async function sendRegisterOtp(email: string): Promise<void> {
+  await requestJson<unknown>('/send-register-otp', { email: email.trim() });
+}
+
+export async function sendResetOtp(email: string): Promise<void> {
+  await requestJson<unknown>('/send-reset-otp', { email: email.trim() });
+}
+
+export async function resetPassword(payload: {
+  email: string;
+  otpCode: string;
+  newPassword: string;
+}): Promise<void> {
+  await requestJson<unknown>('/reset-password', payload);
+}
+
+function normalizePermissions(raw: Record<string, unknown>): string[] {
+  const p = raw.permissions ?? raw.Permissions;
+  if (Array.isArray(p)) return p.map(String);
+  return [];
+}
+
+function normalizeAuthResponse(raw: Record<string, unknown>): AuthResponse {
   return {
     userId: String(raw.userId ?? raw.UserId ?? ''),
     username: String(raw.username ?? raw.Username ?? ''),
@@ -136,7 +159,18 @@ export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
     role: String(raw.role ?? raw.Role ?? 'User'),
     accessToken: String(raw.accessToken ?? raw.AccessToken ?? ''),
     refreshToken: String(raw.refreshToken ?? raw.RefreshToken ?? ''),
+    permissions: normalizePermissions(raw),
   };
+}
+
+export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
+  const raw = await requestJson<Record<string, unknown>>('/login', payload);
+  return normalizeAuthResponse(raw);
+}
+
+export async function loginWithGoogleIdToken(idToken: string): Promise<AuthResponse> {
+  const raw = await requestJson<Record<string, unknown>>('/google', { idToken });
+  return normalizeAuthResponse(raw);
 }
 
 export async function saveAuthSession(auth: AuthResponse): Promise<void> {
@@ -145,6 +179,10 @@ export async function saveAuthSession(auth: AuthResponse): Promise<void> {
     ['mymo.accessToken', auth.accessToken],
     ['mymo.refreshToken', auth.refreshToken],
   ]);
+  if (auth.role === 'Admin') {
+    const { persistAdminPermissions } = await import('./adminApi');
+    await persistAdminPermissions(auth);
+  }
 }
 
 export async function clearAuthSession(): Promise<void> {
@@ -152,6 +190,7 @@ export async function clearAuthSession(): Promise<void> {
     'mymo.auth',
     'mymo.accessToken',
     'mymo.refreshToken',
+    'mymo.adminPermissions',
     LAST_PORTAL_KEY,
   ]);
 }
@@ -172,6 +211,11 @@ export async function getStoredAuthSession(): Promise<AuthResponse | null> {
       role: String(parsed.role ?? parsed.Role ?? 'User'),
       accessToken: String(parsed.accessToken ?? parsed.AccessToken ?? ''),
       refreshToken: String(parsed.refreshToken ?? parsed.RefreshToken ?? ''),
+      permissions: Array.isArray(parsed.permissions)
+        ? (parsed.permissions as string[])
+        : Array.isArray(parsed.Permissions)
+          ? (parsed.Permissions as string[])
+          : undefined,
     };
   } catch {
     return null;

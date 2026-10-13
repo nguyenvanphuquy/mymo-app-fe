@@ -17,6 +17,11 @@ import {
   getPackageById,
   type B2bPackageId,
 } from '../../constants/b2bPromotionPackages';
+import {
+  computeB2bTotalFromCatalog,
+  fetchPublicProductCatalog,
+  type PublicProductPackage,
+} from '../../services/productCatalogApi';
 import { getCampaignDraft, saveCampaignDraft } from '../../utils/b2bCampaignStorage';
 import { getPlaceAnalytics, type PlaceAnalyticsDto } from '../../services/businessApi';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
@@ -182,6 +187,11 @@ export default function BusinessAdvertisingScreen({
   const [detailCampaign, setDetailCampaign] = useState<BusinessAdCampaign | null>(null);
   const [activePackage, setActivePackage] = useState<ActiveVibeMapPackage | null>(null);
   const [trackRefreshing, setTrackRefreshing] = useState(false);
+  const [productCatalog, setProductCatalog] = useState<PublicProductPackage[]>([]);
+
+  useEffect(() => {
+    fetchPublicProductCatalog().then(setProductCatalog).catch(() => setProductCatalog([]));
+  }, []);
 
   const openCampaignFromHistory = (h: BusinessAdCampaign) => {
     setDetailCampaign(h);
@@ -273,7 +283,12 @@ export default function BusinessAdvertisingScreen({
   }, [dashboardCampaign?.placeId, dashboardCampaign?.campaignId]);
 
   const days = useMemo(() => campaignDays(startDate, endDate), [startDate, endDate]);
-  const total = useMemo(() => computeCampaignTotal(selectedPkg, days), [selectedPkg, days]);
+  const total = useMemo(() => {
+    if (productCatalog.length > 0) {
+      return computeB2bTotalFromCatalog(productCatalog, selectedPkg, days);
+    }
+    return computeCampaignTotal(selectedPkg, days);
+  }, [selectedPkg, days, productCatalog]);
   const selectedPlace = places.find(p => p.placeId === placeId);
   const pkgMeta = getPackageById(selectedPkg);
 

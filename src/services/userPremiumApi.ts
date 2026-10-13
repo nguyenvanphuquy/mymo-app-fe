@@ -6,7 +6,8 @@ export type PremiumPaymentStatus = 'Pending' | 'Success' | 'Failed' | 'Refunded'
 
 export interface UserPremiumOrder {
   orderId: string;
-  planId: 'monthly' | 'yearly';
+  planId: string;
+  planLabel?: string | null;
   amountVnd: number;
   paymentStatus: PremiumPaymentStatus;
   transferReferenceCode: string;
@@ -76,8 +77,9 @@ function normalizePaymentStatus(raw: unknown): PremiumPaymentStatus {
   return 'Pending';
 }
 
-function normalizePlanId(raw: string): 'monthly' | 'yearly' {
-  return raw === 'yearly' ? 'yearly' : 'monthly';
+function normalizePlanId(raw: string): string {
+  const plan = raw.trim();
+  return plan.length > 0 ? plan : 'free';
 }
 
 function normalizeOrder(raw: Record<string, unknown>): UserPremiumOrder {
@@ -102,17 +104,15 @@ export function premiumOrderNeedsPayment(status: PremiumPaymentStatus): boolean 
 export async function getPremiumStatus(): Promise<UserPremiumStatus> {
   const res = await requestJson<Record<string, unknown>>('/users/premium/status', 'GET');
   const raw = res.data ?? {};
-  const plan = String(raw.activePlanId ?? raw.ActivePlanId ?? 'free');
-  const activePlanId: PremiumPlanId =
-    plan === 'monthly' || plan === 'yearly' ? plan : 'free';
+  const plan = String(raw.activePlanId ?? raw.ActivePlanId ?? 'free').trim();
   return {
-    activePlanId,
+    activePlanId: plan.length > 0 ? plan : 'free',
     validUntil: (raw.validUntil ?? raw.ValidUntil ?? null) as string | null,
     pendingOrderId: (raw.pendingOrderId ?? raw.PendingOrderId ?? null) as string | null,
   };
 }
 
-export async function createPremiumOrder(planId: 'monthly' | 'yearly'): Promise<UserPremiumOrder> {
+export async function createPremiumOrder(planId: string): Promise<UserPremiumOrder> {
   const res = await requestJson<Record<string, unknown>>('/users/premium/orders', 'POST', { planId });
   return normalizeOrder((res.data ?? {}) as Record<string, unknown>);
 }
@@ -156,6 +156,8 @@ export async function acknowledgePremiumBankTransfer(
   return normalizeOrder((res.data ?? {}) as Record<string, unknown>);
 }
 
-export function premiumPlanNameKey(planId: 'monthly' | 'yearly'): string {
-  return planId === 'monthly' ? 'premium.plan.monthly' : 'premium.plan.yearly';
+export function premiumPlanNameKey(planId: string): string {
+  if (planId === 'monthly') return 'premium.plan.monthly';
+  if (planId === 'yearly') return 'premium.plan.yearly';
+  return '';
 }

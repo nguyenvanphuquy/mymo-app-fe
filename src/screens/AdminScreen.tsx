@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, Modal, Platform, ActivityIndicator, Switch, DeviceEventEmitter, Image, Linking,
@@ -16,37 +16,21 @@ function businessMapUrl(lat: number, lng: number): string {
 }
 import { useI18n } from '../i18n';
 import {
-  ADMIN_BOOTSTRAP,
   ALL_PERMISSIONS,
-  ActorId,
-  AdminRole,
   AdminSession,
-  AdminUser,
-  AdminUserStatus,
-  PERMISSION_CATALOG,
   PERMISSION_GROUPS,
   Permission,
   PermissionGroupId,
   canAccessAdminPortal,
   canManageActors,
+  canManageBilling,
   canManageReports,
+  canManageSettings,
   canManageUsers,
   clearAdminSession,
-  createAdminUser,
-  deleteAdminUser,
   getSessionPermissions,
-  listAdminRoles,
-  listAdminUsers,
   permissionsByGroup,
-  updateAdminUser,
-  updateRolePermissions,
 } from '../services/adminApi';
-import {
-  listApplications,
-  issueBusinessAccount,
-  rejectApplication,
-  type BusinessApplication,
-} from '../utils/businessStorage';
 import {
   approvePlace,
   isBackendAdminSession,
@@ -67,37 +51,62 @@ import {
   type ReportStatus,
   type ReportTargetType,
 } from '../services/adminReportsApi';
+import {
+  confirmAdminCampaignPayment,
+  confirmAdminPremiumPayment,
+  createAdminProductPackage,
+  deleteAdminProductPackage,
+  fetchAdminPackageCatalog,
+  listAdminPayments,
+  updateAdminProductPackage,
+  parseAdminVndInput,
+  isValidProductPackageId,
+  type AdminPaymentItem,
+  type AdminPaymentStatus,
+  type AdminProductPackage,
+} from '../services/adminBillingApi';
+import { invalidateProductCatalogCache } from '../services/productCatalogApi';
+import AdminPaymentAnalytics from '../components/admin/AdminPaymentAnalytics';
+import AdminAuditLogPanel from '../components/admin/AdminAuditLogPanel';
+import {
+  fetchAdminAuditLogs,
+  type AdminAuditAction,
+  type AdminAuditLogItem,
+  type AdminAuditLogSummary,
+} from '../services/adminAuditLogApi';
+import { fetchAdminDashboard, type AdminDashboardData } from '../services/adminDashboardApi';
+import {
+  listBackendAdminUsers,
+  updateBackendUserStatus,
+  type BackendAdminUser,
+  type BackendUserStatus,
+} from '../services/adminUsersApi';
+import {
+  fetchAdminServerOverview,
+  type AdminServerOverview,
+} from '../services/adminSettingsApi';
+import AdminLiveOverview from '../components/admin/AdminLiveOverview';
+import AdminSettingsPanel from '../components/admin/AdminSettingsPanel';
+import { clearAuthSession } from '../services/authApi';
+import { clearBackendAdminPortal } from '../services/adminPlacesApi';
+import { getPackageById, type B2bPackageId } from '../constants/b2bPromotionPackages';
 
-type Tab = 'overview' | 'users' | 'roles' | 'partners' | 'reports' | 'myperms';
+type Tab =
+  | 'overview'
+  | 'users'
+  | 'roles'
+  | 'partners'
+  | 'reports'
+  | 'packages'
+  | 'payments'
+  | 'audit'
+  | 'settings'
+  | 'myperms';
 
 interface AdminScreenProps {
   session: AdminSession;
   onLogout: () => void;
 }
-
-type UserForm = {
-  username: string;
-  email: string;
-  displayName: string;
-  phone: string;
-  roleId: ActorId;
-  businessName: string;
-  password: string;
-  status: AdminUserStatus;
-  notes: string;
-};
-
-const emptyForm = (defaultRoleId: ActorId = 'user'): UserForm => ({
-  username: '',
-  email: '',
-  displayName: '',
-  phone: '',
-  roleId: defaultRoleId,
-  businessName: '',
-  password: '',
-  status: 'active',
-  notes: '',
-});
 
 function formatDate(iso: string | null, lang: string): string {
   if (!iso) return '—';
@@ -114,42 +123,66 @@ function formatDate(iso: string | null, lang: string): string {
   }
 }
 
+function formatVnd(amount: number, lang: string): string {
+  return `${Math.round(amount).toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US')} ₫`;
+}
+
 export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const { t, lang, setLang } = useI18n();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [roles, setRoles] = useState<AdminRole[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState<string | 'all'>('all');
-  const [filterStatus, setFilterStatus] = useState<AdminUserStatus | 'all'>('all');
-
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<AdminUser | null>(null);
-  const [form, setForm] = useState<UserForm>(emptyForm('user'));
-  const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
-  const [detailUser, setDetailUser] = useState<AdminUser | null>(null);
-  const [selectedRoleId, setSelectedRoleId] = useState<string | null>('admin');
-
-  const [roleDraft, setRoleDraft] = useState<Record<string, Permission[]>>({});
-  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
-  const [partnerApps, setPartnerApps] = useState<BusinessApplication[]>([]);
   const [pendingPlaces, setPendingPlaces] = useState<AdminPlaceItem[]>([]);
   const [pendingBusinesses, setPendingBusinesses] = useState<AdminBusinessItem[]>([]);
   const [businessBusyId, setBusinessBusyId] = useState<string | null>(null);
   const [rejectBusinessTarget, setRejectBusinessTarget] = useState<AdminBusinessItem | null>(null);
   const [placeBusyId, setPlaceBusyId] = useState<string | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<BusinessApplication | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [partnerBusyId, setPartnerBusyId] = useState<string | null>(null);
   const [partnerQueueModal, setPartnerQueueModal] = useState<'business' | 'place' | null>(null);
   const [reports, setReports] = useState<AdminReportItem[]>([]);
   const [reportFilter, setReportFilter] = useState<'all' | 'Pending'>('Pending');
   const [reportBusyId, setReportBusyId] = useState<string | null>(null);
   const [reportsBackend, setReportsBackend] = useState(false);
+  const [adminPackages, setAdminPackages] = useState<AdminProductPackage[]>([]);
+  const [packageEdit, setPackageEdit] = useState<AdminProductPackage | null>(null);
+  const [packageFormPrice, setPackageFormPrice] = useState('');
+  const [packageFormDuration, setPackageFormDuration] = useState('');
+  const [packageFormDisplayName, setPackageFormDisplayName] = useState('');
+  const [packageFormActive, setPackageFormActive] = useState(true);
+  const [packageSaving, setPackageSaving] = useState(false);
+  const [packageCreateOpen, setPackageCreateOpen] = useState(false);
+  const [packageCreateCode, setPackageCreateCode] = useState('');
+  const [packageCreatePrice, setPackageCreatePrice] = useState('');
+  const [packageCreateDuration, setPackageCreateDuration] = useState('30');
+  const [packageCreateBillingUnit, setPackageCreateBillingUnit] = useState<'campaign' | 'day'>('campaign');
+  const [packageCreateDisplayName, setPackageCreateDisplayName] = useState('');
+  const [packageCreateSort, setPackageCreateSort] = useState('10');
+  const [packageDeleteTarget, setPackageDeleteTarget] = useState<AdminProductPackage | null>(null);
+  const [packageSegmentTab, setPackageSegmentTab] = useState<'B2C' | 'B2B'>('B2C');
+  const [payments, setPayments] = useState<AdminPaymentItem[]>([]);
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'Pending'>('Pending');
+  const [paymentSubTab, setPaymentSubTab] = useState<'overview' | 'list'>('overview');
+  const [paymentBusyId, setPaymentBusyId] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLogItem[]>([]);
+  const [auditSummary, setAuditSummary] = useState<AdminAuditLogSummary>({
+    last24Hours: 0,
+    createCount: 0,
+    updateCount: 0,
+    deleteCount: 0,
+  });
+  const [auditTotalCount, setAuditTotalCount] = useState(0);
+  const [auditActionFilter, setAuditActionFilter] = useState<AdminAuditAction | 'all'>('all');
+  const [auditSubTab, setAuditSubTab] = useState<'overview' | 'timeline'>('overview');
+  const [dashboard, setDashboard] = useState<AdminDashboardData | null>(null);
+  const [backendUsers, setBackendUsers] = useState<BackendAdminUser[]>([]);
+  const [backendUserBusyId, setBackendUserBusyId] = useState<string | null>(null);
+  const [serverOverview, setServerOverview] = useState<AdminServerOverview | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const tabScrollRef = useRef<ScrollView>(null);
+  const tabLayoutX = useRef<Partial<Record<Tab, number>>>({});
 
   const portalOk = canAccessAdminPortal(permissions);
   const canManage = canManageUsers(permissions);
@@ -161,44 +194,18 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
   const canViewRoles = portalOk || canManageActors(permissions);
   const canManageRoles = canManageActors(permissions);
   const canViewReports = canManageReports(permissions);
+  const canManageSettingsPerm = canManageSettings(permissions);
+  const canUseBilling = canManageBilling(permissions);
+  const canUseAudit = canManageSettings(permissions);
+  const staleAdminToken = reportsBackend && !portalOk && permissions.length === 0;
 
-  const roleMap = useMemo(() => {
-    const m = new Map<string, AdminRole>();
-    roles.forEach(r => m.set(r.id, r));
-    return m;
-  }, [roles]);
-
-  const roleName = useCallback(
-    (roleId: string) => roleMap.get(roleId)?.name ?? roleId,
-    [roleMap],
-  );
-
-  const stats = useMemo(() => {
-    const byStatus = {
-      active: users.filter(u => u.status === 'active').length,
-      inactive: users.filter(u => u.status === 'inactive').length,
-      banned: users.filter(u => u.status === 'banned').length,
-    };
-    const byRole = roles.map(r => ({
-      role: r,
-      count: users.filter(u => u.roleId === r.id).length,
-    }));
-    return { byStatus, byRole, total: users.length };
-  }, [users, roles]);
+  const roleName = useCallback((_roleId: string) => t('admin.tabActors'), [t]);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [u, r, perms, apps] = await Promise.all([
-        listAdminUsers(),
-        listAdminRoles(),
-        getSessionPermissions(session),
-        listApplications(),
-      ]);
-      setUsers(u);
-      setRoles(r);
+      const perms = await getSessionPermissions(session);
       setPermissions(perms);
-      setPartnerApps(apps);
       const backendAdmin = await isBackendAdminSession();
       setReportsBackend(backendAdmin);
       if (backendAdmin) {
@@ -217,81 +224,70 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
         } catch {
           setReports([]);
         }
+        try {
+          const catalog = await fetchAdminPackageCatalog();
+          setAdminPackages(catalog.packages);
+        } catch {
+          setAdminPackages([]);
+        }
+        try {
+          setPayments(await listAdminPayments());
+        } catch {
+          setPayments([]);
+        }
+        try {
+          const auditPage = await fetchAdminAuditLogs({ pageSize: 80 });
+          setAuditLogs(auditPage.items);
+          setAuditSummary(auditPage.summary);
+          setAuditTotalCount(auditPage.totalCount);
+        } catch {
+          setAuditLogs([]);
+          setAuditTotalCount(0);
+        }
+        try {
+          setDashboard(await fetchAdminDashboard());
+        } catch {
+          setDashboard(null);
+        }
+        try {
+          const page = await listBackendAdminUsers({ pageSize: 80, keyword: search.trim() || undefined });
+          setBackendUsers(page.items);
+        } catch {
+          setBackendUsers([]);
+        }
+        try {
+          setSettingsLoading(true);
+          setSettingsError(null);
+          setServerOverview(await fetchAdminServerOverview());
+        } catch (e) {
+          setServerOverview(null);
+          setSettingsError(e instanceof Error ? e.message : t('admin.settingsLoadError'));
+        } finally {
+          setSettingsLoading(false);
+        }
       } else {
         setPendingPlaces([]);
         setPendingBusinesses([]);
         setReports([]);
+        setAdminPackages([]);
+        setPayments([]);
+        setAuditLogs([]);
+        setAuditTotalCount(0);
+        setDashboard(null);
+        setBackendUsers([]);
+        setServerOverview(null);
       }
-      const draft: Record<string, Permission[]> = {};
-      r.forEach(role => {
-        draft[role.id] = [...role.permissions];
-      });
-      setRoleDraft(draft);
-      if (!selectedRoleId && r.length) setSelectedRoleId(r[0].id);
     } catch {
       Toast.show({ type: 'error', text1: t('admin.loadError') });
     } finally {
       setLoading(false);
     }
-  }, [session, t, selectedRoleId]);
+  }, [session, t, search]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
-
-  const handleApprovePartner = async (app: BusinessApplication) => {
-    try {
-      setPartnerBusyId(app.id);
-      const { application, account } = await issueBusinessAccount(app);
-      try {
-        await createAdminUser({
-          username: account.username,
-          email: account.email,
-          displayName: account.displayName,
-          phone: account.phone,
-          roleId: 'business',
-          businessName: account.businessName,
-          password: account.password,
-          notes: `Issued from application ${app.id}`,
-        });
-      } catch {
-        // local venue account still issued even if mock admin store conflicts
-      }
-      DeviceEventEmitter.emit('partner:updated');
-      Toast.show({
-        type: 'success',
-        text1: t('admin.partnerApproved'),
-        text2: `${application.issuedUsername} / ${application.issuedPassword}`,
-      });
-      await load();
-    } catch (error) {
-      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
-    } finally {
-      setPartnerBusyId(null);
-    }
-  };
-
-  const handleRejectPartner = async () => {
-    if (!rejectTarget) return;
-    if (!rejectReason.trim()) {
-      Toast.show({ type: 'error', text1: t('admin.partnerNeedReason') });
-      return;
-    }
-    try {
-      setPartnerBusyId(rejectTarget.id);
-      await rejectApplication(rejectTarget.id, rejectReason);
-      DeviceEventEmitter.emit('partner:updated');
-      Toast.show({ type: 'success', text1: t('admin.partnerRejected') });
-      setRejectTarget(null);
-      setRejectReason('');
-      await load();
-    } catch (error) {
-      Toast.show({ type: 'error', text1: error instanceof Error ? error.message : t('admin.saveError') });
-    } finally {
-      setPartnerBusyId(null);
-    }
-  };
 
   const handleRejectBusinessReg = async () => {
     if (!rejectBusinessTarget) return;
@@ -313,172 +309,58 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     }
   };
 
-  const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return users.filter(u => {
-      if (filterRole !== 'all' && u.roleId !== filterRole) return false;
-      if (filterStatus !== 'all' && u.status !== filterStatus) return false;
-      if (!q) return true;
-      return (
-        u.username.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.displayName.toLowerCase().includes(q) ||
-        u.phone.toLowerCase().includes(q) ||
-        roleName(u.roleId).toLowerCase().includes(q) ||
-        u.notes.toLowerCase().includes(q)
-      );
-    });
-  }, [users, search, filterRole, filterStatus, roleName]);
-
-  const selectedRole = roles.find(r => r.id === selectedRoleId) ?? null;
-  const selectedDraft = selectedRoleId ? roleDraft[selectedRoleId] ?? [] : [];
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm(emptyForm('user'));
-    setFormOpen(true);
-  };
-
-  const openEdit = (user: AdminUser) => {
-    setEditing(user);
-    setDetailUser(null);
-    setForm({
-      username: user.username,
-      email: user.email,
-      displayName: user.displayName,
-      phone: user.phone,
-      roleId: user.roleId,
-      businessName: user.businessName,
-      password: '',
-      status: user.status,
-      notes: user.notes,
-    });
-    setFormOpen(true);
-  };
-
-  const mapError = (code: string) => {
-    const map: Record<string, string> = {
-      VALIDATION: t('admin.validation'),
-      BUSINESS_NAME_REQUIRED: t('admin.businessNameRequired'),
-      USERNAME_EXISTS: t('admin.usernameExists'),
-      EMAIL_EXISTS: t('admin.emailExists'),
-      INVALID_ROLE: t('admin.invalidRole'),
-      NOT_FOUND: t('admin.notFound'),
-      CANNOT_DELETE_SELF: t('admin.cannotDeleteSelf'),
-      CANNOT_DELETE_BOOTSTRAP: t('admin.cannotDeleteBootstrap'),
-      ROLE_LOCKED: t('admin.roleLocked'),
-    };
-    return map[code] || t('admin.saveError');
-  };
-
-  const handleSaveUser = async () => {
-    try {
-      setSaving(true);
-      if (editing) {
-        await updateAdminUser({
-          id: editing.id,
-          username: form.username,
-          email: form.email,
-          displayName: form.displayName,
-          phone: form.phone,
-          roleId: form.roleId,
-          businessName: form.businessName,
-          status: form.status,
-          notes: form.notes,
-          password: form.password || undefined,
-        });
-        Toast.show({ type: 'success', text1: t('admin.userUpdated') });
-      } else {
-        await createAdminUser({
-          username: form.username,
-          email: form.email,
-          displayName: form.displayName,
-          phone: form.phone,
-          roleId: form.roleId,
-          businessName: form.businessName,
-          password: form.password,
-          status: form.status,
-          notes: form.notes,
-        });
-        Toast.show({ type: 'success', text1: t('admin.userCreated') });
-      }
-      setFormOpen(false);
-      await load();
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: mapError(err instanceof Error ? err.message : ''),
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      setSaving(true);
-      await deleteAdminUser(deleteTarget.id, session);
-      Toast.show({ type: 'success', text1: t('admin.userDeleted') });
-      setDeleteTarget(null);
-      setDetailUser(null);
-      await load();
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: mapError(err instanceof Error ? err.message : '') || t('admin.deleteError'),
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const togglePerm = (roleId: string, perm: Permission) => {
-    setRoleDraft(prev => {
-      const current = prev[roleId] ?? [];
-      const next = current.includes(perm)
-        ? current.filter(p => p !== perm)
-        : [...current, perm];
-      return { ...prev, [roleId]: next };
-    });
-  };
-
-  const setGroupPerms = (roleId: string, group: PermissionGroupId, enable: boolean) => {
-    const groupPerms = permissionsByGroup(group).map(p => p.id);
-    setRoleDraft(prev => {
-      const current = new Set(prev[roleId] ?? []);
-      groupPerms.forEach(p => {
-        if (enable) current.add(p);
-        else current.delete(p);
-      });
-      return { ...prev, [roleId]: [...current] };
-    });
-  };
-
-  const saveRole = async (roleId: string) => {
-    try {
-      setSavingRoleId(roleId);
-      await updateRolePermissions(roleId, roleDraft[roleId] ?? []);
-      Toast.show({ type: 'success', text1: t('admin.roleSaved') });
-      await load();
-    } catch (err) {
-      Toast.show({
-        type: 'error',
-        text1: mapError(err instanceof Error ? err.message : ''),
-      });
-    } finally {
-      setSavingRoleId(null);
-    }
-  };
-
   const handleLogout = async () => {
     await clearAdminSession();
+    await clearBackendAdminPortal();
+    await clearAuthSession();
     onLogout();
   };
 
-  const statusLabel = (s: AdminUserStatus) => {
-    if (s === 'active') return t('admin.active');
-    if (s === 'inactive') return t('admin.inactive');
+  const renderPermissionGate = (needsRelogin: boolean) => (
+    <View style={styles.emptyCard}>
+      <Ionicons name={needsRelogin ? 'key-outline' : 'lock-closed-outline'} size={28} color={Colors.textMuted} />
+      <Text style={styles.emptyTitle}>
+        {needsRelogin ? t('admin.staleTokenTitle') : t('admin.noPermission')}
+      </Text>
+      <Text style={styles.sectionHint}>
+        {needsRelogin ? t('admin.staleTokenHint') : t('admin.permGateHint')}
+      </Text>
+      {needsRelogin ? (
+        <TouchableOpacity style={styles.reloginBtn} onPress={handleLogout} activeOpacity={0.88}>
+          <Text style={styles.reloginBtnText}>{t('admin.reloginAction')}</Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+
+  const handleBackendUserStatus = async (userId: string, status: BackendUserStatus) => {
+    if (backendUserBusyId) return;
+    setBackendUserBusyId(userId);
+    try {
+      const updated = await updateBackendUserStatus(userId, status);
+      setBackendUsers(prev => prev.map(u => (u.userId === userId ? updated : u)));
+      Toast.show({ type: 'success', text1: t('admin.backendUserStatusUpdated') });
+      await reloadAuditLogs();
+      if (dashboard) {
+        try {
+          setDashboard(await fetchAdminDashboard());
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.saveError'),
+      });
+    } finally {
+      setBackendUserBusyId(null);
+    }
+  };
+
+  const backendStatusLabel = (status: BackendUserStatus) => {
+    if (status === 'Active') return t('admin.active');
+    if (status === 'Inactive') return t('admin.inactive');
     return t('admin.banned');
   };
 
@@ -530,6 +412,342 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     }
   };
 
+  const reloadPayments = useCallback(async () => {
+    if (!(await isBackendAdminSession())) return;
+    try {
+      setPayments(await listAdminPayments());
+    } catch {
+      setPayments([]);
+    }
+  }, []);
+
+  const reloadAuditLogs = useCallback(async (action: AdminAuditAction | 'all' = auditActionFilter) => {
+    if (!(await isBackendAdminSession())) return;
+    try {
+      const auditPage = await fetchAdminAuditLogs({
+        action: action === 'all' ? undefined : action,
+        pageSize: 80,
+      });
+      setAuditLogs(auditPage.items);
+      setAuditSummary(auditPage.summary);
+      setAuditTotalCount(auditPage.totalCount);
+    } catch {
+      setAuditLogs([]);
+      setAuditTotalCount(0);
+    }
+  }, [auditActionFilter]);
+
+  const auditEntityLabel = useCallback(
+    (entityName: string) => {
+      switch (entityName) {
+        case 'ProductPackage':
+          return t('admin.auditEntityProductPackage');
+        case 'UserPremiumOrder':
+          return t('admin.auditEntityUserPremiumOrder');
+        case 'BusinessAdCampaign':
+          return t('admin.auditEntityBusinessAdCampaign');
+        case 'Business':
+          return t('admin.auditEntityBusiness');
+        case 'Place':
+          return t('admin.auditEntityPlace');
+        case 'Report':
+          return t('admin.auditEntityReport');
+        case 'User':
+          return t('admin.auditEntityUser');
+        default:
+          return entityName;
+      }
+    },
+    [t],
+  );
+
+  const auditActionLabel = useCallback(
+    (action: AdminAuditAction) => {
+      switch (action) {
+        case 'Create':
+          return t('admin.auditActionCreate');
+        case 'Delete':
+          return t('admin.auditActionDelete');
+        default:
+          return t('admin.auditActionUpdate');
+      }
+    },
+    [t],
+  );
+
+  const handleConfirmPayment = async (item: AdminPaymentItem) => {
+    if (paymentBusyId) return;
+    setPaymentBusyId(item.id);
+    try {
+      if (item.kind === 'premium') {
+        await confirmAdminPremiumPayment(item.id);
+      } else {
+        await confirmAdminCampaignPayment(item.id);
+      }
+      Toast.show({ type: 'success', text1: t('admin.paymentsConfirmed') });
+      await reloadPayments();
+      await reloadAuditLogs();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.paymentsConfirmError'),
+      });
+    } finally {
+      setPaymentBusyId(null);
+    }
+  };
+
+  const paymentStatusLabel = useCallback(
+    (status: AdminPaymentStatus) => {
+      switch (status) {
+        case 'Pending':
+          return t('admin.paymentsStatusPending');
+        case 'Success':
+          return t('admin.paymentsStatusSuccess');
+        case 'Failed':
+          return t('admin.paymentsStatusFailed');
+        case 'Refunded':
+          return t('admin.paymentsStatusRefunded');
+        default:
+          return status;
+      }
+    },
+    [t],
+  );
+
+  const paymentProductLabel = useCallback(
+    (item: AdminPaymentItem) => {
+      if (item.kind === 'premium') {
+        if (item.productId === 'monthly') return t('premium.plan.monthly');
+        if (item.productId === 'yearly') return t('premium.plan.yearly');
+        return item.productId;
+      }
+      try {
+        return t(getPackageById(item.productId as B2bPackageId).nameKey);
+      } catch {
+        return item.productId;
+      }
+    },
+    [t],
+  );
+
+  const filteredPayments = useMemo(() => {
+    if (paymentFilter === 'Pending') {
+      return payments.filter(p => p.paymentStatus === 'Pending');
+    }
+    return payments;
+  }, [payments, paymentFilter]);
+
+  const pendingPaymentCount = useMemo(
+    () => payments.filter(p => p.paymentStatus === 'Pending').length,
+    [payments],
+  );
+
+  const b2cPackages = useMemo(
+    () => adminPackages.filter(p => p.segment === 'B2C').sort((a, b) => a.sortOrder - b.sortOrder),
+    [adminPackages],
+  );
+
+  const b2bPackages = useMemo(
+    () => adminPackages.filter(p => p.segment === 'B2B').sort((a, b) => a.sortOrder - b.sortOrder),
+    [adminPackages],
+  );
+
+  const adminPackageTitle = useCallback(
+    (pkg: AdminProductPackage) => {
+      if (pkg.displayName?.trim()) return pkg.displayName.trim();
+      if (pkg.segment === 'B2C') {
+        if (pkg.code === 'monthly') return t('premium.plan.monthly');
+        if (pkg.code === 'yearly') return t('premium.plan.yearly');
+      }
+      if (pkg.segment === 'B2B') {
+        try {
+          return t(getPackageById(pkg.code as B2bPackageId).nameKey);
+        } catch {
+          return pkg.code;
+        }
+      }
+      return pkg.code;
+    },
+    [t],
+  );
+
+  const openPackageEdit = (pkg: AdminProductPackage) => {
+    setPackageEdit(pkg);
+    setPackageFormPrice(String(Math.round(pkg.priceVnd)));
+    setPackageFormDuration(pkg.durationDays != null ? String(pkg.durationDays) : '');
+    setPackageFormDisplayName(pkg.displayName ?? '');
+    setPackageFormActive(pkg.isActive);
+  };
+
+  const handleSavePackage = async () => {
+    if (!packageEdit) return;
+    if (!isValidProductPackageId(packageEdit.productPackageId)) {
+      Toast.show({ type: 'error', text1: t('admin.packagesReloadHint') });
+      return;
+    }
+    const priceVnd = parseAdminVndInput(packageFormPrice);
+    if (!Number.isFinite(priceVnd) || priceVnd <= 0) {
+      Toast.show({ type: 'error', text1: t('admin.packagesPriceInvalid') });
+      return;
+    }
+    let durationDays: number | null = null;
+    if (packageEdit.segment === 'B2C') {
+      durationDays = Math.round(parseAdminVndInput(packageFormDuration));
+      if (!Number.isFinite(durationDays) || durationDays < 1) {
+        Toast.show({ type: 'error', text1: t('admin.packagesDurationInvalid') });
+        return;
+      }
+    }
+    setPackageSaving(true);
+    try {
+      const updated = await updateAdminProductPackage(packageEdit.productPackageId, {
+        priceVnd,
+        durationDays,
+        displayName: packageFormDisplayName.trim() || null,
+        isActive: packageFormActive,
+      });
+      setAdminPackages(prev =>
+        prev.map(p => (p.productPackageId === updated.productPackageId ? updated : p)),
+      );
+      invalidateProductCatalogCache();
+      Toast.show({ type: 'success', text1: t('admin.packagesSaved') });
+      setPackageEdit(null);
+      await reloadAuditLogs();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.packagesSaveError'),
+      });
+    } finally {
+      setPackageSaving(false);
+    }
+  };
+
+  const resetPackageCreateForm = () => {
+    setPackageCreateCode('');
+    setPackageCreatePrice('');
+    setPackageCreateDuration('30');
+    setPackageCreateBillingUnit('campaign');
+    setPackageCreateDisplayName('');
+    setPackageCreateSort('10');
+  };
+
+  const openPackageCreate = () => {
+    resetPackageCreateForm();
+    setPackageCreateBillingUnit(packageSegmentTab === 'B2B' ? 'campaign' : 'day');
+    setPackageCreateOpen(true);
+  };
+
+  const handleCreatePackage = async () => {
+    const code = packageCreateCode.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!code) {
+      Toast.show({ type: 'error', text1: t('admin.packagesCreateCodeRequired') });
+      return;
+    }
+    const priceVnd = parseAdminVndInput(packageCreatePrice);
+    if (!Number.isFinite(priceVnd) || priceVnd <= 0) {
+      Toast.show({ type: 'error', text1: t('admin.packagesPriceInvalid') });
+      return;
+    }
+    const sortOrder = Math.round(parseAdminVndInput(packageCreateSort));
+    if (!Number.isFinite(sortOrder)) {
+      Toast.show({ type: 'error', text1: t('admin.packagesCreateSortInvalid') });
+      return;
+    }
+    let durationDays: number | null = null;
+    let billingUnit: 'campaign' | 'day' | null = null;
+    if (packageSegmentTab === 'B2C') {
+      durationDays = Math.round(parseAdminVndInput(packageCreateDuration));
+      if (!Number.isFinite(durationDays) || durationDays < 1) {
+        Toast.show({ type: 'error', text1: t('admin.packagesDurationInvalid') });
+        return;
+      }
+    } else {
+      billingUnit = packageCreateBillingUnit;
+    }
+    setPackageSaving(true);
+    try {
+      const created = await createAdminProductPackage({
+        segment: packageSegmentTab,
+        code,
+        displayName: packageCreateDisplayName.trim() || null,
+        priceVnd,
+        durationDays,
+        billingUnit,
+        isActive: true,
+        sortOrder,
+      });
+      setAdminPackages(prev => [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder));
+      invalidateProductCatalogCache();
+      Toast.show({ type: 'success', text1: t('admin.packagesCreated') });
+      setPackageCreateOpen(false);
+      await reloadAuditLogs();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.packagesSaveError'),
+      });
+    } finally {
+      setPackageSaving(false);
+    }
+  };
+
+  const handleDeletePackage = async () => {
+    if (!packageDeleteTarget) return;
+    setPackageSaving(true);
+    try {
+      await deleteAdminProductPackage(packageDeleteTarget.productPackageId);
+      setAdminPackages(prev => prev.filter(p => p.productPackageId !== packageDeleteTarget.productPackageId));
+      invalidateProductCatalogCache();
+      Toast.show({ type: 'success', text1: t('admin.packagesDeleted') });
+      setPackageDeleteTarget(null);
+      await reloadAuditLogs();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: err instanceof Error ? err.message : t('admin.packagesSaveError'),
+      });
+    } finally {
+      setPackageSaving(false);
+    }
+  };
+
+  const renderAdminPackageCard = (pkg: AdminProductPackage, icon: 'star' | 'megaphone', tint: string, iconColor: string) => (
+    <View key={pkg.productPackageId} style={[styles.userCard, !pkg.isActive && styles.packageCardInactive]}>
+      <View style={styles.userTop}>
+        <View style={[styles.avatar, { backgroundColor: tint }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+        <View style={styles.userMeta}>
+          <Text style={styles.userName}>{adminPackageTitle(pkg)}</Text>
+          <Text style={styles.userHandle}>{formatVnd(pkg.priceVnd, lang)}</Text>
+          {pkg.segment === 'B2C' && pkg.durationDays ? (
+            <Text style={styles.userEmail}>
+              {t('admin.packagesDurationDays').replace('{n}', String(pkg.durationDays))}
+            </Text>
+          ) : null}
+          {pkg.segment === 'B2B' && pkg.billingUnit ? (
+            <Text style={styles.userEmail}>
+              {pkg.billingUnit === 'day' ? t('admin.packagesPerDay') : t('admin.packagesPerCampaign')}
+            </Text>
+          ) : null}
+          <Text style={styles.userEmail}>
+            {pkg.isActive ? t('admin.packagesStatusActive') : t('admin.packagesStatusInactive')} · {pkg.code}
+          </Text>
+        </View>
+        <View style={styles.packageCardActions}>
+          <TouchableOpacity style={styles.packageEditBtn} onPress={() => openPackageEdit(pkg)}>
+            <Ionicons name="create-outline" size={18} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.packageEditBtn} onPress={() => setPackageDeleteTarget(pkg)}>
+            <Ionicons name="trash-outline" size={18} color="#B91C1C" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
   const permLabel = (p: Permission) => t(`admin.perm.${p}`);
   const permDesc = (p: Permission) => t(`admin.permDesc.${p}`);
   const groupLabel = (g: PermissionGroupId) => t(`admin.group.${g}`);
@@ -538,36 +756,33 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
     { id: 'overview', icon: 'grid-outline', label: t('admin.tabOverview') },
     { id: 'users', icon: 'people-outline', label: t('admin.tabUsers') },
     { id: 'partners', icon: 'storefront-outline', label: t('admin.tabPartners') },
-    ...(canViewReports
+    ...(reportsBackend
       ? [{ id: 'reports' as Tab, icon: 'flag-outline' as const, label: t('admin.tabReports') }]
+      : canViewReports
+        ? [{ id: 'reports' as Tab, icon: 'flag-outline' as const, label: t('admin.tabReports') }]
+        : []),
+    ...(reportsBackend
+      ? [
+          { id: 'packages' as Tab, icon: 'cube-outline' as const, label: t('admin.tabPackages') },
+          { id: 'payments' as Tab, icon: 'card-outline' as const, label: t('admin.tabPayments') },
+          { id: 'audit' as Tab, icon: 'document-text-outline' as const, label: t('admin.tabAudit') },
+          { id: 'settings' as Tab, icon: 'settings-outline' as const, label: t('admin.tabSettings') },
+        ]
       : []),
     { id: 'roles', icon: 'git-branch-outline', label: t('admin.tabActors') },
     { id: 'myperms', icon: 'shield-checkmark-outline', label: t('admin.tabMyPerms') },
   ];
 
-  const segmentLabel = (segment: AdminRole['segment']) => t(`admin.segment.${segment}`);
+  useEffect(() => {
+    const x = tabLayoutX.current[tab];
+    if (x == null) return;
+    tabScrollRef.current?.scrollTo({ x: Math.max(0, x - 12), animated: true });
+  }, [tab]);
 
-  const renderStatusPill = (status: AdminUserStatus) => (
-    <View
-      style={[
-        styles.statusPill,
-        status === 'active' && styles.statusActive,
-        status === 'inactive' && styles.statusInactive,
-        status === 'banned' && styles.statusBanned,
-      ]}
-    >
-      <Text
-        style={[
-          styles.statusText,
-          status === 'active' && styles.statusTextActive,
-          status === 'inactive' && styles.statusTextInactive,
-          status === 'banned' && styles.statusTextBanned,
-        ]}
-      >
-        {statusLabel(status)}
-      </Text>
-    </View>
-  );
+  useEffect(() => {
+    if (tab !== 'audit') return;
+    void reloadAuditLogs(auditActionFilter);
+  }, [tab, auditActionFilter, reloadAuditLogs]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -593,23 +808,41 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
-          {tabs.map(item => (
-            <TouchableOpacity
-              key={item.id}
-              style={[styles.tabBtn, tab === item.id && styles.tabBtnActive]}
-              onPress={() => setTab(item.id)}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={item.icon}
-                size={15}
-                color={tab === item.id ? Colors.primary : 'rgba(255,255,255,0.9)'}
-              />
-              <Text style={[styles.tabText, tab === item.id && styles.tabTextActive]}>{item.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={styles.tabsScrollWrap}>
+          <ScrollView
+            ref={tabScrollRef}
+            horizontal
+            nestedScrollEnabled
+            directionalLockEnabled
+            showsHorizontalScrollIndicator
+            decelerationRate="fast"
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabsRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            {tabs.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.tabBtn, tab === item.id && styles.tabBtnActive]}
+                onPress={() => setTab(item.id)}
+                activeOpacity={0.85}
+                onLayout={e => {
+                  tabLayoutX.current[item.id] = e.nativeEvent.layout.x;
+                }}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={15}
+                  color={tab === item.id ? Colors.primary : 'rgba(255,255,255,0.9)'}
+                />
+                <Text style={[styles.tabText, tab === item.id && styles.tabTextActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <View pointerEvents="none" style={styles.tabsScrollFade} />
+        </View>
       </LinearGradient>
 
       {loading ? (
@@ -620,78 +853,28 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {tab === 'overview' && (
             <>
-              <Text style={styles.sectionTitle}>{t('admin.overviewStats')}</Text>
-              <View style={styles.statsGrid}>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{stats.total}</Text>
-                  <Text style={styles.statLabel}>{t('admin.statTotalUsers')}</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={[styles.statValue, { color: Colors.activeGreen }]}>{stats.byStatus.active}</Text>
-                  <Text style={styles.statLabel}>{t('admin.active')}</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={[styles.statValue, { color: Colors.textMuted }]}>{stats.byStatus.inactive}</Text>
-                  <Text style={styles.statLabel}>{t('admin.inactive')}</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={[styles.statValue, { color: '#E11D48' }]}>{stats.byStatus.banned}</Text>
-                  <Text style={styles.statLabel}>{t('admin.banned')}</Text>
-                </View>
-              </View>
+              {reportsBackend && staleAdminToken ? renderPermissionGate(true) : null}
+              {reportsBackend && !staleAdminToken && dashboard ? (
+                <AdminLiveOverview
+                  data={dashboard}
+                  onOpenTab={next => setTab(next)}
+                />
+              ) : null}
 
-              <Text style={styles.sectionTitle}>{t('admin.usersByActor')}</Text>
-              {stats.byRole.map(({ role, count }) => (
-                <View key={role.id} style={styles.roleStatRow}>
-                  <View style={[styles.roleDot, { backgroundColor: role.color }]} />
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.roleStatName}>{role.name}</Text>
-                    <Text style={styles.roleStatDesc} numberOfLines={1}>
-                      {segmentLabel(role.segment)} · {role.description}
-                    </Text>
-                  </View>
-                  <View style={styles.roleStatCount}>
-                    <Text style={styles.roleStatCountText}>{count}</Text>
-                  </View>
-                  <Text style={styles.roleStatPerms}>
-                    {role.permissions.length}/{ALL_PERMISSIONS.length}
-                  </Text>
+              {reportsBackend && !staleAdminToken && !dashboard ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="analytics-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.overviewLoadFailed')}</Text>
+                  <Text style={styles.sectionHint}>{t('admin.overviewLoadFailedHint')}</Text>
                 </View>
-              ))}
+              ) : null}
 
-              <Text style={styles.sectionTitle}>{t('admin.permissionModules')}</Text>
-              <View style={styles.moduleGrid}>
-                {PERMISSION_GROUPS.map(g => {
-                  const items = permissionsByGroup(g);
-                  const mine = items.filter(p => permissions.includes(p.id)).length;
-                  return (
-                    <View key={g} style={styles.moduleCard}>
-                      <Text style={styles.moduleTitle}>{groupLabel(g)}</Text>
-                      <Text style={styles.moduleCount}>
-                        {mine}/{items.length} {t('admin.permsShort')}
-                      </Text>
-                      <View style={styles.moduleBar}>
-                        <View
-                          style={[
-                            styles.moduleBarFill,
-                            { width: `${items.length ? (mine / items.length) * 100 : 0}%` },
-                          ]}
-                        />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-
-              <TouchableOpacity
-                style={styles.quickLink}
-                onPress={() => setTab('roles')}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="key-outline" size={18} color={Colors.primary} />
-                <Text style={styles.quickLinkText}>{t('admin.openPermissionMatrix')}</Text>
-                <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-              </TouchableOpacity>
+              {!reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : null}
             </>
           )}
 
@@ -702,9 +885,13 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                   <Ionicons name="lock-closed-outline" size={28} color={Colors.textMuted} />
                   <Text style={styles.emptyTitle}>{t('admin.noPermission')}</Text>
                 </View>
-              ) : (
+              ) : staleAdminToken ? (
+                renderPermissionGate(true)
+              ) : reportsBackend ? (
                 <>
-                  <View style={styles.toolbar}>
+                  <Text style={styles.sectionTitle}>{t('admin.backendUsersTitle')}</Text>
+                  <Text style={styles.countText}>{t('admin.backendUsersHint')}</Text>
+                  <View style={[styles.toolbar, { marginTop: 8 }]}>
                     <View style={styles.searchRow}>
                       <Ionicons name="search-outline" size={16} color={Colors.primary} />
                       <TextInput
@@ -713,132 +900,68 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                         placeholder={t('admin.searchUsers')}
                         placeholderTextColor={Colors.textMuted}
                         style={styles.searchInput}
+                        onSubmitEditing={() => void load()}
                       />
                     </View>
-                    {canCreate && (
-                      <TouchableOpacity onPress={openCreate} style={styles.addBtn} activeOpacity={0.88}>
-                        <LinearGradient colors={Gradients.primary} style={styles.addBtnGrad}>
-                          <Ionicons name="add" size={18} color={Colors.white} />
-                          <Text style={styles.addBtnText}>{t('admin.addUser')}</Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    )}
                   </View>
-
-                  <Text style={styles.filterLabel}>{t('admin.filterActor')}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-                    <TouchableOpacity
-                      style={[styles.chip, filterRole === 'all' && styles.chipActive]}
-                      onPress={() => setFilterRole('all')}
-                    >
-                      <Text style={[styles.chipText, filterRole === 'all' && styles.chipTextActive]}>
-                        {t('admin.filterAll')}
-                      </Text>
-                    </TouchableOpacity>
-                    {roles.map(r => (
-                      <TouchableOpacity
-                        key={r.id}
-                        style={[styles.chip, filterRole === r.id && styles.chipActive]}
-                        onPress={() => setFilterRole(r.id)}
-                      >
-                        <View style={[styles.chipDot, { backgroundColor: r.color }]} />
-                        <Text style={[styles.chipText, filterRole === r.id && styles.chipTextActive]}>
-                          {r.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  <Text style={styles.filterLabel}>{t('admin.filterStatus')}</Text>
-                  <View style={styles.chipsRow}>
-                    {(['all', 'active', 'inactive', 'banned'] as const).map(st => (
-                      <TouchableOpacity
-                        key={st}
-                        style={[styles.chip, filterStatus === st && styles.chipActive]}
-                        onPress={() => setFilterStatus(st)}
-                      >
-                        <Text style={[styles.chipText, filterStatus === st && styles.chipTextActive]}>
-                          {st === 'all' ? t('admin.filterAll') : statusLabel(st)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={styles.countText}>
-                    {filteredUsers.length}/{users.length} {t('admin.usersCount')}
-                  </Text>
-
-                  {filteredUsers.map(user => {
-                    const role = roleMap.get(user.roleId);
-                    return (
-                      <TouchableOpacity
-                        key={user.id}
-                        style={styles.userCard}
-                        activeOpacity={0.9}
-                        onPress={() => setDetailUser(user)}
-                      >
+                  {backendUsers.length === 0 ? (
+                    <View style={styles.emptyCard}>
+                      <Ionicons name="people-outline" size={28} color={Colors.textMuted} />
+                      <Text style={styles.emptyTitle}>{t('admin.emptyUsers')}</Text>
+                    </View>
+                  ) : (
+                    backendUsers.map(u => (
+                      <View key={u.userId} style={styles.userCard}>
                         <View style={styles.userTop}>
-                          <View style={[styles.avatar, { backgroundColor: role?.color ? `${role.color}33` : Colors.primarySoft }]}>
-                            <Text style={[styles.avatarText, { color: role?.color ?? Colors.primary }]}>
-                              {user.displayName.slice(0, 1).toUpperCase()}
+                          <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
+                            <Text style={[styles.avatarText, { color: Colors.primary }]}>
+                              {(u.displayName ?? u.username).slice(0, 1).toUpperCase()}
                             </Text>
                           </View>
                           <View style={styles.userMeta}>
-                            <Text style={styles.userName}>{user.displayName}</Text>
-                            <Text style={styles.userHandle}>@{user.username}</Text>
-                            <Text style={styles.userEmail}>{user.email}</Text>
-                            {user.roleId === 'business' && !!user.businessName && (
-                              <Text style={styles.businessTag}>{user.businessName}</Text>
-                            )}
-                          </View>
-                          {renderStatusPill(user.status)}
-                        </View>
-
-                        <View style={styles.userDetailRow}>
-                          <View style={styles.detailItem}>
-                            <Ionicons name="shield-outline" size={12} color={Colors.primary} />
-                            <Text style={styles.detailItemText}>{roleName(user.roleId)}</Text>
-                          </View>
-                          <View style={styles.detailItem}>
-                            <Ionicons name="time-outline" size={12} color={Colors.textMuted} />
-                            <Text style={styles.detailItemText}>
-                              {formatDate(user.lastLoginAt, lang)}
+                            <Text style={styles.userName}>{u.displayName ?? u.username}</Text>
+                            <Text style={styles.userHandle}>@{u.username} · {u.roleName}</Text>
+                            <Text style={styles.userEmail}>{u.email}</Text>
+                            <Text style={styles.userEmail}>
+                              {backendStatusLabel(u.status)} · {formatDate(u.createdAt, lang)}
                             </Text>
                           </View>
                         </View>
-
-                        <View style={styles.userBottom}>
-                          <Text style={styles.tapHint}>{t('admin.tapForDetail')}</Text>
-                          <View style={styles.rowActions}>
-                            {canEdit && (
-                              <TouchableOpacity
-                                style={styles.iconAction}
-                                onPress={() => openEdit(user)}
-                              >
-                                <Ionicons name="create-outline" size={18} color={Colors.primary} />
-                              </TouchableOpacity>
-                            )}
-                            {canDelete && user.username !== ADMIN_BOOTSTRAP.username && (
-                              <TouchableOpacity
-                                style={styles.iconAction}
-                                onPress={() => setDeleteTarget(user)}
-                              >
-                                <Ionicons name="trash-outline" size={18} color="#E11D48" />
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                        <View style={styles.partnerActions}>
+                          {(['Active', 'Inactive', 'Banned'] as BackendUserStatus[]).map(st => (
+                            <TouchableOpacity
+                              key={st}
+                              style={[
+                                styles.chip,
+                                u.status === st && styles.chipActive,
+                                { marginRight: 6 },
+                              ]}
+                              disabled={backendUserBusyId === u.userId}
+                              onPress={() => void handleBackendUserStatus(u.userId, st)}
+                            >
+                              <Text style={[styles.chipText, u.status === st && styles.chipTextActive]}>
+                                {backendStatusLabel(st)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
                         </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+                      </View>
+                    ))
+                  )}
                 </>
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
               )}
             </>
           )}
 
           {tab === 'reports' && (
             <>
-              {!canViewReports ? (
+              {reportsBackend && staleAdminToken ? renderPermissionGate(true) : null}
+              {!staleAdminToken && !canViewReports ? (
                 <View style={styles.emptyCard}>
                   <Ionicons name="lock-closed-outline" size={28} color={Colors.textMuted} />
                   <Text style={styles.emptyTitle}>{t('admin.noPermission')}</Text>
@@ -848,7 +971,7 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                   <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
                   <Text style={styles.emptyTitle}>{t('admin.reportsBackendOnly')}</Text>
                 </View>
-              ) : (
+              ) : staleAdminToken || !canViewReports ? null : (
                 <>
                   <View style={[styles.chipsRow, { marginBottom: 12 }]}>
                     <TouchableOpacity
@@ -936,9 +1059,266 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
             </>
           )}
 
+          {tab === 'packages' && (
+            <>
+              {!reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : staleAdminToken || !canUseBilling ? (
+                renderPermissionGate(staleAdminToken)
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.addUserBtn} activeOpacity={0.88} onPress={openPackageCreate}>
+                    <LinearGradient colors={Gradients.primary} style={styles.addUserGrad}>
+                      <Ionicons name="add" size={18} color={Colors.white} />
+                      <Text style={styles.addUserText}>{t('admin.packagesCreate')}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                  <View style={[styles.chipsRow, { marginBottom: 12 }]}>
+                    <TouchableOpacity
+                      style={[styles.chip, packageSegmentTab === 'B2C' && styles.chipActive]}
+                      onPress={() => setPackageSegmentTab('B2C')}
+                    >
+                      <Text style={[styles.chipText, packageSegmentTab === 'B2C' && styles.chipTextActive]}>
+                        {t('admin.packagesTabB2c')} ({b2cPackages.length})
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.chip, packageSegmentTab === 'B2B' && styles.chipActive]}
+                      onPress={() => setPackageSegmentTab('B2B')}
+                    >
+                      <Text style={[styles.chipText, packageSegmentTab === 'B2B' && styles.chipTextActive]}>
+                        {t('admin.packagesTabB2b')} ({b2bPackages.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {packageSegmentTab === 'B2C' ? (
+                    <>
+                      <Text style={styles.sectionTitle}>{t('admin.packagesPremiumSection')}</Text>
+                      <Text style={styles.sectionHint}>{t('admin.packagesManageHintB2c')}</Text>
+                      {b2cPackages.length === 0 ? (
+                        <View style={styles.emptyCard}>
+                          <Text style={styles.emptyTitle}>{t('admin.packagesSegmentEmpty')}</Text>
+                        </View>
+                      ) : (
+                        b2cPackages.map(pkg => renderAdminPackageCard(pkg, 'star', '#FEF3C7', '#D97706'))
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.sectionTitle}>{t('admin.packagesVibeMapSection')}</Text>
+                      <Text style={styles.sectionHint}>{t('admin.packagesManageHintB2b')}</Text>
+                      {b2bPackages.length === 0 ? (
+                        <View style={styles.emptyCard}>
+                          <Text style={styles.emptyTitle}>{t('admin.packagesSegmentEmpty')}</Text>
+                        </View>
+                      ) : (
+                        b2bPackages.map(pkg => renderAdminPackageCard(pkg, 'megaphone', '#EDE9FE', Colors.primary))
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {tab === 'payments' && (
+            <>
+              {!reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : staleAdminToken || !canUseBilling ? (
+                renderPermissionGate(staleAdminToken)
+              ) : (
+                <>
+                  <View style={[styles.chipsRow, { marginBottom: 12 }]}>
+                    <TouchableOpacity
+                      style={[styles.chip, paymentSubTab === 'overview' && styles.chipActive]}
+                      onPress={() => setPaymentSubTab('overview')}
+                    >
+                      <Text style={[styles.chipText, paymentSubTab === 'overview' && styles.chipTextActive]}>
+                        {t('admin.paymentsTabOverview')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.chip, paymentSubTab === 'list' && styles.chipActive]}
+                      onPress={() => setPaymentSubTab('list')}
+                    >
+                      <Text style={[styles.chipText, paymentSubTab === 'list' && styles.chipTextActive]}>
+                        {t('admin.paymentsTabList')} ({payments.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {paymentSubTab === 'overview' ? (
+                    payments.length === 0 ? (
+                      <View style={styles.emptyCard}>
+                        <Ionicons name="analytics-outline" size={28} color={Colors.textMuted} />
+                        <Text style={styles.emptyTitle}>{t('admin.paymentsEmpty')}</Text>
+                      </View>
+                    ) : (
+                      <AdminPaymentAnalytics payments={payments} />
+                    )
+                  ) : null}
+
+                  {paymentSubTab === 'list' ? (
+                    <>
+                      <View style={[styles.chipsRow, { marginBottom: 12 }]}>
+                        <TouchableOpacity
+                          style={[styles.chip, paymentFilter === 'Pending' && styles.chipActive]}
+                          onPress={() => setPaymentFilter('Pending')}
+                        >
+                          <Text style={[styles.chipText, paymentFilter === 'Pending' && styles.chipTextActive]}>
+                            {t('admin.paymentsFilterPending')} ({pendingPaymentCount})
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.chip, paymentFilter === 'all' && styles.chipActive]}
+                          onPress={() => setPaymentFilter('all')}
+                        >
+                          <Text style={[styles.chipText, paymentFilter === 'all' && styles.chipTextActive]}>
+                            {t('admin.paymentsFilterAll')} ({payments.length})
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {filteredPayments.length === 0 ? (
+                        <View style={styles.emptyCard}>
+                          <Ionicons name="card-outline" size={28} color={Colors.textMuted} />
+                          <Text style={styles.emptyTitle}>{t('admin.paymentsEmpty')}</Text>
+                        </View>
+                      ) : (
+                        filteredPayments.map(item => (
+                      <View key={`${item.kind}-${item.id}`} style={styles.userCard}>
+                        <View style={styles.userTop}>
+                          <View
+                            style={[
+                              styles.avatar,
+                              { backgroundColor: item.kind === 'premium' ? '#FEF3C7' : '#EDE9FE' },
+                            ]}
+                          >
+                            <Ionicons
+                              name={item.kind === 'premium' ? 'star' : 'megaphone'}
+                              size={18}
+                              color={item.kind === 'premium' ? '#D97706' : Colors.primary}
+                            />
+                          </View>
+                          <View style={styles.userMeta}>
+                            <Text style={styles.userName}>
+                              {item.kind === 'premium'
+                                ? t('admin.paymentsKindPremium')
+                                : t('admin.paymentsKindCampaign')}{' '}
+                              · {paymentStatusLabel(item.paymentStatus)}
+                            </Text>
+                            <Text style={styles.userHandle}>{paymentProductLabel(item)}</Text>
+                            <Text style={styles.userEmail}>{formatVnd(item.amountVnd, lang)}</Text>
+                            <Text style={styles.detailItemText}>
+                              {t('admin.paymentsTransferRef')}: {item.transferReferenceCode}
+                            </Text>
+                            {item.payerDeclaredReference ? (
+                              <Text style={styles.detailItemText}>
+                                {t('admin.paymentsPayerRef')}: {item.payerDeclaredReference}
+                              </Text>
+                            ) : null}
+                            {item.kind === 'campaign' && item.businessName ? (
+                              <Text style={styles.userEmail}>
+                                {item.businessName}
+                                {item.placeName ? ` · ${item.placeName}` : ''}
+                              </Text>
+                            ) : null}
+                            {(item.payerDisplayName || item.payerEmail) ? (
+                              <Text style={styles.userEmail}>
+                                {item.payerDisplayName || item.payerEmail}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.userEmail}>{formatDate(item.createdAt, lang)}</Text>
+                          </View>
+                        </View>
+                        {item.paymentStatus === 'Pending' ? (
+                          <View style={styles.partnerActions}>
+                            <TouchableOpacity
+                              style={styles.approveBtn}
+                              disabled={paymentBusyId === item.id}
+                              onPress={() => handleConfirmPayment(item)}
+                            >
+                              {paymentBusyId === item.id ? (
+                                <ActivityIndicator color={Colors.white} />
+                              ) : (
+                                <Text style={styles.approveBtnText}>{t('admin.paymentsConfirm')}</Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        ) : null}
+                      </View>
+                        ))
+                      )}
+                    </>
+                  ) : null}
+                </>
+              )}
+            </>
+          )}
+
+          {tab === 'settings' && (
+            <>
+              {!reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : staleAdminToken || !canManageSettingsPerm ? (
+                renderPermissionGate(staleAdminToken)
+              ) : (
+                <AdminSettingsPanel
+                  overview={serverOverview}
+                  loading={settingsLoading}
+                  error={settingsError}
+                />
+              )}
+            </>
+          )}
+
+          {tab === 'audit' && (
+            <>
+              {!reportsBackend ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : staleAdminToken || !canUseAudit ? (
+                renderPermissionGate(staleAdminToken)
+              ) : (
+                <AdminAuditLogPanel
+                  items={auditLogs}
+                  summary={auditSummary}
+                  totalCount={auditTotalCount}
+                  actionFilter={auditActionFilter}
+                  onActionFilter={setAuditActionFilter}
+                  subTab={auditSubTab}
+                  onSubTab={setAuditSubTab}
+                  entityLabel={auditEntityLabel}
+                  actionLabel={auditActionLabel}
+                />
+              )}
+            </>
+          )}
+
           {tab === 'partners' && (
             <>
               <Text style={styles.sectionTitle}>{t('admin.tabPartners')}</Text>
+              {!reportsBackend ? (
+                <View style={[styles.emptyCard, { marginBottom: 12 }]}>
+                  <Ionicons name="cloud-offline-outline" size={28} color={Colors.textMuted} />
+                  <Text style={styles.emptyTitle}>{t('admin.billingBackendOnly')}</Text>
+                </View>
+              ) : null}
+              {reportsBackend ? (
+              <>
               <TouchableOpacity
                 style={styles.partnerQueueBtn}
                 activeOpacity={0.88}
@@ -974,65 +1354,8 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
               </TouchableOpacity>
-
-              <Text style={[styles.sectionTitle, { marginTop: 16 }]}>{t('admin.partnersMockSection')}</Text>
-              {partnerApps.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Ionicons name="storefront-outline" size={28} color={Colors.textMuted} />
-                  <Text style={styles.emptyTitle}>{t('admin.partnerEmpty')}</Text>
-                </View>
-              ) : (
-                partnerApps.map(app => (
-                  <View key={app.id} style={styles.userCard}>
-                    <View style={styles.userTop}>
-                      <View style={[styles.avatar, { backgroundColor: Colors.primarySoft }]}>
-                        <Ionicons name="storefront" size={18} color={Colors.primary} />
-                      </View>
-                      <View style={styles.userMeta}>
-                        <Text style={styles.userName}>{app.displayName}</Text>
-                        <Text style={styles.userHandle}>{app.businessName}</Text>
-                        <Text style={styles.userEmail}>{app.applicantName} · {app.phone}</Text>
-                        <Text style={styles.businessTag}>{app.address}</Text>
-                      </View>
-                      {renderStatusPill(
-                        app.status === 'approved' ? 'active' : app.status === 'rejected' ? 'banned' : 'inactive',
-                      )}
-                    </View>
-                    {app.status === 'approved' && app.issuedUsername ? (
-                      <Text style={styles.detailItemText}>
-                        {t('admin.partnerIssued')}: {app.issuedUsername} / {app.issuedPassword}
-                      </Text>
-                    ) : null}
-                    {app.status === 'rejected' && app.rejectReason ? (
-                      <Text style={styles.detailItemText}>{app.rejectReason}</Text>
-                    ) : null}
-                    {app.status === 'pending' && canManage ? (
-                      <View style={styles.partnerActions}>
-                        <TouchableOpacity
-                          style={styles.approveBtn}
-                          disabled={partnerBusyId === app.id}
-                          onPress={() => handleApprovePartner(app)}
-                        >
-                          {partnerBusyId === app.id ? (
-                            <ActivityIndicator color={Colors.white} />
-                          ) : (
-                            <Text style={styles.approveBtnText}>{t('admin.partnerApprove')}</Text>
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.rejectBtn}
-                          onPress={() => {
-                            setRejectTarget(app);
-                            setRejectReason('');
-                          }}
-                        >
-                          <Text style={styles.rejectBtnText}>{t('admin.partnerReject')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : null}
-                  </View>
-                ))
-              )}
+              </>
+              ) : null}
             </>
           )}
 
@@ -1045,207 +1368,32 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
                 </View>
               ) : (
                 <>
-                  <Text style={styles.sectionTitle}>{t('admin.actorPicker')}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-                    {roles.map(r => (
-                      <TouchableOpacity
-                        key={r.id}
-                        style={[
-                          styles.rolePickCard,
-                          selectedRoleId === r.id && styles.rolePickCardActive,
-                          { borderColor: selectedRoleId === r.id ? r.color : Colors.primarySoft },
-                        ]}
-                        onPress={() => setSelectedRoleId(r.id)}
-                      >
-                        <View style={[styles.roleDot, { backgroundColor: r.color }]} />
-                        <Text style={styles.rolePickName}>{r.name}</Text>
-                        <Text style={styles.rolePickCount}>{segmentLabel(r.segment)}</Text>
-                        <Text style={styles.rolePickCount}>
-                          {(roleDraft[r.id] ?? r.permissions).length}/{ALL_PERMISSIONS.length}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  {selectedRole && (
-                    <View style={styles.matrixCard}>
-                      <View style={styles.matrixHeader}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.matrixTitle}>{selectedRole.name}</Text>
-                          <Text style={styles.matrixDesc}>{selectedRole.description}</Text>
-                        </View>
-                        {selectedRole.locked && (
-                          <View style={styles.lockedPill}>
-                            <Ionicons name="lock-closed" size={12} color={Colors.textMuted} />
-                            <Text style={styles.lockedText}>{t('admin.locked')}</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      <View style={styles.matrixSummary}>
-                        <Text style={styles.matrixSummaryText}>
-                          {t('admin.matrixEnabled')}: {selectedDraft.length}/{ALL_PERMISSIONS.length}
-                        </Text>
-                        {!selectedRole.locked && canManageRoles && (
-                          <View style={styles.matrixQuick}>
-                            <TouchableOpacity
-                              onPress={() =>
-                                setRoleDraft(prev => ({
-                                  ...prev,
-                                  [selectedRole.id]: [...ALL_PERMISSIONS],
-                                }))
-                              }
-                            >
-                              <Text style={styles.matrixQuickText}>{t('admin.selectAll')}</Text>
-                            </TouchableOpacity>
-                            <Text style={styles.matrixQuickSep}>·</Text>
-                            <TouchableOpacity
-                              onPress={() =>
-                                setRoleDraft(prev => ({
-                                  ...prev,
-                                  [selectedRole.id]: [],
-                                }))
-                              }
-                            >
-                              <Text style={styles.matrixQuickText}>{t('admin.clearAll')}</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-
-                      {PERMISSION_GROUPS.map(group => {
-                        const items = permissionsByGroup(group);
-                        const enabledCount = items.filter(p => selectedDraft.includes(p.id)).length;
-                        const allOn = enabledCount === items.length;
-                        const disabled = selectedRole.locked || !canManageRoles;
-
-                        return (
-                          <View key={group} style={styles.groupBlock}>
-                            <View style={styles.groupHeader}>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={styles.groupTitle}>{groupLabel(group)}</Text>
-                                <Text style={styles.groupSub}>
-                                  {enabledCount}/{items.length} · {t(`admin.groupDesc.${group}`)}
-                                </Text>
+                  <Text style={styles.sectionTitle}>{t('admin.rbacJwtTitle')}</Text>
+                  <Text style={styles.countText}>{t('admin.rbacJwtHint')}</Text>
+                  {PERMISSION_GROUPS.map(group => {
+                    const items = permissionsByGroup(group);
+                    return (
+                      <View key={group} style={styles.groupBlock}>
+                        <Text style={styles.groupTitle}>{groupLabel(group)}</Text>
+                        {items.map(meta => {
+                          const checked = permissions.includes(meta.id);
+                          return (
+                            <View key={meta.id} style={styles.permRow}>
+                              <View style={styles.permInfo}>
+                                <Text style={styles.permName}>{permLabel(meta.id)}</Text>
+                                <Text style={styles.permCode}>{meta.id}</Text>
                               </View>
-                              {!disabled && (
-                                <TouchableOpacity
-                                  style={styles.groupToggle}
-                                  onPress={() => setGroupPerms(selectedRole.id, group, !allOn)}
-                                >
-                                  <Text style={styles.groupToggleText}>
-                                    {allOn ? t('admin.clearGroup') : t('admin.enableGroup')}
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
+                              <Ionicons
+                                name={checked ? 'checkmark-circle' : 'close-circle-outline'}
+                                size={20}
+                                color={checked ? Colors.activeGreen : Colors.textMuted}
+                              />
                             </View>
-
-                            {items.map(meta => {
-                              const checked = selectedDraft.includes(meta.id);
-                              return (
-                                <View key={meta.id} style={styles.permRow}>
-                                  <View style={styles.permInfo}>
-                                    <View style={styles.permTitleRow}>
-                                      <Text style={styles.permName}>{permLabel(meta.id)}</Text>
-                                      <View
-                                        style={[
-                                          styles.levelPill,
-                                          meta.level === 'read' && styles.levelRead,
-                                          meta.level === 'write' && styles.levelWrite,
-                                          meta.level === 'danger' && styles.levelDanger,
-                                        ]}
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.levelText,
-                                            meta.level === 'read' && styles.levelTextRead,
-                                            meta.level === 'write' && styles.levelTextWrite,
-                                            meta.level === 'danger' && styles.levelTextDanger,
-                                          ]}
-                                        >
-                                          {t(`admin.level.${meta.level}`)}
-                                        </Text>
-                                      </View>
-                                    </View>
-                                    <Text style={styles.permDesc}>{permDesc(meta.id)}</Text>
-                                    <Text style={styles.permCode}>{meta.id}</Text>
-                                  </View>
-                                  <Switch
-                                    value={checked}
-                                    onValueChange={() => togglePerm(selectedRole.id, meta.id)}
-                                    disabled={disabled}
-                                    trackColor={{ false: Colors.border, true: Colors.primarySoft }}
-                                    thumbColor={checked ? Colors.primary : '#f4f3f4'}
-                                  />
-                                </View>
-                              );
-                            })}
-                          </View>
-                        );
-                      })}
-
-                      {canManageRoles && !selectedRole.locked && (
-                        <TouchableOpacity
-                          style={styles.saveRoleBtn}
-                          onPress={() => saveRole(selectedRole.id)}
-                          disabled={savingRoleId === selectedRole.id}
-                          activeOpacity={0.88}
-                        >
-                          <LinearGradient colors={Gradients.primary} style={styles.saveRoleGrad}>
-                            {savingRoleId === selectedRole.id ? (
-                              <ActivityIndicator color={Colors.white} />
-                            ) : (
-                              <Text style={styles.saveRoleText}>{t('admin.savePermissions')}</Text>
-                            )}
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      )}
-
-                      {(!canManageRoles || selectedRole.locked) && (
-                        <Text style={styles.readOnlyNote}>
-                          {selectedRole.locked ? t('admin.roleLocked') : t('admin.rolesReadOnly')}
-                        </Text>
-                      )}
-                    </View>
-                  )}
-
-                  <Text style={[styles.sectionTitle, { marginTop: 8 }]}>{t('admin.compareMatrix')}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={styles.compareTable}>
-                      <View style={styles.compareRow}>
-                        <View style={[styles.compareCell, styles.compareCorner]}>
-                          <Text style={styles.compareCornerText}>{t('admin.permission')}</Text>
-                        </View>
-                        {roles.map(r => (
-                          <View key={r.id} style={[styles.compareCell, styles.compareHead]}>
-                            <View style={[styles.roleDotSm, { backgroundColor: r.color }]} />
-                            <Text style={styles.compareHeadText} numberOfLines={1}>{r.name}</Text>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </View>
-                      {PERMISSION_CATALOG.map(meta => (
-                        <View key={meta.id} style={styles.compareRow}>
-                          <View style={[styles.compareCell, styles.compareLabel]}>
-                            <Text style={styles.compareLabelText} numberOfLines={2}>
-                              {permLabel(meta.id)}
-                            </Text>
-                          </View>
-                          {roles.map(r => {
-                            const on = (roleDraft[r.id] ?? r.permissions).includes(meta.id);
-                            return (
-                              <View key={r.id} style={styles.compareCell}>
-                                <Ionicons
-                                  name={on ? 'checkmark-circle' : 'ellipse-outline'}
-                                  size={18}
-                                  color={on ? Colors.activeGreen : Colors.border}
-                                />
-                              </View>
-                            );
-                          })}
-                        </View>
-                      ))}
-                    </View>
-                  </ScrollView>
+                    );
+                  })}
                 </>
               )}
             </>
@@ -1304,246 +1452,6 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
           )}
         </ScrollView>
       )}
-
-      {/* User detail modal */}
-      <Modal visible={!!detailUser} transparent animationType="fade" onRequestClose={() => setDetailUser(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            {detailUser && (
-              <>
-                <Text style={styles.modalTitle}>{t('admin.userDetail')}</Text>
-                <ScrollView style={styles.modalScroll}>
-                  <View style={styles.detailBlock}>
-                    {[
-                      [t('admin.displayName'), detailUser.displayName],
-                      [t('admin.username'), `@${detailUser.username}`],
-                      [t('admin.email'), detailUser.email],
-                      [t('admin.phone'), detailUser.phone || '—'],
-                      [t('admin.actor'), roleName(detailUser.roleId)],
-                      [t('admin.segmentLabel'), segmentLabel(roleMap.get(detailUser.roleId)?.segment ?? 'b2c')],
-                      [t('admin.businessName'), detailUser.businessName || '—'],
-                      [t('admin.status'), statusLabel(detailUser.status)],
-                      [t('admin.createdAt'), formatDate(detailUser.createdAt, lang)],
-                      [t('admin.lastLogin'), formatDate(detailUser.lastLoginAt, lang)],
-                      [t('admin.notes'), detailUser.notes || '—'],
-                    ].map(([label, value]) => (
-                      <View key={String(label)} style={styles.detailField}>
-                        <Text style={styles.detailLabel}>{label}</Text>
-                        <Text style={styles.detailValue}>{value}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                      <Text style={styles.filterLabel}>{t('admin.actorPermissions')}</Text>
-                  {(roleMap.get(detailUser.roleId)?.permissions ?? []).map(p => (
-                    <View key={p} style={styles.miniPerm}>
-                      <Ionicons name="checkmark" size={14} color={Colors.activeGreen} />
-                      <Text style={styles.miniPermText}>{permLabel(p)}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancel} onPress={() => setDetailUser(null)}>
-                    <Text style={styles.modalCancelText}>{t('common.done')}</Text>
-                  </TouchableOpacity>
-                  {canEdit && (
-                    <TouchableOpacity
-                      style={styles.modalSave}
-                      onPress={() => openEdit(detailUser)}
-                      activeOpacity={0.88}
-                    >
-                      <LinearGradient colors={Gradients.primary} style={styles.modalSaveGrad}>
-                        <Text style={styles.modalSaveText}>{t('common.edit')}</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                {canBan && detailUser.status !== 'banned' && detailUser.username !== ADMIN_BOOTSTRAP.username && (
-                  <TouchableOpacity
-                    style={styles.banBtn}
-                    onPress={async () => {
-                      try {
-                        await updateAdminUser({ id: detailUser.id, status: 'banned' });
-                        Toast.show({ type: 'success', text1: t('admin.userBanned') });
-                        setDetailUser(null);
-                        await load();
-                      } catch (err) {
-                        Toast.show({
-                          type: 'error',
-                          text1: mapError(err instanceof Error ? err.message : ''),
-                        });
-                      }
-                    }}
-                  >
-                    <Text style={styles.banBtnText}>{t('admin.banUser')}</Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Create / Edit modal */}
-      <Modal visible={formOpen} transparent animationType="fade" onRequestClose={() => setFormOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {editing ? t('admin.editUser') : t('admin.addUser')}
-            </Text>
-
-            <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
-              {(
-                [
-                  ['displayName', t('admin.displayName')],
-                  ['username', t('admin.username')],
-                  ['email', t('admin.email')],
-                  ['phone', t('admin.phone')],
-                  ['password', editing ? t('admin.passwordOptional') : t('admin.password')],
-                  ['notes', t('admin.notes')],
-                ] as const
-              ).map(([key, label]) => (
-                <View key={key} style={styles.formGroup}>
-                  <Text style={styles.formLabel}>{label}</Text>
-                  <TextInput
-                    value={form[key]}
-                    onChangeText={v => setForm(f => ({ ...f, [key]: v }))}
-                    style={[styles.formInput, key === 'notes' && styles.formInputMulti]}
-                    placeholderTextColor={Colors.textMuted}
-                    autoCapitalize={key === 'displayName' || key === 'notes' ? 'sentences' : 'none'}
-                    secureTextEntry={key === 'password'}
-                    keyboardType={key === 'email' ? 'email-address' : key === 'phone' ? 'phone-pad' : 'default'}
-                    multiline={key === 'notes'}
-                  />
-                </View>
-              ))}
-
-              <Text style={styles.formLabel}>{t('admin.actor')}</Text>
-              <Text style={styles.formHint}>{t('admin.actorHint')}</Text>
-              <View style={styles.roleOptions}>
-                {roles.map(role => (
-                  <TouchableOpacity
-                    key={role.id}
-                    style={[
-                      styles.roleOption,
-                      form.roleId === role.id && styles.roleOptionActive,
-                      { borderColor: form.roleId === role.id ? role.color : Colors.primarySoft },
-                    ]}
-                    onPress={() =>
-                      setForm(f => ({
-                        ...f,
-                        roleId: role.id,
-                        businessName: role.id === 'business' ? f.businessName : '',
-                      }))
-                    }
-                  >
-                    <View style={[styles.chipDot, { backgroundColor: role.color }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.roleOptionText,
-                          form.roleId === role.id && styles.roleOptionTextActive,
-                        ]}
-                      >
-                        {role.name}
-                      </Text>
-                      <Text style={styles.roleOptionDesc} numberOfLines={2}>
-                        {segmentLabel(role.segment)} · {role.description}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {form.roleId === 'business' && (
-                <View style={[styles.formGroup, { marginTop: 12 }]}>
-                  <Text style={styles.formLabel}>{t('admin.businessName')}</Text>
-                  <TextInput
-                    value={form.businessName}
-                    onChangeText={v => setForm(f => ({ ...f, businessName: v }))}
-                    style={styles.formInput}
-                    placeholder={t('admin.businessNamePlaceholder')}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-              )}
-
-              <Text style={[styles.formLabel, { marginTop: 12 }]}>{t('admin.status')}</Text>
-              <View style={styles.chipsRow}>
-                {(['active', 'inactive', 'banned'] as const).map(st => (
-                  <TouchableOpacity
-                    key={st}
-                    style={[styles.chip, form.status === st && styles.chipActive]}
-                    onPress={() => setForm(f => ({ ...f, status: st }))}
-                  >
-                    <Text style={[styles.chipText, form.status === st && styles.chipTextActive]}>
-                      {statusLabel(st)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setFormOpen(false)}
-                disabled={saving}
-              >
-                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSave}
-                onPress={handleSaveUser}
-                disabled={saving}
-                activeOpacity={0.88}
-              >
-                <LinearGradient colors={Gradients.primary} style={styles.modalSaveGrad}>
-                  {saving ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <Text style={styles.modalSaveText}>{t('common.done')}</Text>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Delete confirm */}
-      <Modal
-        visible={!!deleteTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteTarget(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('admin.deleteConfirmTitle')}</Text>
-            <Text style={styles.deleteBody}>
-              {t('admin.deleteConfirmBody').replace('{name}', deleteTarget?.displayName ?? '')}
-            </Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setDeleteTarget(null)}
-                disabled={saving}
-              >
-                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete} disabled={saving}>
-                {saving ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.deleteBtnText}>{t('admin.delete')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={partnerQueueModal === 'business'}
@@ -1727,31 +1635,228 @@ export default function AdminScreen({ session, onLogout }: AdminScreenProps) {
       </Modal>
 
       <Modal
-        visible={!!rejectTarget}
+        visible={!!packageEdit}
         transparent
         animationType="fade"
-        onRequestClose={() => setRejectTarget(null)}
+        onRequestClose={() => !packageSaving && setPackageEdit(null)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('admin.partnerRejectReason')}</Text>
-            <TextInput
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder={t('admin.partnerRejectReason')}
-              placeholderTextColor={Colors.textMuted}
-              style={styles.rejectInput}
-              multiline
-            />
+            <Text style={styles.modalTitle}>{t('admin.packagesEditTitle')}</Text>
+            {packageEdit ? (
+              <>
+                <Text style={styles.formHint}>
+                  {packageEdit.segment === 'B2C' ? t('admin.packagesPremiumSection') : t('admin.packagesVibeMapSection')}
+                  {' · '}
+                  {adminPackageTitle(packageEdit)}
+                </Text>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>{t('admin.packagesDisplayName')}</Text>
+                  <TextInput
+                    value={packageFormDisplayName}
+                    onChangeText={setPackageFormDisplayName}
+                    placeholder={adminPackageTitle(packageEdit)}
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.formInput}
+                  />
+                </View>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>{t('admin.packagesPrice')}</Text>
+                  <Text style={styles.formHint}>{t('admin.packagesPriceHint')}</Text>
+                  <TextInput
+                    value={packageFormPrice}
+                    onChangeText={setPackageFormPrice}
+                    keyboardType="numeric"
+                    placeholder="39000"
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.formInput}
+                  />
+                </View>
+                {packageEdit.segment === 'B2C' ? (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>{t('admin.packagesDurationLabel')}</Text>
+                    <TextInput
+                      value={packageFormDuration}
+                      onChangeText={setPackageFormDuration}
+                      keyboardType="numeric"
+                      placeholder="30"
+                      placeholderTextColor={Colors.textMuted}
+                      style={styles.formInput}
+                    />
+                  </View>
+                ) : null}
+                <View style={[styles.formGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                  <Text style={styles.formLabel}>{t('admin.packagesActive')}</Text>
+                  <Switch value={packageFormActive} onValueChange={setPackageFormActive} />
+                </View>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancel}
+                    disabled={packageSaving}
+                    onPress={() => setPackageEdit(null)}
+                  >
+                    <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalSave}
+                    disabled={packageSaving}
+                    onPress={handleSavePackage}
+                    activeOpacity={0.88}
+                  >
+                    <LinearGradient colors={Gradients.primary} style={styles.modalSaveGrad}>
+                      {packageSaving ? (
+                        <ActivityIndicator color={Colors.white} />
+                      ) : (
+                        <Text style={styles.modalSaveText}>{t('common.save')}</Text>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={packageCreateOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !packageSaving && setPackageCreateOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('admin.packagesCreateTitle')}</Text>
+            <Text style={styles.formHint}>
+              {packageSegmentTab === 'B2C' ? t('admin.packagesPremiumSection') : t('admin.packagesVibeMapSection')}
+            </Text>
+            <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled">
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>{t('admin.packagesCreateCode')}</Text>
+                <TextInput
+                  value={packageCreateCode}
+                  onChangeText={setPackageCreateCode}
+                  placeholder="monthly"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.formInput}
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>{t('admin.packagesDisplayName')}</Text>
+                <TextInput
+                  value={packageCreateDisplayName}
+                  onChangeText={setPackageCreateDisplayName}
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.formInput}
+                />
+              </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>{t('admin.packagesPrice')}</Text>
+                <TextInput
+                  value={packageCreatePrice}
+                  onChangeText={setPackageCreatePrice}
+                  keyboardType="numeric"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.formInput}
+                />
+              </View>
+              {packageSegmentTab === 'B2C' ? (
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>{t('admin.packagesDurationLabel')}</Text>
+                  <TextInput
+                    value={packageCreateDuration}
+                    onChangeText={setPackageCreateDuration}
+                    keyboardType="numeric"
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.formInput}
+                  />
+                </View>
+              ) : (
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>{t('admin.packagesBillingUnit')}</Text>
+                  <View style={styles.chipsRow}>
+                    {(['campaign', 'day'] as const).map(u => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.chip, packageCreateBillingUnit === u && styles.chipActive]}
+                        onPress={() => setPackageCreateBillingUnit(u)}
+                      >
+                        <Text style={[styles.chipText, packageCreateBillingUnit === u && styles.chipTextActive]}>
+                          {u === 'day' ? t('admin.packagesPerDay') : t('admin.packagesPerCampaign')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>{t('admin.packagesCreateSort')}</Text>
+                <TextInput
+                  value={packageCreateSort}
+                  onChangeText={setPackageCreateSort}
+                  keyboardType="numeric"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.formInput}
+                />
+              </View>
+            </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancel}
-                onPress={() => setRejectTarget(null)}
+                disabled={packageSaving}
+                onPress={() => setPackageCreateOpen(false)}
               >
                 <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={handleRejectPartner}>
-                <Text style={styles.deleteBtnText}>{t('admin.partnerReject')}</Text>
+              <TouchableOpacity
+                style={styles.modalSave}
+                disabled={packageSaving}
+                onPress={handleCreatePackage}
+                activeOpacity={0.88}
+              >
+                <LinearGradient colors={Gradients.primary} style={styles.modalSaveGrad}>
+                  {packageSaving ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.modalSaveText}>{t('admin.packagesCreate')}</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!packageDeleteTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !packageSaving && setPackageDeleteTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('admin.packagesDeleteTitle')}</Text>
+            <Text style={styles.deleteBody}>
+              {t('admin.packagesDeleteBody').replace(
+                '{name}',
+                packageDeleteTarget ? adminPackageTitle(packageDeleteTarget) : '',
+              )}
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setPackageDeleteTarget(null)}
+                disabled={packageSaving}
+              >
+                <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDeletePackage} disabled={packageSaving}>
+                {packageSaving ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.deleteBtnText}>{t('admin.delete')}</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1853,11 +1958,53 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 11,
   },
-  tabsRow: { gap: 8, paddingRight: 8 },
+  tabsScrollWrap: {
+    position: 'relative',
+    marginHorizontal: -16,
+  },
+  tabsScroll: {
+    flexGrow: 0,
+    ...Platform.select({
+      web: {
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        cursor: 'grab',
+        // @ts-expect-error RN Web scrollbar styling
+        scrollbarWidth: 'thin',
+        // @ts-expect-error RN Web scrollbar styling
+        scrollbarColor: 'rgba(255,255,255,0.55) transparent',
+      },
+      default: {},
+    }),
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingRight: 28,
+    paddingBottom: 4,
+  },
+  tabsScrollFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 4,
+    width: 28,
+    ...Platform.select({
+      web: {
+        backgroundImage: 'linear-gradient(to left, rgba(124,58,237,0.85), transparent)',
+      },
+      default: {
+        backgroundColor: 'transparent',
+      },
+    }),
+  },
   tabBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 14,
@@ -1871,6 +2018,16 @@ const styles = StyleSheet.create({
   },
   tabTextActive: { color: Colors.primary },
   content: { padding: 16, paddingBottom: 48, gap: 10 },
+  reloginBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  reloginBtnText: { fontSize: 12, fontWeight: '800', color: Colors.primary, textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: {
     fontSize: 14,
@@ -1878,6 +2035,26 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
     marginTop: 6,
     marginBottom: 2,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  packageCardInactive: { opacity: 0.55 },
+  packageCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  packageEditBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -1965,6 +2142,16 @@ const styles = StyleSheet.create({
   },
   quickLinkText: { flex: 1, fontWeight: '700', color: Colors.primary, fontSize: 13 },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
+  addUserBtn: { marginBottom: 12, borderRadius: 12, overflow: 'hidden' },
+  addUserGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  addUserText: { color: Colors.white, fontSize: 13, fontWeight: '800' },
   searchRow: {
     flex: 1,
     flexBasis: 200,

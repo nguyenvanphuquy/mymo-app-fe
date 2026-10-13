@@ -12,8 +12,19 @@ import AuthAtmosphere from '../components/AuthAtmosphere';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
-import { loginUser, registerUser, saveAuthSession, syncPortalFlagsForRole } from '../services/authApi';
-import { ADMIN_BOOTSTRAP, loginAdmin } from '../services/adminApi';
+import {
+  loginUser,
+  loginWithGoogleIdToken,
+  registerUser,
+  resetPassword,
+  saveAuthSession,
+  sendRegisterOtp,
+  sendResetOtp,
+  syncPortalFlagsForRole,
+} from '../services/authApi';
+import { useGoogleIdTokenSignIn } from '../services/googleSignIn';
+import GoogleSignInButton from '../components/auth/GoogleSignInButton';
+import { ADMIN_BOOTSTRAP, persistAdminPermissions, syncAdminSessionAfterBackendLogin } from '../services/adminApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
 
 const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,29}$/;
@@ -37,7 +48,7 @@ export default function AuthScreen({
   onPortalChoice,
 }: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [showPw, setShowPw] = useState(false);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -49,7 +60,11 @@ export default function AuthScreen({
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isGenderOpen, setIsGenderOpen] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSending, setOtpSending] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const { signInAsync: googleSignInAsync, ready: googleReady } = useGoogleIdTokenSignIn();
 
   const genderOptions = [
     { value: 'Male', label: t('auth.genderOptionMale') },
@@ -61,7 +76,82 @@ export default function AuthScreen({
     ? formatDateOnlyDisplay(dateOfBirth, lang)
     : t('auth.dateOfBirth');
 
+  const handleSendOtp = async () => {
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
+      return;
+    }
+    try {
+      setOtpSending(true);
+      await sendRegisterOtp(email.trim());
+      Toast.show({ type: 'success', text1: t('auth.otpSent'), text2: email.trim() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('auth.otpSendError');
+      Toast.show({ type: 'error', text1: message });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleSendResetOtp = async () => {
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
+      return;
+    }
+    try {
+      setOtpSending(true);
+      await sendResetOtp(email.trim());
+      Toast.show({ type: 'success', text1: t('auth.otpSent'), text2: email.trim() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('auth.otpSendError');
+      Toast.show({ type: 'error', text1: message });
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
+      return;
+    }
+    if (!/^\d{6}$/.test(otpCode.trim())) {
+      Toast.show({ type: 'error', text1: t('auth.otpRequired') });
+      return;
+    }
+    if (pw.length < 6) {
+      Toast.show({ type: 'error', text1: t('auth.passwordTooShort') });
+      return;
+    }
+    if (pw !== confirmPw) {
+      Toast.show({ type: 'error', text1: lang === 'vi' ? 'Mật khẩu nhập lại không khớp' : 'Passwords do not match' });
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await resetPassword({
+        email: email.trim(),
+        otpCode: otpCode.trim(),
+        newPassword: pw,
+      });
+      setPw('');
+      setConfirmPw('');
+      setOtpCode('');
+      setMode('login');
+      Toast.show({ type: 'success', text1: t('auth.passwordResetDone') });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('auth.passwordResetError');
+      Toast.show({ type: 'error', text1: message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleAuth = async () => {
+    if (mode === 'forgot') {
+      await handleResetPassword();
+      return;
+    }
     if (mode === 'register') {
       if (!username || !displayName || !email || !pw || !confirmPw || !gender || !phone || !dateOfBirth) {
         Toast.show({ type: 'error', text1: lang === 'vi' ? 'Vui lòng điền đầy đủ thông tin' : 'Please fill in all fields' });
@@ -73,6 +163,10 @@ export default function AuthScreen({
       }
       if (!EMAIL_PATTERN.test(email.trim())) {
         Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
+        return;
+      }
+      if (!/^\d{6}$/.test(otpCode.trim())) {
+        Toast.show({ type: 'error', text1: t('auth.otpRequired') });
         return;
       }
       if (pw !== confirmPw) {
@@ -97,6 +191,7 @@ export default function AuthScreen({
           gender: gender.trim(),
           phoneNumber: phone.trim(),
           dateOfBirth: dateOfBirth.trim(),
+          otpCode: otpCode.trim(),
         });
         await saveAuthSession(auth);
         Toast.show({ type: 'success', text1: lang === 'vi' ? 'Đăng ký thành công' : 'Registration successful' });
@@ -104,21 +199,17 @@ export default function AuthScreen({
         return;
       }
 
-      // Temporary mock admin — bypass user API when admin / admin123
       const loginId = email.trim().toLowerCase();
-      const isMockAdmin =
-        (loginId === ADMIN_BOOTSTRAP.username || loginId === 'admin@mymo.app') &&
+      const isAdminLogin =
+        (loginId === ADMIN_BOOTSTRAP.username || loginId === ADMIN_BOOTSTRAP.email) &&
         pw === ADMIN_BOOTSTRAP.password;
-      if (isMockAdmin) {
-        try {
-          const auth = await loginUser({ email: 'admin@mymo.app', password: pw });
-          await saveAuthSession(auth);
-          await syncPortalFlagsForRole(auth);
-        } catch {
-          // Local admin portal still opens if the API is unavailable.
-        }
-        await loginAdmin(ADMIN_BOOTSTRAP.username, ADMIN_BOOTSTRAP.password);
-        Toast.show({ type: 'success', text1: t('admin.loginSuccess') });
+      if (isAdminLogin) {
+        const auth = await loginUser({ email: ADMIN_BOOTSTRAP.email, password: pw });
+        await saveAuthSession(auth);
+        await persistAdminPermissions(auth);
+        await syncPortalFlagsForRole(auth);
+        await syncAdminSessionAfterBackendLogin(auth.email);
+        Toast.show({ type: 'success', text1: t('admin.loginSuccessLive') });
         onAdminContinue?.();
         return;
       }
@@ -142,7 +233,65 @@ export default function AuthScreen({
     }
   };
 
+  const finishAuthSession = async (auth: Awaited<ReturnType<typeof loginUser>>) => {
+    await saveAuthSession(auth);
+    const destination = await syncPortalFlagsForRole(auth);
+    if (auth.role === 'Admin') {
+      const { persistAdminPermissions, syncAdminSessionAfterBackendLogin } = await import('../services/adminApi');
+      await persistAdminPermissions(auth);
+      await syncAdminSessionAfterBackendLogin(auth.email);
+      Toast.show({ type: 'success', text1: t('admin.loginSuccessLive') });
+      onAdminContinue?.();
+      return;
+    }
+    Toast.show({
+      type: 'success',
+      text1: lang === 'vi' ? 'Đăng nhập Google' : 'Signed in with Google',
+      text2: auth.email,
+    });
+    if (destination === 'portal-choice') {
+      onPortalChoice?.();
+    } else {
+      onContinue();
+    }
+  };
+
+  const completeGoogleIdToken = async (idToken: string) => {
+    try {
+      setGoogleBusy(true);
+      const auth = await loginWithGoogleIdToken(idToken);
+      await finishAuthSession(auth);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('auth.googleSignInError');
+      Toast.show({ type: 'error', text1: message });
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!googleReady || googleBusy || isSubmitting) return;
+    try {
+      setGoogleBusy(true);
+      const idToken = await googleSignInAsync();
+      if (!idToken) {
+        Toast.show({ type: 'info', text1: t('auth.googleCancelled') });
+        return;
+      }
+      await completeGoogleIdToken(idToken);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('auth.googleSignInError');
+      Toast.show({ type: 'error', text1: message });
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
   const handleSocialPress = (provider: 'Google' | 'Apple' | 'Facebook') => {
+    if (provider === 'Google') {
+      void handleGoogleSignIn();
+      return;
+    }
     Toast.show({
       type: 'info',
       text1: t('auth.socialUnavailable').replace('{provider}', provider),
@@ -257,12 +406,42 @@ export default function AuthScreen({
               ) : null}
             </View>
 
+            {mode === 'register' || mode === 'forgot' ? (
+              <View>
+                <View style={styles.inputRow}>
+                  <Ionicons name="keypad-outline" size={16} color={Colors.primary} />
+                  <TextInput
+                    value={otpCode}
+                    onChangeText={value => setOtpCode(value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder={t('auth.otpPlaceholder')}
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                  />
+                  <TouchableOpacity
+                    onPress={() => void (mode === 'forgot' ? handleSendResetOtp() : handleSendOtp())}
+                    disabled={otpSending}
+                  >
+                    {otpSending ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.otpSendText}>{t('auth.otpSend')}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.fieldHint}>
+                  {mode === 'forgot' ? t('auth.forgotOtpHint') : t('auth.otpHint')}
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.inputRow}>
               <View style={styles.pwDot} />
               <TextInput
                 value={pw}
                 onChangeText={setPw}
-                placeholder={t('auth.password')}
+                placeholder={mode === 'forgot' ? t('auth.newPassword') : t('auth.password')}
                 placeholderTextColor={Colors.textMuted}
                 secureTextEntry={!showPw}
                 style={styles.input}
@@ -272,19 +451,22 @@ export default function AuthScreen({
               </TouchableOpacity>
             </View>
 
+            {(mode === 'register' || mode === 'forgot') && (
+              <View style={styles.inputRow}>
+                <View style={styles.pwDot} />
+                <TextInput
+                  value={confirmPw}
+                  onChangeText={setConfirmPw}
+                  placeholder={t('auth.confirmPassword')}
+                  placeholderTextColor={Colors.textMuted}
+                  secureTextEntry={!showPw}
+                  style={styles.input}
+                />
+              </View>
+            )}
+
             {mode === 'register' && (
               <>
-                <View style={styles.inputRow}>
-                  <View style={styles.pwDot} />
-                  <TextInput
-                    value={confirmPw}
-                    onChangeText={setConfirmPw}
-                    placeholder={t('auth.confirmPassword')}
-                    placeholderTextColor={Colors.textMuted}
-                    secureTextEntry={!showPw}
-                    style={styles.input}
-                  />
-                </View>
                 <View style={styles.genderWrapper}>
                   <TouchableOpacity
                     onPress={() => setIsGenderOpen(v => !v)}
@@ -363,10 +545,23 @@ export default function AuthScreen({
               {isSubmitting ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
-                <Text style={styles.ctaText}>{mode === 'login' ? t('auth.login') : t('auth.signup')}</Text>
+                <Text style={styles.ctaText}>
+                  {mode === 'login' ? t('auth.login') : mode === 'forgot' ? t('auth.resetPassword') : t('auth.signup')}
+                </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
+
+          {mode === 'login' ? (
+            <TouchableOpacity onPress={() => setMode('forgot')} style={styles.forgotLink}>
+              <Text style={styles.forgotLinkText}>{t('auth.forgotPassword')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {mode === 'forgot' ? (
+            <TouchableOpacity onPress={() => setMode('login')} style={styles.forgotLink}>
+              <Text style={styles.forgotLinkText}>{t('auth.backToLogin')}</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Divider */}
           <View style={styles.divider}>
@@ -377,12 +572,22 @@ export default function AuthScreen({
 
           {/* Social — not wired to auth yet; must not bypass login */}
           <View style={styles.social}>
-            <SocialBtn
-              icon="logo-google"
-              label="Google"
-              color="#DB4437"
-              onPress={() => handleSocialPress('Google')}
-            />
+            {Platform.OS === 'web' ? (
+              <GoogleSignInButton
+                disabled={googleBusy || isSubmitting}
+                onIdToken={token => void completeGoogleIdToken(token)}
+                onError={() => Toast.show({ type: 'error', text1: t('auth.googleSignInError') })}
+              />
+            ) : (
+              <SocialBtn
+                icon="logo-google"
+                label="Google"
+                color="#DB4437"
+                loading={googleBusy}
+                disabled={!googleReady || googleBusy || isSubmitting}
+                onPress={() => handleSocialPress('Google')}
+              />
+            )}
             <SocialBtn
               icon="logo-apple"
               label="Apple"
@@ -413,15 +618,28 @@ function SocialBtn({
   onPress,
   icon,
   color,
+  loading,
+  disabled,
 }: {
   onPress: () => void;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   color: string;
+  loading?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <TouchableOpacity onPress={onPress} style={[styles.socialBtn, styles.socialBtnLocked]} activeOpacity={0.85}>
-      <Ionicons name={icon} size={20} color={color} />
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled || loading}
+      style={[styles.socialBtn, disabled ? styles.socialBtnLocked : null]}
+      activeOpacity={0.85}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={color} />
+      ) : (
+        <Ionicons name={icon} size={20} color={color} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -547,6 +765,13 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: Colors.textMuted,
   },
+  otpSendText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  forgotLink: { alignItems: 'center', marginTop: 12, marginBottom: 4 },
+  forgotLinkText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
   fieldHintError: {
     color: '#B45309',
   },

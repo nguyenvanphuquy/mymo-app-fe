@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,11 @@ import {
   B2B_VIBEMAP_PACKAGES,
   type B2bPackageId,
 } from '../../constants/b2bPromotionPackages';
+import {
+  fetchPublicProductCatalog,
+  getB2bBasePriceFromCatalog,
+  type PublicProductPackage,
+} from '../../services/productCatalogApi';
 
 function formatPrice(amount: number, lang: string): string {
   return new Intl.NumberFormat(lang === 'vi' ? 'vi-VN' : 'en-US').format(amount);
@@ -24,13 +29,25 @@ export default function B2bPricingSection({
 }) {
   const { t, lang } = useI18n();
   const suffix = lang === 'vi' ? 'đ' : ' VND';
+  const [catalog, setCatalog] = useState<PublicProductPackage[]>([]);
+
+  useEffect(() => {
+    fetchPublicProductCatalog().then(setCatalog).catch(() => setCatalog([]));
+  }, []);
+
+  const packagesToShow =
+    catalog.length > 0
+      ? B2B_VIBEMAP_PACKAGES.filter(p => catalog.some(c => c.segment === 'B2B' && c.code === p.id))
+      : B2B_VIBEMAP_PACKAGES;
 
   return (
     <View style={[styles.wrap, horizontal && styles.wrapHorizontal]}>
-      {B2B_VIBEMAP_PACKAGES.map(pkg => {
+      {packagesToShow.map(pkg => {
         const selected = selectedId === pkg.id;
         const unitLabel =
           pkg.billingUnit === 'day' ? t('biz.ads.perDay') : t('biz.ads.perCampaign');
+        const livePrice = getB2bBasePriceFromCatalog(catalog, pkg.id);
+        const displayPrice = livePrice ?? pkg.priceVnd;
         return (
           <TouchableOpacity
             key={pkg.id}
@@ -50,7 +67,7 @@ export default function B2bPricingSection({
             ) : null}
             <Text style={[styles.pkgName, styles.pkgNameWithRadio]}>{t(pkg.nameKey)}</Text>
             <View style={styles.priceRow}>
-              <Text style={styles.price}>{formatPrice(pkg.priceVnd, lang)}{suffix}</Text>
+              <Text style={styles.price}>{formatPrice(displayPrice, lang)}{suffix}</Text>
               <Text style={styles.unit}> / {unitLabel}</Text>
             </View>
             <View style={styles.features}>

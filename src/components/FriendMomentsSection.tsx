@@ -22,6 +22,7 @@ import {
 import { avatarUri } from '../constants/defaultAvatar';
 import { openUserProfile } from '../utils/openUserProfile';
 import { isPostWithin24Hours } from '../utils/mapPostZoom';
+import { hasActivePremium } from '../utils/premiumStorage';
 import { getViewedStoryIds, markStoryViewed } from '../utils/storyViewStorage';
 
 interface CurrentUser {
@@ -104,7 +105,14 @@ export default function FriendMomentsSection({
     const availableStories = feed.filter(post => (
       isPostWithin24Hours(post.createdAt) && !viewedIds.has(post.postId)
     ));
-    setGroups(groupPostsByUser(availableStories, namesLookup));
+    let nextGroups = groupPostsByUser(availableStories, namesLookup);
+    if (!(await hasActivePremium())) {
+      const ownId = currentUser?.userId?.toLowerCase();
+      const own = nextGroups.filter(group => group.userId === ownId);
+      const others = nextGroups.filter(group => group.userId !== ownId).slice(0, 3);
+      nextGroups = [...own, ...others];
+    }
+    setGroups(nextGroups);
   }, [friendNames, currentUser]);
 
   useEffect(() => {

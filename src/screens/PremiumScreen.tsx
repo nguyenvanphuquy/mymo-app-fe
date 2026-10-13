@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, ActivityIndicator,
 } from 'react-native';
@@ -12,12 +12,14 @@ import { useI18n } from '../i18n';
 import SparkleField from '../components/SparkleField';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  isPremiumActive,
   setPremiumPlan,
   syncPremiumPlanFromServer,
   type PremiumPlanId,
 } from '../utils/premiumStorage';
 import { createPremiumOrder, type UserPremiumOrder } from '../services/userPremiumApi';
 import UserPremiumBankPaymentScreen from './UserPremiumBankPaymentScreen';
+import { fetchPublicProductCatalog, type PublicProductPackage } from '../services/productCatalogApi';
 
 interface PremiumScreenProps {
   onClose: () => void;
@@ -25,26 +27,14 @@ interface PremiumScreenProps {
 }
 
 type PlanConfig = {
-  id: PremiumPlanId;
+  id: string;
+  title: string;
   price: number;
-  periodKey: string;
-  subPriceKey?: string;
+  period: string;
+  subPrice?: string;
   badgeKey?: string;
   popular?: boolean;
 };
-
-const PLANS: PlanConfig[] = [
-  { id: 'free', price: 0, periodKey: 'premium.period.free' },
-  { id: 'monthly', price: 39000, periodKey: 'premium.period.month' },
-  {
-    id: 'yearly',
-    price: 399000,
-    periodKey: 'premium.period.year',
-    subPriceKey: 'premium.pricePerMonth',
-    badgeKey: 'premium.bestValue',
-    popular: true,
-  },
-];
 
 const FEATURE_KEYS = [
   'premium.feat.moments',
@@ -62,15 +52,20 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
   const [currentPlan, setCurrentPlan] = useState<PremiumPlanId>('free');
-  const [selectedPlan, setSelectedPlan] = useState<PremiumPlanId>('yearly');
+  const [selectedPlan, setSelectedPlan] = useState<string>('yearly');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [payOrder, setPayOrder] = useState<UserPremiumOrder | null>(null);
+  const [catalog, setCatalog] = useState<PublicProductPackage[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const plan = await syncPremiumPlanFromServer();
+        const [plan, packages] = await Promise.all([
+          syncPremiumPlanFromServer(),
+          fetchPublicProductCatalog().catch(() => [] as PublicProductPackage[]),
+        ]);
+        setCatalog(packages);
         setCurrentPlan(plan);
         if (plan !== 'free') setSelectedPlan(plan);
       } finally {
@@ -79,7 +74,41 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
     })();
   }, []);
 
-  const handleSelect = (planId: PremiumPlanId) => {
+  const plansToShow = useMemo(() => {
+    const free: PlanConfig = {
+      id: 'free',
+      title: t('premium.plan.free'),
+      price: 0,
+      period: t('premium.period.free'),
+    };
+    const b2c = catalog
+      .filter(p => p.segment === 'B2C')
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const paid: PlanConfig[] = (b2c.length > 0 ? b2c : [
+      { code: 'monthly', displayName: null, priceVnd: 39000, durationDays: 30, segment: 'B2C' as const, billingUnit: null, sortOrder: 1 },
+      { code: 'yearly', displayName: null, priceVnd: 399000, durationDays: 365, segment: 'B2C' as const, billingUnit: null, sortOrder: 2 },
+    ]).map(pkg => ({
+      id: pkg.code,
+      title: pkg.displayName?.trim()
+        || (pkg.code === 'monthly' ? t('premium.plan.monthly') : pkg.code === 'yearly' ? t('premium.plan.yearly') : pkg.code),
+      price: pkg.priceVnd,
+      period: pkg.durationDays
+        ? t('admin.packagesDurationDays').replace('{n}', String(pkg.durationDays))
+        : t('premium.period.month'),
+      popular: pkg.code === 'yearly',
+      badgeKey: pkg.code === 'yearly' ? 'premium.bestValue' : undefined,
+    }));
+    return [free, ...paid];
+  }, [catalog, t]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (plansToShow.some(p => p.id === selectedPlan)) return;
+    const paid = plansToShow.find(p => p.id !== 'free');
+    if (paid) setSelectedPlan(paid.id);
+  }, [loading, plansToShow, selectedPlan]);
+
+  const handleSelect = (planId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPlan(planId);
   };
@@ -113,8 +142,9 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
     setSubmitting(true);
     try {
       const order = await createPremiumOrder(selectedPlan);
+      const selected = plansToShow.find(p => p.id === selectedPlan);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setPayOrder(order);
+      setPayOrder({ ...order, planLabel: selected?.title ?? selectedPlan });
     } catch (err) {
       Toast.show({
         type: 'error',
@@ -137,9 +167,10 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
     ? t('premium.useFree')
     : selectedPlan === currentPlan
     ? t('premium.currentPlan')
-    : selectedPlan === 'monthly'
-    ? t('premium.subscribeMonthly')
-    : t('premium.subscribeYearly');
+    : (() => {
+        const plan = plansToShow.find(p => p.id === selectedPlan);
+        return `${plan?.title ?? selectedPlan} — ${formatVnd(plan?.price ?? 0, lang)}`;
+      })();
 
   if (payOrder) {
     return (
@@ -187,7 +218,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
               <View style={styles.activePill}>
                 <Ionicons name="checkmark-circle" size={14} color={Colors.white} />
                 <Text style={styles.activePillText}>
-                  {currentPlan === 'monthly' ? t('premium.activeMonthly') : t('premium.activeYearly')}
+                  {plansToShow.find(p => p.id === currentPlan)?.title ?? t('profile.plusActive')}
                 </Text>
               </View>
             )}
@@ -200,7 +231,7 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
           <ActivityIndicator color={Colors.primary} style={{ marginVertical: 24 }} />
         ) : (
           <View style={styles.planList}>
-            {PLANS.map(plan => {
+            {plansToShow.map(plan => {
               const isSelected = selectedPlan === plan.id;
               const isCurrent = currentPlan === plan.id;
               return (
@@ -230,28 +261,22 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
                     </View>
                     <View style={styles.planInfo}>
                       <View style={styles.planNameRow}>
-                        <Text style={styles.planName}>
-                          {plan.id === 'free'
-                            ? t('premium.plan.free')
-                            : plan.id === 'monthly'
-                            ? t('premium.plan.monthly')
-                            : t('premium.plan.yearly')}
-                        </Text>
+                        <Text style={styles.planName}>{plan.title}</Text>
                         {isCurrent && (
                           <View style={styles.currentBadge}>
                             <Text style={styles.currentBadgeText}>{t('premium.current')}</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={styles.planPeriod}>{t(plan.periodKey)}</Text>
+                      <Text style={styles.planPeriod}>{plan.period}</Text>
                     </View>
                     <View style={styles.planPriceCol}>
                       <Text style={[styles.planPrice, plan.id === 'free' && styles.planPriceFree]}>
                         {formatVnd(plan.price, lang)}
                       </Text>
-                      {plan.subPriceKey && (
-                        <Text style={styles.planSubPrice}>{t(plan.subPriceKey)}</Text>
-                      )}
+                      {plan.subPrice ? (
+                        <Text style={styles.planSubPrice}>{plan.subPrice}</Text>
+                      ) : null}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -261,15 +286,21 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
         )}
 
         <Text style={styles.sectionLabel}>{t('premium.features')}</Text>
+        <Text style={styles.benefitsHint}>
+          {isPremiumActive(currentPlan) ? t('premium.benefitsActive') : t('premium.benefitsLocked')}
+        </Text>
         <View style={styles.featureCard}>
-          {FEATURE_KEYS.map((key, i) => (
-            <View key={key} style={[styles.featureRow, i < FEATURE_KEYS.length - 1 && styles.featureRowBorder]}>
-              <LinearGradient colors={Gradients.primary} style={styles.featureIcon}>
-                <Ionicons name="checkmark" size={12} color={Colors.white} />
-              </LinearGradient>
-              <Text style={styles.featureText}>{t(key)}</Text>
-            </View>
-          ))}
+          {FEATURE_KEYS.map((key, i) => {
+            const unlocked = isPremiumActive(currentPlan);
+            return (
+              <View key={key} style={[styles.featureRow, i < FEATURE_KEYS.length - 1 && styles.featureRowBorder, !unlocked && styles.featureRowLocked]}>
+                <LinearGradient colors={unlocked ? Gradients.primary : ['#E5E7EB', '#D1D5DB']} style={styles.featureIcon}>
+                  <Ionicons name={unlocked ? 'checkmark' : 'lock-closed'} size={12} color={unlocked ? Colors.white : '#6B7280'} />
+                </LinearGradient>
+                <Text style={[styles.featureText, !unlocked && styles.featureTextLocked]}>{t(key)}</Text>
+              </View>
+            );
+          })}
         </View>
 
         <Text style={styles.footnote}>{t('premium.footnote')}</Text>
@@ -529,6 +560,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.primaryTint,
   },
+  featureRowLocked: { opacity: 0.72 },
+  benefitsHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: -8,
+    marginBottom: 10,
+    lineHeight: 17,
+  },
   featureIcon: {
     width: 22,
     height: 22,
@@ -543,6 +582,7 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
     lineHeight: 18,
   },
+  featureTextLocked: { color: Colors.textMuted },
   footnote: {
     fontSize: 11,
     color: Colors.textMuted,
