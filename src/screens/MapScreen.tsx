@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox, { Camera, MapView, MarkerView, UserLocation } from '@rnmapbox/maps';
+import Mapbox, { Camera, HeatmapLayer, MapView, MarkerView, ShapeSource, UserLocation } from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
@@ -13,8 +13,9 @@ import type { Friend } from '../constants/data';
 import FriendSheet from '../components/FriendSheet';
 import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
-import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from '../services/postApi';
+import { toPostView, normalizeNearbyPost, type HeatmapPoint, type NearbyPost, type PostView } from '../services/postApi';
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
+import { loadMapHeatPoints } from '../utils/loadMapHeatPoints';
 import { separatePostsFrom3DPlaces, spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
 import { isPremiumActive, syncPremiumPlanFromServer } from '../utils/premiumStorage';
@@ -47,6 +48,12 @@ import * as Haptics from 'expo-haptics';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
 import { getUserProfile } from '../services/userApi';
 import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
+import {
+  HEATMAP_LAYER_ID,
+  HEATMAP_SOURCE_ID,
+  NATIVE_HEATMAP_STYLE,
+  buildHeatGeoJSON,
+} from '../utils/mapHeatmap';
 
 Mapbox.setAccessToken(MAPBOX_ACCESS_TOKEN);
 
@@ -92,6 +99,7 @@ export default function MapScreen({
     { id: 'vibe', label: t('map.filterVibe') },
   ] as const;
   const [contentFilter, setContentFilter] = useState<MapContentFilter>('all');
+  const [showHeatmap, setShowHeatmap] = useState(true);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const userCoordsRef = useRef(userCoords);
   userCoordsRef.current = userCoords;
@@ -100,6 +108,7 @@ export default function MapScreen({
     ? `${userCoords.lat.toFixed(3)},${userCoords.lng.toFixed(3)}`
     : 'none';
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
+  const [heatPoints, setHeatPoints] = useState<HeatmapPoint[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
@@ -238,6 +247,17 @@ export default function MapScreen({
     }
   }, []);
 
+  const fetchHeatPoints = useCallback(async () => {
+    const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
+    const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
+    try {
+      const points = await loadMapHeatPoints(lat, lng);
+      setHeatPoints(points);
+    } catch {
+      setHeatPoints([]);
+    }
+  }, []);
+
   const fetchNearbyPlaces = useCallback(async () => {
     const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
@@ -252,20 +272,23 @@ export default function MapScreen({
   useEffect(() => {
     if (!isActive) return;
     fetchNearbyPosts();
+    fetchHeatPoints();
     fetchNearbyPlaces();
     const subCreated = DeviceEventEmitter.addListener('post:created', () => {
       fetchNearbyPosts();
+      fetchHeatPoints();
       fetchNearbyPlaces();
     });
     const subDeleted = DeviceEventEmitter.addListener('post:deleted', () => {
       fetchNearbyPosts();
+      fetchHeatPoints();
       fetchNearbyPlaces();
     });
     return () => {
       subCreated.remove();
       subDeleted.remove();
     };
-  }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
+  }, [isActive, coordsBucket, fetchNearbyPosts, fetchHeatPoints, fetchNearbyPlaces]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -377,6 +400,20 @@ export default function MapScreen({
     () => spreadOverlappingMarkers(visiblePosts),
     [visiblePosts],
   );
+  const heatGeoJSON = useMemo(() => {
+    const merged = new Map<string, { latitude: number; longitude: number; userId?: string }>();
+    [...heatPoints, ...nearbyPosts].forEach(point => {
+      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
+      const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)},${(point.userId || '').toLowerCase()}`;
+      merged.set(key, point);
+    });
+    const source = [...merged.values()];
+    const posts = contentFilter === 'friends'
+      ? source.filter(point => friendIds.has((point.userId || '').toLowerCase()))
+      : source;
+    return buildHeatGeoJSON(posts);
+  }, [contentFilter, friendIds, heatPoints, nearbyPosts]);
+
   const displayedMapPosts = useMemo(
     () => separatePostsFrom3DPlaces(
       spreadMapPosts,
@@ -450,9 +487,10 @@ export default function MapScreen({
     cameraRef.current?.flyTo(mapCenter, 800);
     cameraRef.current?.zoomTo(DEFAULT_ZOOM, 800);
     fetchNearbyPosts();
+    fetchHeatPoints();
     fetchNearbyPlaces();
     Toast.show({ type: 'success', text1: t('map.centered') });
-  }, [t, mapCenter, fetchNearbyPosts, fetchNearbyPlaces, fetchFriendLocations]);
+  }, [t, mapCenter, fetchNearbyPosts, fetchHeatPoints, fetchNearbyPlaces, fetchFriendLocations]);
 
   const handleSelectGeocode = useCallback((result: MapGeocodeResult) => {
     setSearchText(result.placeName);
@@ -486,7 +524,8 @@ export default function MapScreen({
         onCameraChanged={state => {
           const zoom = state.properties.zoom;
           if (typeof zoom === 'number' && !Number.isNaN(zoom)) {
-            setMapZoom(zoom);
+            const next = shownMapZoom(zoom);
+            setMapZoom(prev => (prev === next ? prev : next));
           }
         }}
       >
@@ -497,6 +536,16 @@ export default function MapScreen({
             zoomLevel: DEFAULT_ZOOM,
           }}
         />
+
+        {showHeatmap ? (
+          <ShapeSource id={HEATMAP_SOURCE_ID} shape={heatGeoJSON}>
+            <HeatmapLayer
+              id={HEATMAP_LAYER_ID}
+              sourceID={HEATMAP_SOURCE_ID}
+              style={NATIVE_HEATMAP_STYLE as any}
+            />
+          </ShapeSource>
+        ) : null}
 
         {/* User location dot */}
         {visibleOnMap && (
@@ -818,6 +867,33 @@ export default function MapScreen({
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setShowHeatmap(on => !on)}
+          >
+            {showHeatmap ? (
+              <LinearGradient
+                colors={[...themeUi.chipActive]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.filterChipActive}
+              >
+                <Text style={styles.filterChipActiveText}>{t('map.filterHeat')} 🔥</Text>
+              </LinearGradient>
+            ) : (
+              <View
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: themeUi.chipInactiveBg,
+                    borderColor: themeUi.chipInactiveBorder,
+                  },
+                ]}
+              >
+                <Text style={styles.filterChipText}>{t('map.filterHeat')}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </ScrollView>
 
         {(!locationGranted || incognito) && (

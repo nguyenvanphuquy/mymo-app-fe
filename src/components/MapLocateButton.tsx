@@ -14,11 +14,11 @@ export default function MapLocateButton({ onPress, accent, glowColor }: MapLocat
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const useNativeDriver = Platform.OS !== 'web';
+    if (Platform.OS === 'web') return undefined;
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1400, useNativeDriver }),
-        Animated.timing(pulse, { toValue: 0, duration: 1400, useNativeDriver }),
+        Animated.timing(pulse, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1400, useNativeDriver: true }),
       ]),
     );
     anim.start();

@@ -453,6 +453,31 @@ export function feedPostToNearbyPost(
   };
 }
 
+export type HeatmapPoint = {
+  userId: string;
+  latitude: number;
+  longitude: number;
+};
+
+export async function getNearbyHeatPoints(
+  lat: number,
+  lng: number,
+  radius = 25,
+): Promise<HeatmapPoint[]> {
+  const query = `?lat=${lat}&lng=${lng}&radius=${radius}`;
+  const response = await requestJson<ApiResponse<unknown[]>>(`/posts/nearby/heatmap${query}`, 'GET');
+  return (response.data ?? [])
+    .map(item => {
+      const raw = item as Record<string, unknown>;
+      const latitude = Number(raw.latitude ?? raw.Latitude);
+      const longitude = Number(raw.longitude ?? raw.Longitude);
+      const userId = String(raw.userId ?? raw.UserId ?? '');
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { userId, latitude, longitude };
+    })
+    .filter((point): point is HeatmapPoint => point != null);
+}
+
 export async function getNearbyPosts(
   lat: number,
   lng: number,
@@ -477,6 +502,11 @@ export async function getFeed(): Promise<FeedPost[]> {
 
 export async function getMyPosts(): Promise<FeedPost[]> {
   const response = await requestJson<ApiResponse<unknown[]>>('/posts/me', 'GET');
+  return normalizeFeedPosts(response.data ?? []);
+}
+
+export async function getArchivedPosts(): Promise<FeedPost[]> {
+  const response = await requestJson<ApiResponse<unknown[]>>('/posts/archive', 'GET');
   return normalizeFeedPosts(response.data ?? []);
 }
 

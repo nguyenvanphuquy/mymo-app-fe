@@ -600,7 +600,10 @@ function AppInner() {
             }}
           />
         )}
-        {tab === 'map' && (
+        <View
+          style={tab === 'map' ? styles.tabPane : styles.tabPaneHidden}
+          pointerEvents={tab === 'map' ? 'auto' : 'none'}
+        >
           <MapScreen
             locationGranted={!!locationGranted}
             vibeId={mapVibe}
@@ -630,7 +633,7 @@ function AppInner() {
               Toast.show({ type: 'info', text1: t('loc.incognitoOff'), text2: t('loc.incognitoOffDesc') });
             }}
           />
-        )}
+        </View>
         {tab === 'friends' && (
           <FriendsScreen
             onFriendTap={setSelectedFriend}
@@ -915,6 +918,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    position: 'relative',
+  },
+  tabPane: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  tabPaneHidden: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+    ...Platform.select({
+      web: { visibility: 'hidden' as any },
+      default: { opacity: 0 },
+    }),
   },
   navWrap: {
     position: 'absolute',

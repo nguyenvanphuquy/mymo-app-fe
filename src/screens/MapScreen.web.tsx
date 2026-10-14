@@ -16,7 +16,7 @@ import type { Friend } from '../constants/data';
 import FriendSheet from '../components/FriendSheet';
 import PostSheet from '../components/PostSheet';
 import PlaceSheet from '../components/PlaceSheet';
-import { toPostView, normalizeNearbyPost, type NearbyPost, type PostView } from '../services/postApi';
+import { toPostView, normalizeNearbyPost, type HeatmapPoint, type NearbyPost, type PostView } from '../services/postApi';
 import { loadMapNearbyPosts } from '../utils/loadMapNearbyPosts';
 import { removeMapNearbyPost, upsertMapNearbyPost } from '../utils/mapRealtime';
 import { isPremiumActive, syncPremiumPlanFromServer } from '../utils/premiumStorage';
@@ -28,7 +28,6 @@ import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
 import { getMymoMapStyle, MAP_THEME_UI, mapThemeLabel, nextMapTheme, type MapTheme } from '../utils/mapStyles';
-import MapAtmosphere from '../components/MapAtmosphere';
 import MapWeather from '../components/MapWeather';
 import MapLocateButton from '../components/MapLocateButton';
 import MapSearchDropdown from '../components/MapSearchDropdown';
@@ -51,11 +50,67 @@ import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
 import { getUserProfile } from '../services/userApi';
 import { ensureModelViewerLoaded } from '../components/Model3DViewer';
 import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
+import { buildHeatGeoJSON } from '../utils/mapHeatmap';
+import { loadMapHeatPoints } from '../utils/loadMapHeatPoints';
 
 // ─── Mapbox GL JS (web-only) ──────────────────────────────────────────────────
 import mapboxgl from 'mapbox-gl';
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
+
+function heatBlobSize(count: number, zoom: number): number {
+  const t = Math.max(0, Math.min(1, (zoom - 6) / 10));
+  return Math.round(14 + count * 3 + t * 20);
+}
+
+function createHeatBlobEl(count: number, zoom: number): HTMLDivElement {
+  const el = document.createElement('div');
+  const size = heatBlobSize(count, zoom);
+  const t = Math.max(0, Math.min(1, (zoom - 6) / 10));
+  const core = (0.16 + t * 0.2).toFixed(2);
+  const mid = (0.07 + t * 0.1).toFixed(2);
+  el.style.cssText = `
+    width:${size}px;height:${size}px;
+    border-radius:50%;
+    pointer-events:none;
+    background:radial-gradient(circle,
+      rgba(232,80,160,${core}) 0%,
+      rgba(218,112,214,${mid}) 48%,
+      rgba(218,112,214,0.03) 72%,
+      transparent 80%);
+  `;
+  return el;
+}
+
+function heatFeaturesSig(
+  features: Array<{ geometry: { coordinates: [number, number] }; properties: { count: number } }>,
+  visible: boolean,
+  zoom: number,
+) {
+  return `${visible}:${Math.round(zoom)}:${features.map(f => `${f.geometry.coordinates[0]},${f.geometry.coordinates[1]},${f.properties.count}`).join('|')}`;
+}
+
+function syncHeatMarkers(
+  map: mapboxgl.Map,
+  markers: mapboxgl.Marker[],
+  features: Array<{ geometry: { coordinates: [number, number] }; properties: { count: number } }>,
+  visible: boolean,
+  zoom: number,
+) {
+  markers.forEach(marker => marker.remove());
+  markers.length = 0;
+  if (!visible) return;
+  features.forEach(feature => {
+    markers.push(
+      new mapboxgl.Marker({
+        element: createHeatBlobEl(feature.properties.count, zoom),
+        anchor: 'center',
+      })
+        .setLngLat(feature.geometry.coordinates)
+        .addTo(map),
+    );
+  });
+}
 
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
@@ -210,7 +265,6 @@ function createPlaceMarkerEl(
       height:${place.isOwnedByCurrentUser ? 92 : 76}px;
       display:block;
       position:relative; z-index:1; visibility:visible; opacity:1;
-      filter:drop-shadow(0 7px 8px rgba(77,48,156,0.35));
       pointer-events:auto; touch-action:none; cursor:grab;
     `;
     // Rotate the model without also dragging the map or opening the place.
@@ -315,13 +369,15 @@ export default function MapScreen({
     { id: 'vibe', label: t('map.filterVibe') },
   ] as const;
   const [contentFilter, setContentFilter] = useState<MapContentFilter>('all');
+  const [showHeatmap, setShowHeatmap] = useState(true);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const userCoordsRef = useRef(userCoords);
   userCoordsRef.current = userCoords;
   const coordsBucket = userCoords
-    ? `${userCoords.lat.toFixed(3)},${userCoords.lng.toFixed(3)}`
+    ? `${userCoords.lat.toFixed(2)},${userCoords.lng.toFixed(2)}`
     : 'none';
   const [nearbyPosts, setNearbyPosts] = useState<NearbyPost[]>([]);
+  const [heatPoints, setHeatPoints] = useState<HeatmapPoint[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<PlaceSummary[]>([]);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
@@ -348,6 +404,12 @@ export default function MapScreen({
   const hasCenteredOnUserRef = useRef(false);
   const hasCenteredOnOwnedPlaceRef = useRef(false);
   const skipInitialThemeRef = useRef(true);
+  const postMarkerSigRef = useRef('');
+  const placeMarkerSigRef = useRef('');
+  const friendMarkerSigRef = useRef('');
+  const heatBlobSigRef = useRef('');
+  const heatBlobMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
   const MAP_CONTAINER_ID = 'mymo-mapbox-container';
 
   const mapCenter: [number, number] = userCoords
@@ -383,29 +445,25 @@ export default function MapScreen({
     }
     if (typeof navigator === 'undefined' || !navigator.geolocation) return;
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setUserCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-      },
-      () => {},
-      { enableHighAccuracy: false, timeout: 10000 },
-    );
+    const applyCoords = (lat: number, lng: number) => {
+      setUserCoords(prev => {
+        if (prev && Math.abs(prev.lat - lat) < 0.00008 && Math.abs(prev.lng - lng) < 0.00008) {
+          return prev;
+        }
+        return { lat, lng };
+      });
+    };
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setUserCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-      },
-      () => {},
-      { enableHighAccuracy: false, maximumAge: 30000, timeout: 10000 },
-    );
-
-    return () => navigator.geolocation.clearWatch(watchId);
+    const readOnce = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => applyCoords(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 10000 },
+      );
+    };
+    readOnce();
+    const timer = setInterval(readOnce, 60_000);
+    return () => clearInterval(timer);
   }, [locationGranted]);
 
   // ── Share own location with server (null = hide from friends' maps) ──────
@@ -424,7 +482,13 @@ export default function MapScreen({
     const lng = userCoordsRef.current?.lng;
     try {
       const locations = await getFriendsLocations();
-      setFriendPins(locations.map(loc => friendLocationToMapPin(loc, lat, lng)));
+      const next = locations.map(loc => friendLocationToMapPin(loc, lat, lng));
+      setFriendPins(prev => (
+        prev.length === next.length
+        && prev.every((pin, i) => pin.id === next[i].id && pin.lat === next[i].lat && pin.lng === next[i].lng)
+          ? prev
+          : next
+      ));
     } catch {
       setFriendPins([]);
     }
@@ -449,9 +513,32 @@ export default function MapScreen({
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
       const posts = await loadMapNearbyPosts(lat, lng);
-      setNearbyPosts(posts);
+      setNearbyPosts(prev => (
+        prev.length === posts.length && prev.every((item, i) => item.postId === posts[i].postId)
+          ? prev
+          : posts
+      ));
     } catch {
       setNearbyPosts([]);
+    }
+  }, []);
+
+  const fetchHeatPoints = useCallback(async () => {
+    const lat = userCoordsRef.current?.lat ?? DEFAULT_CENTER[1];
+    const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
+    try {
+      const points = await loadMapHeatPoints(lat, lng);
+      setHeatPoints(prev => (
+        prev.length === points.length
+        && prev.every((item, i) =>
+          item.latitude === points[i].latitude
+          && item.longitude === points[i].longitude
+          && item.userId === points[i].userId)
+          ? prev
+          : points
+      ));
+    } catch {
+      setHeatPoints([]);
     }
   }, []);
 
@@ -460,7 +547,11 @@ export default function MapScreen({
     const lng = userCoordsRef.current?.lng ?? DEFAULT_CENTER[0];
     try {
       const places = await getNearbyPlaces(lat, lng, vibeId ? 40 : 20, vibeId ?? undefined);
-      setNearbyPlaces(places);
+      setNearbyPlaces(prev => (
+        prev.length === places.length && prev.every((item, i) => item.placeId === places[i].placeId)
+          ? prev
+          : places
+      ));
     } catch {
       setNearbyPlaces([]);
     }
@@ -469,20 +560,23 @@ export default function MapScreen({
   useEffect(() => {
     if (!isActive) return;
     fetchNearbyPosts();
+    fetchHeatPoints();
     fetchNearbyPlaces();
     const subCreated = DeviceEventEmitter.addListener('post:created', () => {
       fetchNearbyPosts();
+      fetchHeatPoints();
       fetchNearbyPlaces();
     });
     const subDeleted = DeviceEventEmitter.addListener('post:deleted', () => {
       fetchNearbyPosts();
+      fetchHeatPoints();
       fetchNearbyPlaces();
     });
     return () => {
       subCreated.remove();
       subDeleted.remove();
     };
-  }, [isActive, coordsBucket, fetchNearbyPosts, fetchNearbyPlaces]);
+  }, [isActive, coordsBucket, fetchNearbyPosts, fetchHeatPoints, fetchNearbyPlaces]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -598,6 +692,24 @@ export default function MapScreen({
     [spreadMapPosts, visiblePlaces, show3DModels],
   );
 
+  const heatGeoJSON = useMemo(() => {
+    const merged = new Map<string, { latitude: number; longitude: number; userId?: string }>();
+    [...heatPoints, ...nearbyPosts].forEach(point => {
+      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
+      const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)},${(point.userId || '').toLowerCase()}`;
+      merged.set(key, point);
+    });
+    const source = [...merged.values()];
+    const posts = contentFilter === 'friends'
+      ? source.filter(point => friendIds.has((point.userId || '').toLowerCase()))
+      : source;
+    return buildHeatGeoJSON(posts);
+  }, [contentFilter, friendIds, heatPoints, nearbyPosts]);
+  const heatGeoJSONRef = useRef(heatGeoJSON);
+  heatGeoJSONRef.current = heatGeoJSON;
+  const showHeatmapRef = useRef(showHeatmap);
+  showHeatmapRef.current = showHeatmap;
+
   useEffect(() => {
     if (showDetailPins) return;
     setSelectedPlace(null);
@@ -620,17 +732,39 @@ export default function MapScreen({
     const link = document.createElement('link');
     link.id = 'mapbox-gl-css';
     link.rel = 'stylesheet';
-    link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css';
+    link.href = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css';
     link.onload = () => setCssLoaded(true);
     link.onerror = () => setCssLoaded(true); // Fallback to avoid blocking completely
     document.head.appendChild(link);
+    if (!document.getElementById('mymo-mapbox-stable')) {
+      const stable = document.createElement('style');
+      stable.id = 'mymo-mapbox-stable';
+      stable.textContent = `
+        #mymo-mapbox-container,
+        #mymo-mapbox-container .mapboxgl-map,
+        #mymo-mapbox-container .mapboxgl-canvas-container,
+        #mymo-mapbox-container canvas {
+          transition: none !important;
+          animation: none !important;
+        }
+      `;
+      document.head.appendChild(stable);
+    }
   }, []);
 
   // ── Init map after CSS is loaded ───────────────────────────────────────────
   useEffect(() => {
     if (!cssLoaded) return;
-    const container = document.getElementById(MAP_CONTAINER_ID);
-    if (!container || mapRef.current) return;
+    const container = mapHostRef.current || document.getElementById(MAP_CONTAINER_ID);
+    if (!container) return;
+
+    const reused = (container as HTMLElement & { __mymoMap?: mapboxgl.Map }).__mymoMap;
+    if (reused) {
+      mapRef.current = reused;
+      setMapReady(true);
+      return;
+    }
+    if (mapRef.current) return;
 
     const map = new mapboxgl.Map({
       container,
@@ -639,66 +773,48 @@ export default function MapScreen({
       zoom: DEFAULT_ZOOM,
       attributionControl: false,
       logoPosition: 'bottom-left',
+      fadeDuration: 0,
+      refreshExpiredTiles: false,
+      trackResize: false,
+      antialias: false,
+      pitchWithRotate: false,
+      dragRotate: false,
+      touchPitch: false,
     });
 
     mapRef.current = map;
+    (container as HTMLElement & { __mymoMap?: mapboxgl.Map }).__mymoMap = map;
 
-    const syncZoom = () => setMapZoom(map.getZoom());
-    map.on('zoom', syncZoom);
+    const syncZoom = () => {
+      const next = shownMapZoom(map.getZoom());
+      setMapZoom(prev => (prev === next ? prev : next));
+    };
+    map.on('zoomend', syncZoom);
     map.on('moveend', syncZoom);
     syncZoom();
 
-    let alive = true;
-    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     map.on('load', () => {
-      if (!alive) return;
-      map.resize();
-      resizeTimer = setTimeout(() => {
-        if (!alive) return;
-        try {
-          map.resize();
-        } catch {
-          /* Map was removed before the delayed resize. */
-        }
-      }, 150);
-
-      // ── My location marker ──────────────────────────────────────────────
-      const myEl = document.createElement('div');
-      myEl.style.cssText = `
-        width:32px; height:32px; border-radius:50%;
-        display:flex; align-items:center; justify-content:center;
-        background:rgba(239,68,68,0.2); position:relative;
-      `;
-      const myDot = document.createElement('div');
-      myDot.style.cssText = `
-        width:16px; height:16px; border-radius:50%;
-        background:#EF4444; border:3px solid #fff;
-        box-shadow:0 4px 16px rgba(124,91,255,0.4);
-      `;
-      myEl.appendChild(myDot);
-      userMarkerRef.current = new mapboxgl.Marker({ element: myEl, anchor: 'center' })
-        .setLngLat(mapCenter)
-        .addTo(map);
-
+      if (!userMarkerRef.current) {
+        const myEl = document.createElement('div');
+        myEl.style.cssText = `
+          width:32px; height:32px; border-radius:50%;
+          display:flex; align-items:center; justify-content:center;
+          background:rgba(239,68,68,0.2); position:relative;
+        `;
+        const myDot = document.createElement('div');
+        myDot.style.cssText = `
+          width:16px; height:16px; border-radius:50%;
+          background:#EF4444; border:3px solid #fff;
+          box-shadow:0 4px 16px rgba(124,91,255,0.4);
+        `;
+        myEl.appendChild(myDot);
+        userMarkerRef.current = new mapboxgl.Marker({ element: myEl, anchor: 'center' })
+          .setLngLat(mapCenter)
+          .addTo(map);
+      }
       setMapReady(true);
     });
-
-    return () => {
-      alive = false;
-      if (resizeTimer) clearTimeout(resizeTimer);
-      map.off('zoom', syncZoom);
-      map.off('moveend', syncZoom);
-      map.remove();
-      mapRef.current = null;
-      markersRef.current = [];
-      postMarkersRef.current = [];
-      placeMarkersRef.current.forEach(m => m.remove());
-      placeMarkersRef.current = [];
-      searchMarkerRef.current?.remove();
-      searchMarkerRef.current = null;
-      userMarkerRef.current = null;
-      setMapReady(false);
-    };
+    // Keep the WebGL map. Destroying it on React effect re-runs made the screen flash.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cssLoaded]);
 
@@ -715,14 +831,41 @@ export default function MapScreen({
     map.setStyle(getMymoMapStyle(mapTheme) as mapboxgl.Style);
     map.once('style.load', () => {
       map.jumpTo({ center, zoom });
-      map.resize();
+      syncHeatMarkers(
+        map,
+        heatBlobMarkersRef.current,
+        heatGeoJSONRef.current.features,
+        showHeatmapRef.current,
+        zoom,
+      );
+      heatBlobSigRef.current = heatFeaturesSig(
+        heatGeoJSONRef.current.features,
+        showHeatmapRef.current,
+        zoom,
+      );
     });
   }, [mapTheme, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const zoom = map.getZoom();
+    const sig = heatFeaturesSig(heatGeoJSON.features, showHeatmap, zoom);
+    if (sig === heatBlobSigRef.current) return;
+    heatBlobSigRef.current = sig;
+    syncHeatMarkers(map, heatBlobMarkersRef.current, heatGeoJSON.features, showHeatmap, zoom);
+  }, [heatGeoJSON, showHeatmap, mapReady, mapZoom]);
 
   // ── Sync post markers ──────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+    const sig = displayedMapPosts
+      .map(({ post, latitude, longitude, markerOffsetX = 0, markerOffsetY = 0 }) =>
+        `${post.postId}:${latitude.toFixed(5)}:${longitude.toFixed(5)}:${markerOffsetX}:${markerOffsetY}`)
+      .join('|');
+    if (sig === postMarkerSigRef.current) return;
+    postMarkerSigRef.current = sig;
 
     postMarkersRef.current.forEach(m => m.remove());
     postMarkersRef.current = [];
@@ -745,6 +888,12 @@ export default function MapScreen({
       postMarkersRef.current.push(marker);
     });
   }, [displayedMapPosts, mapReady, myUserId]);
+
+  useEffect(() => {
+    if (!isActive || !mapRef.current || !mapReady) return;
+    const frame = requestAnimationFrame(() => mapRef.current?.resize());
+    return () => cancelAnimationFrame(frame);
+  }, [isActive, mapReady]);
 
   // ── Default: always center on my location when opening the map ───────────
   useEffect(() => {
@@ -800,10 +949,16 @@ export default function MapScreen({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    const canShow = showBusinessPins || filteredPlaces.some(place => place.isOwnedByCurrentUser);
+    const sig = canShow
+      ? `${show3DModels}:${visiblePlaces.map(place => place.placeId).join('|')}`
+      : '';
+    if (sig === placeMarkerSigRef.current) return;
+    placeMarkerSigRef.current = sig;
+
     placeMarkersRef.current.forEach(m => m.remove());
     placeMarkersRef.current = [];
-
-    if (!showBusinessPins && !filteredPlaces.some(place => place.isOwnedByCurrentUser)) return;
+    if (!canShow) return;
 
     visiblePlaces.forEach(place => {
       const el = createPlaceMarkerEl(place, () => {
@@ -821,6 +976,10 @@ export default function MapScreen({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+
+    const sig = visibleFriendPins.map(f => `${f.id}:${f.lng.toFixed(5)}:${f.lat.toFixed(5)}`).join('|');
+    if (sig === friendMarkerSigRef.current) return;
+    friendMarkerSigRef.current = sig;
 
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
@@ -877,16 +1036,17 @@ export default function MapScreen({
         duration: 1000,
       });
     }
-  }, [selectedFriend, visibleFriendPins]);
+  }, [selectedFriend?.id]);
 
   // ── Recenter ───────────────────────────────────────────────────────────────
   const recenter = useCallback(() => {
     mapRef.current?.flyTo({ center: mapCenter, zoom: DEFAULT_ZOOM, duration: 800 });
     fetchNearbyPosts();
+    fetchHeatPoints();
     fetchNearbyPlaces();
     fetchFriendLocations();
     Toast.show({ type: 'success', text1: t('map.centered') });
-  }, [t, mapCenter, fetchNearbyPosts, fetchNearbyPlaces, fetchFriendLocations]);
+  }, [t, mapCenter, fetchNearbyPosts, fetchHeatPoints, fetchNearbyPlaces, fetchFriendLocations]);
 
   // ── Zoom ───────────────────────────────────────────────────────────────────
   const zoomIn  = useCallback(() => mapRef.current?.zoomIn(), []);
@@ -916,9 +1076,18 @@ export default function MapScreen({
   return (
     <View style={styles.container}>
       {/* ── Real Mapbox GL map container ── */}
-      <View nativeID={MAP_CONTAINER_ID} style={styles.map} />
+      <div
+        ref={mapHostRef}
+        id={MAP_CONTAINER_ID}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+        }}
+      />
 
-      <MapAtmosphere theme={mapTheme} />
       <MapWeather
         lat={userCoords?.lat ?? DEFAULT_CENTER[1]}
         lng={userCoords?.lng ?? DEFAULT_CENTER[0]}
@@ -1079,6 +1248,33 @@ export default function MapScreen({
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setShowHeatmap(on => !on)}
+          >
+            {showHeatmap ? (
+              <LinearGradient
+                colors={[...themeUi.chipActive]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.filterChipActive}
+              >
+                <Text style={styles.filterChipActiveText}>{t('map.filterHeat')} 🔥</Text>
+              </LinearGradient>
+            ) : (
+              <View
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: themeUi.chipInactiveBg,
+                    borderColor: themeUi.chipInactiveBorder,
+                  },
+                ]}
+              >
+                <Text style={styles.filterChipText}>{t('map.filterHeat')}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </ScrollView>
 
         {(!locationGranted || incognito) && (
@@ -1198,19 +1394,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF9FF',
     overflow: 'hidden',
-    ...Platform.select({
-      web: {
-        maxWidth: 500,
-        width: '100%',
-        marginHorizontal: 'auto',
-        borderLeftWidth: 1,
-        borderRightWidth: 1,
-        borderColor: '#F2DAF0',
-        position: 'relative',
-        boxShadow: '0 8px 30px rgba(124, 91, 255, 0.06)',
-      },
-      default: {},
-    }),
+    position: 'relative',
   },
   map: {
     position: 'absolute',

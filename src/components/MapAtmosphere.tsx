@@ -13,6 +13,7 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
     const useNativeDriver = Platform.OS !== 'web';
     const anim = Animated.loop(
       Animated.sequence([
@@ -69,27 +70,30 @@ export default function MapAtmosphere({ theme }: MapAtmosphereProps) {
         />
       ))}
 
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: shimmerOpacity }]}>
-        <LinearGradient
-          colors={[...ui.shimmer]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-
-      <SparkleField
-        count={Platform.OS === 'web' ? 6 : 10}
-        size={7}
-        color={ui.sparkle}
-        accentColor={ui.sparkleAccent}
-      />
-      <SparkleField
-        count={Platform.OS === 'web' ? 3 : 5}
-        size={11}
-        color={ui.sparkleAccent}
-        accentColor="#FFFFFF"
-      />
+      {Platform.OS === 'web' ? null : (
+        <>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: shimmerOpacity }]}>
+            <LinearGradient
+              colors={[...ui.shimmer]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+          </Animated.View>
+          <SparkleField
+            count={10}
+            size={7}
+            color={ui.sparkle}
+            accentColor={ui.sparkleAccent}
+          />
+          <SparkleField
+            count={5}
+            size={11}
+            color={ui.sparkleAccent}
+            accentColor="#FFFFFF"
+          />
+        </>
+      )}
     </View>
   );
 }

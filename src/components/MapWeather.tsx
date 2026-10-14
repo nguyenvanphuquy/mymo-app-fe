@@ -46,7 +46,7 @@ export default function MapWeather({ lat, lng, cardBg, chipBg, chipBorder, iconC
 
   return (
     <>
-      {kind ? <WeatherEffects kind={kind} isDay={isDay} /> : null}
+      {kind && Platform.OS !== 'web' ? <WeatherEffects kind={kind} isDay={isDay} /> : null}
       <View style={styles.weatherWrap} pointerEvents="none">
         <View style={[styles.weatherCard, { backgroundColor: cardBg }]}>
           <Ionicons name={iconFor(kind, isDay)} size={16} color={iconColor} />
