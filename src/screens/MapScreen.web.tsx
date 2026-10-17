@@ -24,6 +24,7 @@ import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
 import { separatePostsFrom3DPlaces, spreadOverlappingMarkers } from '../utils/mapMarkerSpread';
 import { getNearbyPlaces, getPlacePromotions, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
+import { useRecordMapImpressions } from '../hooks/useRecordMapImpressions';
 import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
@@ -44,12 +45,15 @@ import {
 } from '../constants/mapbox';
 import { vibeById, type VibeId } from '../constants/vibes';
 import { avatarUri } from '../constants/defaultAvatar';
+import { isMapImage, mapCharacterEmoji } from '../constants/mapCharacters';
+import { getUserProfile } from '../services/userApi';
+import { hasActivePremium } from '../utils/premiumStorage';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import Toast from 'react-native-toast-message';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
-import { getUserProfile } from '../services/userApi';
 import { ensureModelViewerLoaded } from '../components/Model3DViewer';
 import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
+import { placesForMarkerPaint, sortPlacesByPromotion } from '../utils/mapPlacePromotion';
 import { buildHeatGeoJSON } from '../utils/mapHeatmap';
 import { loadMapHeatPoints } from '../utils/loadMapHeatPoints';
 
@@ -112,6 +116,42 @@ function syncHeatMarkers(
   });
 }
 
+function paintUserPin(el: HTMLElement, marker: string | null) {
+  el.innerHTML = '';
+  const emoji = mapCharacterEmoji(marker);
+  if (emoji || isMapImage(marker)) {
+    el.style.cssText = `
+      width:48px; height:48px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      background:#fff; border:3px solid #F472B6;
+      box-shadow:0 4px 16px rgba(244,114,182,0.45); overflow:hidden;
+      font-size:26px; line-height:1;
+    `;
+    if (emoji) {
+      el.textContent = emoji;
+      return;
+    }
+    const img = document.createElement('img');
+    img.src = marker!;
+    img.alt = '';
+    img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+    el.appendChild(img);
+    return;
+  }
+  el.style.cssText = `
+    width:32px; height:32px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(239,68,68,0.2); position:relative;
+  `;
+  const myDot = document.createElement('div');
+  myDot.style.cssText = `
+    width:16px; height:16px; border-radius:50%;
+    background:#EF4444; border:3px solid #fff;
+    box-shadow:0 4px 16px rgba(124,91,255,0.4);
+  `;
+  el.appendChild(myDot);
+}
+
 // ─── Default center: Tòa S1.07, Vinhomes Grand Park, Quận 9 ──────────────────
 const DEFAULT_CENTER: [number, number] = [106.8376, 10.8382];
 const DEFAULT_ZOOM = 14.5;
@@ -149,10 +189,22 @@ function createFriendMarkerEl(friend: MapFriendPin, onTap: () => void): HTMLDivE
   `;
 
   const img = document.createElement('img');
-  img.src = avatarUri(friend.avatarUrl);
+  const emoji = mapCharacterEmoji(friend.mapMarker);
+  if (isMapImage(friend.mapMarker)) {
+    img.src = friend.mapMarker!;
+  } else if (!emoji) {
+    img.src = avatarUri(friend.avatarUrl);
+  }
   img.alt = friend.name;
   img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
-  ring.appendChild(img);
+  if (emoji) {
+    const face = document.createElement('span');
+    face.textContent = emoji;
+    face.style.cssText = 'font-size:26px; line-height:1;';
+    ring.appendChild(face);
+  } else {
+    ring.appendChild(img);
+  }
 
   if (friend.status === 'active') {
     const dot = document.createElement('div');
@@ -185,8 +237,10 @@ function createPlaceMarkerEl(
   show3DModel: boolean,
 ): HTMLDivElement {
   const rendersModel = show3DModel && !!place.model3DUrl;
+  const featured = place.adPackageId === 'featured_venue';
+  const sponsored = !!place.adPackageId && !featured;
   const el = document.createElement('div');
-  el.style.cssText = `display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:${rendersModel ? 12 : place.isOwnedByCurrentUser ? 9 : 4}; max-width:120px;`;
+  el.style.cssText = `display:flex; flex-direction:column; align-items:center; cursor:pointer; z-index:${featured ? 24 : sponsored ? 16 : rendersModel ? 12 : place.isOwnedByCurrentUser ? 9 : 4}; max-width:120px;`;
 
   const vibes = document.createElement('div');
   vibes.style.cssText = `
@@ -245,6 +299,23 @@ function createPlaceMarkerEl(
   }
 
   el.appendChild(vibes);
+
+  if (featured) {
+    const star = document.createElement('div');
+    star.textContent = '★';
+    star.title = 'Nổi bật';
+    star.style.cssText = `
+      width:36px; height:36px; border-radius:18px; margin-bottom:2px;
+      display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg,#F6C445,#E39B1A);
+      color:#fff; font-size:18px; line-height:1; border:2px solid #fff;
+      box-shadow:0 4px 14px rgba(227,155,26,0.45);
+    `;
+    el.appendChild(star);
+    chip.style.borderColor = '#F6C445';
+  } else if (sponsored) {
+    chip.style.borderColor = '#E39BDE';
+  }
 
   if (rendersModel && place.model3DUrl) {
     const model = document.createElement('model-viewer');
@@ -313,7 +384,7 @@ function createPostMarkerEl(post: NearbyPost, onTap: () => void): HTMLDivElement
     box-shadow:0 2px 8px rgba(124,91,255,0.12);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center;
   `;
-  nameTag.textContent = post.displayName;
+  nameTag.textContent = `${post.authorIsPremium && !post.isAnonymous ? '💎 ' : ''}${post.displayName}`;
 
   el.appendChild(thumbWrap);
   el.appendChild(nameTag);
@@ -382,6 +453,7 @@ export default function MapScreen({
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [myMapMarker, setMyMapMarker] = useState<string | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
   const [eventPlaceIds, setEventPlaceIds] = useState<Set<string>>(new Set());
@@ -422,8 +494,16 @@ export default function MapScreen({
       .catch(() => setMyUserId(null));
 
     getUserProfile()
-      .then(profile => setMyUserId(profile.id || null))
+      .then(async profile => {
+        setMyUserId(profile.id || null);
+        const premium = await hasActivePremium();
+        setMyMapMarker(premium ? (profile.mapMarker ?? null) : null);
+      })
       .catch(() => {});
+    const sub = DeviceEventEmitter.addListener('map-marker:updated', (marker: string | null) => {
+      setMyMapMarker(marker);
+    });
+    return () => sub.remove();
   }, []);
 
   const searchProximity = userCoords
@@ -654,7 +734,7 @@ export default function MapScreen({
             (p.address || '').toLowerCase().includes(searchLower) ||
             (p.city || '').toLowerCase().includes(searchLower))
         : vibePlaces;
-      return dedupeMapPlaces(searchedPlaces);
+      return sortPlacesByPromotion(dedupeMapPlaces(searchedPlaces));
     },
     [nearbyPlaces, vibeId, searchLower, contentFilter, eventPlaceIds],
   );
@@ -679,6 +759,7 @@ export default function MapScreen({
       place.isOwnedByCurrentUser || showBusinessPins),
     [filteredPlaces, showBusinessPins],
   );
+  useRecordMapImpressions(visiblePlaces, isActive);
 
   const spreadMapPosts = useMemo(
     () => spreadOverlappingMarkers(visiblePosts),
@@ -692,19 +773,10 @@ export default function MapScreen({
     [spreadMapPosts, visiblePlaces, show3DModels],
   );
 
-  const heatGeoJSON = useMemo(() => {
-    const merged = new Map<string, { latitude: number; longitude: number; userId?: string }>();
-    [...heatPoints, ...nearbyPosts].forEach(point => {
-      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
-      const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)},${(point.userId || '').toLowerCase()}`;
-      merged.set(key, point);
-    });
-    const source = [...merged.values()];
-    const posts = contentFilter === 'friends'
-      ? source.filter(point => friendIds.has((point.userId || '').toLowerCase()))
-      : source;
-    return buildHeatGeoJSON(posts);
-  }, [contentFilter, friendIds, heatPoints, nearbyPosts]);
+  const heatGeoJSON = useMemo(
+    () => buildHeatGeoJSON(heatPoints),
+    [heatPoints],
+  );
   const heatGeoJSONRef = useRef(heatGeoJSON);
   heatGeoJSONRef.current = heatGeoJSON;
   const showHeatmapRef = useRef(showHeatmap);
@@ -796,18 +868,7 @@ export default function MapScreen({
     map.on('load', () => {
       if (!userMarkerRef.current) {
         const myEl = document.createElement('div');
-        myEl.style.cssText = `
-          width:32px; height:32px; border-radius:50%;
-          display:flex; align-items:center; justify-content:center;
-          background:rgba(239,68,68,0.2); position:relative;
-        `;
-        const myDot = document.createElement('div');
-        myDot.style.cssText = `
-          width:16px; height:16px; border-radius:50%;
-          background:#EF4444; border:3px solid #fff;
-          box-shadow:0 4px 16px rgba(124,91,255,0.4);
-        `;
-        myEl.appendChild(myDot);
+        paintUserPin(myEl, null);
         userMarkerRef.current = new mapboxgl.Marker({ element: myEl, anchor: 'center' })
           .setLngLat(mapCenter)
           .addTo(map);
@@ -951,7 +1012,7 @@ export default function MapScreen({
 
     const canShow = showBusinessPins || filteredPlaces.some(place => place.isOwnedByCurrentUser);
     const sig = canShow
-      ? `${show3DModels}:${visiblePlaces.map(place => place.placeId).join('|')}`
+      ? `${show3DModels}:${visiblePlaces.map(place => `${place.placeId}:${place.adPackageId ?? ''}`).join('|')}`
       : '';
     if (sig === placeMarkerSigRef.current) return;
     placeMarkerSigRef.current = sig;
@@ -960,7 +1021,7 @@ export default function MapScreen({
     placeMarkersRef.current = [];
     if (!canShow) return;
 
-    visiblePlaces.forEach(place => {
+    placesForMarkerPaint(visiblePlaces).forEach(place => {
       const el = createPlaceMarkerEl(place, () => {
         setSelectedPost(null);
         setSelectedPlace(place);
@@ -977,7 +1038,7 @@ export default function MapScreen({
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const sig = visibleFriendPins.map(f => `${f.id}:${f.lng.toFixed(5)}:${f.lat.toFixed(5)}`).join('|');
+    const sig = visibleFriendPins.map(f => `${f.id}:${f.lng.toFixed(5)}:${f.lat.toFixed(5)}:${f.mapMarker ?? ''}`).join('|');
     if (sig === friendMarkerSigRef.current) return;
     friendMarkerSigRef.current = sig;
 
@@ -1017,6 +1078,12 @@ export default function MapScreen({
     if (!userMarkerRef.current || !userCoords) return;
     userMarkerRef.current.setLngLat([userCoords.lng, userCoords.lat]);
   }, [userCoords]);
+
+  useEffect(() => {
+    const el = userMarkerRef.current?.getElement() as HTMLElement | undefined;
+    if (!el) return;
+    paintUserPin(el, myMapMarker);
+  }, [myMapMarker, mapReady]);
 
   // ── Show/hide user pin based on permission ─────────────────────────────────
   useEffect(() => {

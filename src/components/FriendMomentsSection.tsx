@@ -231,6 +231,7 @@ export default function FriendMomentsSection({
       <FriendStoryViewer
         groups={visibleGroups}
         initialGroupIndex={selectedGroupIndex}
+        viewerUserId={currentUser?.userId}
         onStoryViewed={postId => {
           if (currentUser?.userId) {
             void markStoryViewed(currentUser.userId, postId);

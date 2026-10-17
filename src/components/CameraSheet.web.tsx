@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
 import Toast from 'react-native-toast-message';
@@ -27,8 +28,10 @@ import { isContentRejected } from '../utils/contentRejected';
 import { pickRandomAlias } from '../utils/anonymousAlias';
 import { hasActivePremium } from '../utils/premiumStorage';
 import { ensureLocationForPosting } from '../utils/ensureLocation';
+import MomentMedia from './MomentMedia';
 
 const CAPTION_MAX = 150;
+const VIDEO_MAX_SECONDS = 15;
 const FACE_LEVELS: { id: FaceBeautyLevel; labelKey: string }[] = [
   { id: 0, labelKey: 'cam.faceOff' },
   { id: 1, labelKey: 'cam.faceLight' },
@@ -54,6 +57,15 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
   const [capturing, setCapturing] = useState(false);
   const [captured, setCaptured] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
+  const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
+  const [canUploadLibrary, setCanUploadLibrary] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [uploadMeta, setUploadMeta] = useState<{ name: string; type: string } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [posting, setPosting] = useState(false);
   const [nearestPlace, setNearestPlace] = useState<PlaceResult | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -75,6 +87,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
   const [deviceIndex, setDeviceIndex] = useState(0);
   const slideAnim = useRef(new Animated.Value(800)).current;
   const videoHostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    void hasActivePremium().then(setCanUploadLibrary);
+  }, []);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -377,6 +393,8 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
       ctx.putImageData(frame, 0, 0);
 
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setUploadMeta(null);
+      setMediaKind('image');
       setSelectedImageUri(dataUrl);
       setCaptured(true);
     } catch (error) {
@@ -390,9 +408,150 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
     }
   };
 
+  const clearRecordTimer = () => {
+    if (recordTimer.current) {
+      clearInterval(recordTimer.current);
+      recordTimer.current = null;
+    }
+  };
+
+  const chooseMode = async (mode: 'photo' | 'video') => {
+    if (mode === 'video' && !(await hasActivePremium())) {
+      Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.moments') });
+      return;
+    }
+    setCaptureMode(mode);
+  };
+
+  const startVideo = async () => {
+    const stream = streamRef.current || (videoRef.current?.srcObject as MediaStream | null);
+    if (!stream || !cameraReady || capturing || recording) return;
+    if (!(await hasActivePremium())) {
+      Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.moments') });
+      return;
+    }
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+      ? 'video/webm;codecs=vp9'
+      : (MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '');
+    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = event => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onstop = () => {
+      clearRecordTimer();
+      setRecording(false);
+      const type = recorder.mimeType || 'video/webm';
+      const blob = new Blob(chunks, { type });
+      setUploadMeta(null);
+      setMediaKind('video');
+      setSelectedImageUri(URL.createObjectURL(blob));
+      setCaptured(true);
+    };
+    recorderRef.current = recorder;
+    recorder.start();
+    setRecording(true);
+    setRecordSeconds(0);
+    let elapsed = 0;
+    recordTimer.current = setInterval(() => {
+      elapsed += 1;
+      setRecordSeconds(elapsed);
+      if (elapsed >= VIDEO_MAX_SECONDS && recorder.state !== 'inactive') recorder.stop();
+    }, 1000);
+  };
+
+  const stopVideo = () => {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+  };
+
+  const onShutter = () => {
+    if (captureMode === 'video') {
+      if (recording) stopVideo();
+      else void startVideo();
+      return;
+    }
+    void takePhoto();
+  };
+
+  const pickFromLibrary = async () => {
+    if (recording || capturing || picking) return;
+    if (!(await hasActivePremium())) {
+      setCanUploadLibrary(false);
+      Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.library') });
+      return;
+    }
+    try {
+      setPicking(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        quality: 0.85,
+        videoMaxDuration: VIDEO_MAX_SECONDS,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      if (!asset.uri) return;
+      const nameFromUri = asset.uri.split('/').pop()?.split('?')[0];
+      const mime = asset.mimeType || '';
+      const looksVideo = asset.type === 'video'
+        || asset.type === 'pairedVideo'
+        || mime.startsWith('video/')
+        || /\.(mp4|mov|webm|m4v)$/i.test(asset.fileName || nameFromUri || '');
+      const kind: 'image' | 'video' = looksVideo ? 'video' : 'image';
+      if (kind === 'video') {
+        let seconds = asset.duration != null
+          ? (asset.duration > 1000 ? asset.duration / 1000 : asset.duration)
+          : null;
+        if (seconds == null && typeof document !== 'undefined') {
+          seconds = await new Promise<number | null>(resolve => {
+            const video = document.createElement('video');
+            const timer = setTimeout(() => resolve(null), 4000);
+            video.preload = 'metadata';
+            video.onloadedmetadata = () => {
+              clearTimeout(timer);
+              resolve(Number.isFinite(video.duration) ? video.duration : null);
+            };
+            video.onerror = () => {
+              clearTimeout(timer);
+              resolve(null);
+            };
+            video.src = asset.uri;
+          });
+        }
+        if (seconds != null && seconds > VIDEO_MAX_SECONDS + 0.4) {
+          Toast.show({ type: 'info', text1: t('cam.libraryVideoLong') });
+          return;
+        }
+      }
+      const fallbackName = kind === 'video' ? 'moment.mp4' : 'photo.jpg';
+      const name = asset.fileName || (nameFromUri && nameFromUri.includes('.') ? nameFromUri : fallbackName);
+      const type = kind === 'video'
+        ? (mime.startsWith('video/') ? mime : 'video/mp4')
+        : (mime.startsWith('image/') ? mime : 'image/jpeg');
+      setUploadMeta({ name, type });
+      setMediaKind(kind);
+      setSelectedImageUri(asset.uri);
+      setCaptured(true);
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: t('cam.captureFailed'),
+        text2: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setPicking(false);
+    }
+  };
+
   const retake = () => {
+    clearRecordTimer();
+    setRecording(false);
+    setRecordSeconds(0);
     setCaptured(false);
     setSelectedImageUri(null);
+    setUploadMeta(null);
+    setMediaKind('image');
     setCaption('');
     setBlockedNotice(null);
     setCameraReady(false);
@@ -440,13 +599,23 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
         }
       }
 
-      const formData = await buildImageFormData(selectedImageUri, 'photo.jpg', 'image/jpeg');
+      const formData = mediaKind === 'video'
+        ? await buildImageFormData(
+          selectedImageUri,
+          uploadMeta?.name || 'moment.webm',
+          uploadMeta?.type || 'video/webm',
+        )
+        : await buildImageFormData(
+          selectedImageUri,
+          uploadMeta?.name || 'photo.jpg',
+          uploadMeta?.type || 'image/jpeg',
+        );
       const uploadResult = await uploadMedia(formData);
       if (!uploadResult?.id) throw new Error('Media upload returned invalid id');
 
       const payload: Record<string, unknown> = {
         caption: caption.trim(),
-        postType: 'Image',
+        postType: mediaKind === 'video' ? 'Video' : 'Image',
         visibility,
         mediaIds: [uploadResult.id],
         latitude: Math.round(latitude * 1e6) / 1e6,
@@ -509,7 +678,23 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
               {locationGranted ? locationLabel : (t('cam.locOffTap') || t('cam.locOff'))}
             </Text>
           </TouchableOpacity>
-          <View style={styles.topBtnSpacer} />
+          {canUploadLibrary && !captured ? (
+            <TouchableOpacity
+              onPress={() => { void pickFromLibrary(); }}
+              style={styles.topLibraryBtn}
+              disabled={picking || recording}
+              activeOpacity={0.85}
+            >
+              {picking ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Ionicons name="images-outline" size={16} color={Colors.white} />
+              )}
+              <Text style={styles.topLibraryText}>{t('cam.uploadLibrary')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.topBtnSpacer} />
+          )}
         </View>
 
         <View style={styles.viewfinder}>
@@ -572,7 +757,11 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
 
           {captured && selectedImageUri && (
             <>
-              <Image source={{ uri: selectedImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              {mediaKind === 'video' ? (
+                <MomentMedia uri={selectedImageUri} mediaType="Video" style={StyleSheet.absoluteFill} resizeMode="cover" />
+              ) : (
+                <Image source={{ uri: selectedImageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+              )}
               <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
                 style={styles.captionGradient}
@@ -654,6 +843,25 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   }}
                 />
               )}
+              <View style={styles.modeRow}>
+                <TouchableOpacity
+                  onPress={() => { void chooseMode('photo'); }}
+                  style={[styles.modeChip, captureMode === 'photo' && styles.modeChipActive]}
+                >
+                  <Text style={styles.modeChipText}>{t('cam.photo')}</Text>
+                </TouchableOpacity>
+                {canUploadLibrary ? (
+                  <TouchableOpacity
+                    onPress={() => { void chooseMode('video'); }}
+                    style={[styles.modeChip, captureMode === 'video' && styles.modeChipActive]}
+                  >
+                    <Text style={styles.modeChipText}>{t('cam.video')}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {recording ? (
+                <Text style={styles.recordLabel}>{t('cam.recording')} {recordSeconds}s</Text>
+              ) : null}
               <View style={styles.captureRow}>
                 <TouchableOpacity
                   onPress={() => setShowBeautyPanel(open => !open)}
@@ -662,7 +870,7 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   <Ionicons name="sparkles" size={22} color={Colors.white} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={takePhoto}
+                  onPress={onShutter}
                   style={[styles.shutterOuter, (!cameraReady || capturing || permissionState === 'denied') && styles.shutterDisabled]}
                   activeOpacity={0.85}
                   disabled={!cameraReady || capturing || permissionState === 'denied'}
@@ -670,7 +878,10 @@ export default function CameraSheet({ locationGranted, onClose, onLocationEnable
                   {capturing ? (
                     <ActivityIndicator color={Colors.primary} size="large" />
                   ) : (
-                    <LinearGradient colors={Gradients.primary} style={styles.shutterInner} />
+                    <LinearGradient
+                      colors={captureMode === 'video' ? ['#F43F5E', '#E11D48'] : Gradients.primary}
+                      style={[styles.shutterInner, recording && styles.shutterRecording]}
+                    />
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -833,6 +1044,22 @@ const styles = StyleSheet.create({
   topBtnSpacer: {
     width: 42,
     height: 42,
+  },
+  topLibraryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 42,
+    paddingHorizontal: 12,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  topLibraryText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '800',
   },
   locationBadge: {
     flexDirection: 'row',
@@ -1051,6 +1278,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    gap: 8,
+    marginBottom: 12,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 999,
+    padding: 4,
+  },
+  modeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  modeChipActive: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  modeChipText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  recordLabel: {
+    color: '#FBCFE8',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  shutterRecording: {
+    borderRadius: 8,
+    width: 28,
+    height: 28,
   },
   controlBtn: {
     width: 48,

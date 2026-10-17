@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API_URL } from '../config/apiConfig';
+import { rejectIfUnauthorized } from './sessionGuard';
 
 const BASE_URL = API_URL;
 
@@ -43,6 +44,7 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
   }
 
   if (!response.ok) {
+    rejectIfUnauthorized(response.status);
     const message = typeof data === 'object' && data !== null
       ? String(
           ('message' in data && (data as { message?: unknown }).message)
@@ -87,6 +89,7 @@ export interface NearbyPost {
   userId: string;
   displayName: string;
   avatarUrl: string | null;
+  authorIsPremium?: boolean;
   isAnonymous?: boolean;
   anonymousAlias?: string | null;
   thumbnailUrl: string | null;
@@ -104,6 +107,7 @@ export interface PostMedia {
   mediaId: string;
   url: string;
   thumbnailUrl?: string | null;
+  mediaType?: string;
 }
 
 export interface FeedPost {
@@ -132,6 +136,7 @@ export interface PostView {
   createdAt?: string | null;
   userId?: string | null;
   isAnonymous?: boolean;
+  authorIsPremium?: boolean;
 }
 
 export interface PostDetailOwner {
@@ -139,6 +144,7 @@ export interface PostDetailOwner {
   displayName: string | null;
   username: string;
   avatarUrl: string | null;
+  isPremium?: boolean;
 }
 
 export interface PostDetailPlace {
@@ -202,6 +208,7 @@ function normalizeFeedMediaItem(raw: Record<string, unknown>): PostMedia {
     mediaId: String(raw.mediaId ?? raw.MediaId ?? ''),
     url: String(raw.url ?? raw.Url ?? ''),
     thumbnailUrl: (raw.thumbnailUrl ?? raw.ThumbnailUrl ?? null) as string | null,
+    mediaType: String(raw.mediaType ?? raw.MediaType ?? 'Image'),
   };
 }
 
@@ -285,6 +292,7 @@ function normalizePostDetail(raw: Record<string, unknown>): PostDetail {
       displayName: (ownerRaw.displayName ?? ownerRaw.DisplayName ?? null) as string | null,
       username: String(ownerRaw.username ?? ownerRaw.Username ?? ''),
       avatarUrl: (ownerRaw.avatarUrl ?? ownerRaw.AvatarUrl ?? null) as string | null,
+      isPremium: Boolean(ownerRaw.isPremium ?? ownerRaw.IsPremium),
     },
     place: placeRaw
       ? {
@@ -339,6 +347,39 @@ export async function deletePost(postId: string): Promise<void> {
   }
 }
 
+export interface StoryViewer {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  viewedAt: string;
+}
+
+export interface StoryViewers {
+  viewerCount: number;
+  unlocked: boolean;
+  viewers: StoryViewer[];
+}
+
+export async function recordStoryView(postId: string): Promise<void> {
+  await requestJson<ApiResponse<boolean>>(`/posts/${postId}/view`, 'POST');
+}
+
+export async function getStoryViewers(postId: string): Promise<StoryViewers> {
+  const response = await requestJson<ApiResponse<Record<string, unknown>>>(`/posts/${postId}/viewers`, 'GET');
+  const data = response.data ?? {};
+  const rawViewers = (data.viewers ?? data.Viewers ?? []) as Record<string, unknown>[];
+  return {
+    viewerCount: Number(data.viewerCount ?? data.ViewerCount ?? 0),
+    unlocked: Boolean(data.unlocked ?? data.Unlocked),
+    viewers: rawViewers.map(item => ({
+      userId: String(item.userId ?? item.UserId ?? ''),
+      displayName: String(item.displayName ?? item.DisplayName ?? 'MYMO'),
+      avatarUrl: (item.avatarUrl ?? item.AvatarUrl ?? null) as string | null,
+      viewedAt: String(item.viewedAt ?? item.ViewedAt ?? ''),
+    })),
+  };
+}
+
 export async function reportPost(postId: string, reason: string): Promise<void> {
   const response = await requestJson<ApiResponse<boolean>>(
     `/posts/${postId}/report`,
@@ -372,6 +413,7 @@ export function toPostView(
     createdAt: post.createdAt,
     userId: post.userId,
     isAnonymous: 'isAnonymous' in post ? Boolean(post.isAnonymous) : post.visibility === 'Anonymous',
+    authorIsPremium: 'authorIsPremium' in post ? Boolean(post.authorIsPremium) : false,
   };
 }
 
@@ -396,6 +438,7 @@ export function normalizeNearbyPost(raw: unknown): NearbyPost | null {
     userId,
     displayName: String(item.displayName ?? item.DisplayName ?? anonymousAlias ?? 'User'),
     avatarUrl: (item.avatarUrl ?? item.AvatarUrl ?? null) as string | null,
+    authorIsPremium: Boolean(item.authorIsPremium ?? item.AuthorIsPremium),
     isAnonymous,
     anonymousAlias,
     thumbnailUrl: (item.thumbnailUrl ?? item.ThumbnailUrl ?? null) as string | null,

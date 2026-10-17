@@ -49,6 +49,8 @@ export default function AuthScreen({
 }: AuthScreenProps) {
   const { t, lang, setLang } = useI18n();
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const [forgotStep, setForgotStep] = useState<'email' | 'otp' | 'password'>('email');
+  const [registerStep, setRegisterStep] = useState<'form' | 'otp'>('form');
   const [showPw, setShowPw] = useState(false);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -101,6 +103,7 @@ export default function AuthScreen({
     try {
       setOtpSending(true);
       await sendResetOtp(email.trim());
+      setForgotStep('otp');
       Toast.show({ type: 'success', text1: t('auth.otpSent'), text2: email.trim() });
     } catch (error) {
       const message = error instanceof Error ? error.message : t('auth.otpSendError');
@@ -137,6 +140,7 @@ export default function AuthScreen({
       setPw('');
       setConfirmPw('');
       setOtpCode('');
+      setForgotStep('email');
       setMode('login');
       Toast.show({ type: 'success', text1: t('auth.passwordResetDone') });
     } catch (error) {
@@ -165,12 +169,12 @@ export default function AuthScreen({
         Toast.show({ type: 'error', text1: t('auth.emailInvalid') });
         return;
       }
-      if (!/^\d{6}$/.test(otpCode.trim())) {
-        Toast.show({ type: 'error', text1: t('auth.otpRequired') });
-        return;
-      }
       if (pw !== confirmPw) {
         Toast.show({ type: 'error', text1: lang === 'vi' ? 'Mật khẩu nhập lại không khớp' : 'Passwords do not match' });
+        return;
+      }
+      if (registerStep === 'otp' && !/^\d{6}$/.test(otpCode.trim())) {
+        Toast.show({ type: 'error', text1: t('auth.otpRequired') });
         return;
       }
     } else {
@@ -182,6 +186,13 @@ export default function AuthScreen({
 
     try {
       setIsSubmitting(true);
+      if (mode === 'register' && registerStep === 'form') {
+        await sendRegisterOtp(email.trim());
+        setOtpCode('');
+        setRegisterStep('otp');
+        Toast.show({ type: 'success', text1: t('auth.otpSent'), text2: email.trim() });
+        return;
+      }
       if (mode === 'register') {
         const auth = await registerUser({
           username: username.trim(),
@@ -194,6 +205,8 @@ export default function AuthScreen({
           otpCode: otpCode.trim(),
         });
         await saveAuthSession(auth);
+        setRegisterStep('form');
+        setOtpCode('');
         Toast.show({ type: 'success', text1: lang === 'vi' ? 'Đăng ký thành công' : 'Registration successful' });
         onContinue();
         return;
@@ -328,12 +341,26 @@ export default function AuthScreen({
 
         {/* Form card */}
         <View style={styles.card}>
-          {/* Mode tabs */}
+          {mode === 'forgot' || (mode === 'register' && registerStep === 'otp') ? (
+            <Text style={styles.forgotTitle}>
+              {mode === 'register'
+                ? t('auth.forgotOtpTitle')
+                : forgotStep === 'email'
+                  ? t('auth.forgotTitle')
+                  : forgotStep === 'otp'
+                    ? t('auth.forgotOtpTitle')
+                    : t('auth.forgotPasswordTitle')}
+            </Text>
+          ) : (
           <View style={styles.tabs}>
             {(['login', 'register'] as const).map(m => (
               <TouchableOpacity
                 key={m}
-                onPress={() => setMode(m)}
+                onPress={() => {
+                  setRegisterStep('form');
+                  setOtpCode('');
+                  setMode(m);
+                }}
                 style={[styles.tab, mode === m && styles.tabActive]}
                 activeOpacity={0.85}
               >
@@ -347,10 +374,11 @@ export default function AuthScreen({
               </TouchableOpacity>
             ))}
           </View>
+          )}
 
           {/* Inputs */}
           <View style={styles.inputs}>
-            {mode === 'register' && (
+            {mode === 'register' && registerStep === 'form' && (
               <>
                 <View>
                   <View style={styles.inputRow}>
@@ -385,6 +413,7 @@ export default function AuthScreen({
               </>
             )}
 
+            {(mode !== 'forgot' || forgotStep === 'email') && !(mode === 'register' && registerStep === 'otp') ? (
             <View>
               <View style={styles.inputRow}>
                 <Ionicons name="mail-outline" size={16} color={Colors.primary} />
@@ -404,9 +433,17 @@ export default function AuthScreen({
               {mode === 'register' && email.trim().length > 0 && !EMAIL_PATTERN.test(email.trim()) ? (
                 <Text style={[styles.fieldHint, styles.fieldHintError]}>{t('auth.emailInvalid')}</Text>
               ) : null}
+              {mode === 'forgot' && forgotStep === 'email' ? (
+                <Text style={styles.fieldHint}>{t('auth.forgotEmailHint')}</Text>
+              ) : null}
             </View>
+            ) : null}
 
-            {mode === 'register' || mode === 'forgot' ? (
+            {(mode === 'forgot' && forgotStep !== 'email') || (mode === 'register' && registerStep === 'otp') ? (
+              <Text style={styles.fieldHint}>{t('auth.forgotSentTo').replace('{email}', email.trim())}</Text>
+            ) : null}
+
+            {(mode === 'register' && registerStep === 'otp') || (mode === 'forgot' && forgotStep === 'otp') ? (
               <View>
                 <View style={styles.inputRow}>
                   <Ionicons name="keypad-outline" size={16} color={Colors.primary} />
@@ -436,6 +473,7 @@ export default function AuthScreen({
               </View>
             ) : null}
 
+            {mode === 'login' || (mode === 'register' && registerStep === 'form') || (mode === 'forgot' && forgotStep === 'password') ? (
             <View style={styles.inputRow}>
               <View style={styles.pwDot} />
               <TextInput
@@ -450,8 +488,9 @@ export default function AuthScreen({
                 <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={16} color={Colors.primary} />
               </TouchableOpacity>
             </View>
+            ) : null}
 
-            {(mode === 'register' || mode === 'forgot') && (
+            {((mode === 'register' && registerStep === 'form') || (mode === 'forgot' && forgotStep === 'password')) && (
               <View style={styles.inputRow}>
                 <View style={styles.pwDot} />
                 <TextInput
@@ -465,7 +504,7 @@ export default function AuthScreen({
               </View>
             )}
 
-            {mode === 'register' && (
+            {mode === 'register' && registerStep === 'form' && (
               <>
                 <View style={styles.genderWrapper}>
                   <TouchableOpacity
@@ -540,29 +579,110 @@ export default function AuthScreen({
           />
 
           {/* Main CTA */}
-          <TouchableOpacity onPress={handleAuth} activeOpacity={0.88} style={styles.cta} disabled={isSubmitting}>
+          <TouchableOpacity
+            onPress={() => {
+              if (mode === 'forgot' && forgotStep === 'email') {
+                void handleSendResetOtp();
+                return;
+              }
+              if (mode === 'forgot' && forgotStep === 'otp') {
+                if (!/^\d{6}$/.test(otpCode.trim())) {
+                  Toast.show({ type: 'error', text1: t('auth.otpRequired') });
+                  return;
+                }
+                setForgotStep('password');
+                return;
+              }
+              void handleAuth();
+            }}
+            activeOpacity={0.88}
+            style={styles.cta}
+            disabled={isSubmitting || (mode === 'forgot' && forgotStep === 'email' && otpSending)}
+          >
             <LinearGradient colors={Gradients.primary} style={styles.ctaGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-              {isSubmitting ? (
+              {isSubmitting || (mode === 'forgot' && forgotStep === 'email' && otpSending) ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <Text style={styles.ctaText}>
-                  {mode === 'login' ? t('auth.login') : mode === 'forgot' ? t('auth.resetPassword') : t('auth.signup')}
+                  {mode === 'login'
+                    ? t('auth.login')
+                    : mode === 'forgot'
+                      ? (forgotStep === 'email'
+                        ? t('auth.forgotSendCode')
+                        : forgotStep === 'otp'
+                          ? t('auth.forgotContinue')
+                          : t('auth.resetPassword'))
+                      : (registerStep === 'otp' ? t('auth.registerConfirm') : t('auth.signup'))}
                 </Text>
               )}
             </LinearGradient>
           </TouchableOpacity>
 
+          {mode === 'register' && registerStep === 'otp' ? (
+            <TouchableOpacity
+              onPress={() => {
+                setOtpCode('');
+                setRegisterStep('form');
+              }}
+              style={styles.forgotLink}
+            >
+              <Text style={styles.forgotLinkText}>{t('auth.registerEdit')}</Text>
+            </TouchableOpacity>
+          ) : null}
           {mode === 'login' ? (
-            <TouchableOpacity onPress={() => setMode('forgot')} style={styles.forgotLink}>
+            <TouchableOpacity
+              onPress={() => {
+                setForgotStep('email');
+                setOtpCode('');
+                setPw('');
+                setConfirmPw('');
+                setMode('forgot');
+              }}
+              style={styles.forgotLink}
+            >
               <Text style={styles.forgotLinkText}>{t('auth.forgotPassword')}</Text>
             </TouchableOpacity>
           ) : null}
+          {mode === 'forgot' && forgotStep === 'otp' ? (
+            <TouchableOpacity
+              onPress={() => {
+                setForgotStep('email');
+                setOtpCode('');
+                setPw('');
+                setConfirmPw('');
+              }}
+              style={styles.forgotLink}
+            >
+              <Text style={styles.forgotLinkText}>{t('auth.forgotChangeEmail')}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {mode === 'forgot' && forgotStep === 'password' ? (
+            <TouchableOpacity
+              onPress={() => {
+                setPw('');
+                setConfirmPw('');
+                setForgotStep('otp');
+              }}
+              style={styles.forgotLink}
+            >
+              <Text style={styles.forgotLinkText}>{t('auth.forgotBackToOtp')}</Text>
+            </TouchableOpacity>
+          ) : null}
           {mode === 'forgot' ? (
-            <TouchableOpacity onPress={() => setMode('login')} style={styles.forgotLink}>
+            <TouchableOpacity
+              onPress={() => {
+                setForgotStep('email');
+                setOtpCode('');
+                setMode('login');
+              }}
+              style={styles.forgotLink}
+            >
               <Text style={styles.forgotLinkText}>{t('auth.backToLogin')}</Text>
             </TouchableOpacity>
           ) : null}
 
+          {mode === 'login' || (mode === 'register' && registerStep === 'form') ? (
+          <>
           {/* Divider */}
           <View style={styles.divider}>
             <View style={styles.divLine} />
@@ -608,6 +728,8 @@ export default function AuthScreen({
             {' '}{t('auth.and')}{' '}
             <Text style={styles.termsLink}>{t('auth.privacyWord')}</Text>.
           </Text>
+          </>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -769,6 +891,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: Colors.primary,
+  },
+  forgotTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: Colors.textDark,
+    textAlign: 'center',
+    marginBottom: 16,
   },
   forgotLink: { alignItems: 'center', marginTop: 12, marginBottom: 4 },
   forgotLinkText: { fontSize: 13, fontWeight: '700', color: Colors.primary },

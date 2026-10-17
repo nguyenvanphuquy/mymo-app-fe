@@ -126,11 +126,6 @@ export default function BusinessLoginScreen({ onSuccess, onBack }: BusinessLogin
               )}
             </LinearGradient>
           </TouchableOpacity>
-
-          <View style={styles.hintBox}>
-            <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
-            <Text style={styles.hintText}>{t('biz.loginHint')}</Text>
-          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -217,10 +212,4 @@ const styles = StyleSheet.create({
   cta: { borderRadius: 16, overflow: 'hidden', marginBottom: 14, ...Shadows.glow },
   ctaGrad: { paddingVertical: 14, alignItems: 'center' },
   ctaText: { color: Colors.white, fontWeight: '800', fontSize: 15 },
-  hintBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: Colors.primaryTint, borderRadius: 14, padding: 12,
-    borderWidth: 1, borderColor: Colors.primarySoft,
-  },
-  hintText: { flex: 1, fontSize: 12, color: Colors.textMid, lineHeight: 17 },
 });

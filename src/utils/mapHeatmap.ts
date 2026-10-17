@@ -11,8 +11,8 @@ export const HEATMAP_CIRCLE_LAYER_ID = 'mymo-heat-circles';
 /** ~90m cells so posts at the same venue stack as one weighted point. */
 const CELL_DEG = 0.0008;
 
-/** Country-scale so expired posts in other cities still heat the map. */
-export const HEATMAP_FETCH_RADIUS_KM = 1500;
+/** Local crowd: people active in the last few minutes around the viewer. */
+export const HEATMAP_FETCH_RADIUS_KM = 25;
 
 export type HeatFeatureCollection = {
   type: 'FeatureCollection';
@@ -81,7 +81,7 @@ function cellKey(lat: number, lng: number): string {
   return `${Math.round(lat / CELL_DEG)}_${Math.round(lng / CELL_DEG)}`;
 }
 
-/** Heatmap from posts only: cluster nearby pins, weight = số bài trong ô. */
+/** Heatmap from people online: cluster nearby pins, weight = số người trong ô. */
 export function buildHeatGeoJSON(posts: HeatInput[]): HeatFeatureCollection {
   const buckets = new Map<string, { lat: number; lng: number; count: number }>();
 

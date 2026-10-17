@@ -18,13 +18,18 @@ import { useI18n } from '../i18n';
 import type { Lang } from '../i18n';
 import Toggle from '../components/Toggle';
 import * as Haptics from 'expo-haptics';
-import { changeUserPassword, getUserProfile, uploadUserAvatar, uploadUserCover, updateUserProfile, type UserProfile } from '../services/userApi';
+import { changeUserPassword, getActivityStats, getUserProfile, uploadUserAvatar, uploadUserCover, updateUserProfile, type ActivityStats, type UserProfile } from '../services/userApi';
 import { getMyPosts, toPostView, type FeedPost, type PostView } from '../services/postApi';
 import { buildImageFormData, guessImageMeta } from '../utils/imageFormData';
 import ProfileMomentsGrid from '../components/ProfileMomentsGrid';
 import PostSheet from '../components/PostSheet';
 import { avatarUri } from '../constants/defaultAvatar';
 import PremiumScreen from './PremiumScreen';
+import MapMarkerSheet from '../components/MapMarkerSheet';
+import ActivityStatsSheet from '../components/ActivityStatsSheet';
+import ProfileStyleSheet from '../components/ProfileStyleSheet';
+import PremiumBadge from '../components/PremiumBadge';
+import { frameColor, themeBackground } from '../constants/profileStyle';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import Toast from 'react-native-toast-message';
 import { isPremiumActive, syncPremiumPlanFromServer, type PremiumPlanId } from '../utils/premiumStorage';
@@ -33,7 +38,6 @@ import RegisterBusinessScreen from './RegisterBusinessScreen';
 import { getStoredAuthSession } from '../services/authApi';
 import { BUSINESS_OWNER_ROLE } from '../services/businessApi';
 import { formatDateOnlyDisplay } from '../utils/dateOnly';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -49,11 +53,11 @@ interface ProfileScreenProps {
 }
 
 const MOODS = [
-  { emoji: '⚡', label: 'Lively' },
-  { emoji: '🌸', label: 'Soft' },
-  { emoji: '🍵', label: 'Chill' },
-  { emoji: '🦋', label: 'Free' },
-  { emoji: '🍿', label: 'Fun' },
+  { emoji: '⚡', labelKey: 'profile.moodLively' },
+  { emoji: '🌸', labelKey: 'profile.moodSoft' },
+  { emoji: '🍵', labelKey: 'profile.moodChill' },
+  { emoji: '🦋', labelKey: 'profile.moodFree' },
+  { emoji: '🍿', labelKey: 'profile.moodFun' },
 ];
 
 export default function ProfileScreen({
@@ -61,7 +65,6 @@ export default function ProfileScreen({
   onToggleShareLocation, onToggleIncognito, onLogout, onOpenBusinessPortal,
 }: ProfileScreenProps) {
   const { t, lang, setLang } = useI18n();
-  const insets = useSafeAreaInsets();
   const [currentMood, setCurrentMood] = useState('🍵');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -82,8 +85,13 @@ export default function ProfileScreen({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [myPosts, setMyPosts] = useState<FeedPost[]>([]);
+  const [activityStats, setActivityStats] = useState<ActivityStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [premiumOpen, setPremiumOpen] = useState(false);
+  const [mapMarkerOpen, setMapMarkerOpen] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   const [premiumPlan, setPremiumPlan] = useState<PremiumPlanId>('free');
   const [businessReg, setBusinessReg] = useState<BusinessRegistrationDto | null>(null);
   const [registerBusinessOpen, setRegisterBusinessOpen] = useState(false);
@@ -101,6 +109,8 @@ export default function ProfileScreen({
   const editDateOfBirthDisplay = editDateOfBirth
     ? formatDateOnlyDisplay(editDateOfBirth, lang)
     : t('auth.dateOfBirth');
+
+  const showStyle = Boolean(profile?.isPremium || isPremiumActive(premiumPlan));
 
   const stats = [
     { n: String(myPosts.length || (profile ? profile.postCount : 0)), l: t('profile.moments'), icon: 'trail-sign-outline' },
@@ -129,9 +139,20 @@ export default function ProfileScreen({
     }
   }, []);
 
+  const loadActivityStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      setActivityStats(await getActivityStats());
+    } catch {
+      setActivityStats(null);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadProfile(), loadMyPosts()]);
-  }, [loadProfile, loadMyPosts]);
+    await Promise.all([loadProfile(), loadMyPosts(), loadActivityStats()]);
+  }, [loadProfile, loadMyPosts, loadActivityStats]);
 
   useEffect(() => {
     refreshAll();
@@ -354,10 +375,11 @@ export default function ProfileScreen({
       {/* Cover / Hero image */}
       <View style={styles.heroWrap}>
         <TouchableOpacity activeOpacity={0.9} onPress={() => pickImage('cover')} style={styles.heroTouchable}>
-          <Image
-            source={{ uri: profile?.coverUrl || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&fit=crop' }}
-            style={styles.heroBg}
-          />
+          {profile?.coverUrl ? (
+            <Image source={{ uri: profile.coverUrl }} style={styles.heroBg} />
+          ) : (
+            <LinearGradient colors={['#F4C4F1', '#DA70D6', '#7C3AED']} style={styles.heroBg} />
+          )}
           {uploadingCover && (
             <View style={styles.heroOverlay}>
               <ActivityIndicator color={Colors.white} />
@@ -367,19 +389,10 @@ export default function ProfileScreen({
             <Ionicons name="camera-outline" size={14} color="#FFF" />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            settingsRef.current?.scrollToEnd({ animated: true });
-          }}
-          style={[styles.settingsBtn, { top: Math.max(16, insets.top) }]}
-        >
-          <Ionicons name="settings-sharp" size={20} color="#FFF" />
-        </TouchableOpacity>
       </View>
 
       {/* Profile Card Overlay */}
-      <View style={styles.profileCard}>
+      <View style={[styles.profileCard, showStyle && themeBackground(profile?.profileTheme) ? { backgroundColor: themeBackground(profile?.profileTheme)! } : null]}>
         {loadingProfile && (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={Colors.primary} size="small" />
@@ -395,7 +408,11 @@ export default function ProfileScreen({
         <View style={styles.avatarRow}>
           <TouchableOpacity
             onPress={() => pickImage('avatar')}
-            style={[styles.avatarBorder, isPremiumActive(premiumPlan) && styles.avatarBorderPremium]}
+            style={[
+              styles.avatarBorder,
+              isPremiumActive(premiumPlan) && styles.avatarBorderPremium,
+              showStyle && frameColor(profile?.avatarFrame) ? { borderColor: frameColor(profile?.avatarFrame)! } : null,
+            ]}
             activeOpacity={0.9}
           >
             <Image
@@ -418,16 +435,20 @@ export default function ProfileScreen({
           <View style={styles.avatarInfo}>
             <View style={styles.nameRow}>
               <Text style={styles.handle}>{profile?.displayName ?? t('profile.loading')}</Text>
-              {profile && <Ionicons name="checkmark-circle" size={16} color="#3B82F6" />}
+              {showStyle ? <PremiumBadge /> : null}
             </View>
             <Text style={styles.username}>@{profile?.username ?? '...'}</Text>
-            {profile && (
-              <View style={styles.metaRow}>
-                <Text style={styles.metaText}>{profile.gender}</Text>
-                <Text style={styles.metaDot}>•</Text>
-                <Text style={styles.metaText}>{formatDateOnlyDisplay(profile.dateOfBirth, lang)}</Text>
-              </View>
-            )}
+            {showStyle && profile?.profileTitle ? (
+              <Text style={styles.titlePill}>{t(`style.title.${profile.profileTitle}`)}</Text>
+            ) : null}
+            {profile && (profile.gender || profile.dateOfBirth) ? (
+              <Text style={styles.metaText}>
+                {[
+                  genderOptions.find(option => option.value === profile.gender)?.label,
+                  profile.dateOfBirth ? formatDateOnlyDisplay(profile.dateOfBirth, lang) : '',
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
             {profile?.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
             {profile && (
               <Text style={styles.joined}>{t('profile.joinedPrefix')} {new Date(profile.createdAt).toLocaleDateString(lang === 'vi' ? 'vi' : 'en-US', {
@@ -447,9 +468,8 @@ export default function ProfileScreen({
         {/* Profile invite link */}
         {profileLink ? (
           <TouchableOpacity onPress={copyProfileLink} style={styles.linkBox} activeOpacity={0.85}>
-            <Ionicons name="link-outline" size={14} color={Colors.primary} />
-            <Text style={styles.linkText} numberOfLines={1}>{profileLink}</Text>
-            <Text style={styles.linkCopy}>{t('profile.copyLink')}</Text>
+            <Ionicons name="share-social-outline" size={16} color={Colors.primary} />
+            <Text style={styles.linkText}>{t('profile.shareProfile')}</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -463,7 +483,7 @@ export default function ProfileScreen({
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setCurrentMood(m.emoji);
-                  Toast.show({ type: 'info', text1: `Tâm trạng: ${m.label} ${m.emoji}` });
+                  Toast.show({ type: 'info', text1: `${t('profile.moodQuestion')} ${t(m.labelKey)} ${m.emoji}` });
                 }}
                 style={[
                   styles.moodTab,
@@ -471,29 +491,52 @@ export default function ProfileScreen({
                 ]}
               >
                 <Text style={styles.moodEmoji}>{m.emoji}</Text>
-                <Text style={styles.moodLabel}>{m.label}</Text>
+                <Text style={[styles.moodLabel, currentMood === m.emoji && styles.moodLabelActive]}>{t(m.labelKey)}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         {/* Stats segment */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setStatsOpen(true)}
+          style={styles.statsTag}
+        >
+          <Ionicons name="bar-chart" size={16} color={Colors.primary} />
+          <Text style={styles.statsTagText}>{t('stats.tag')}</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+        {showStyle && (profile?.favoritePlaces?.length ?? 0) > 0 ? (
+          <View style={styles.favorites}>
+            <Text style={styles.favoritesLabel}>{t('style.favorites')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoriteRow}>
+              {profile?.favoritePlaces?.map(place => (
+                <View key={place.placeId} style={styles.favoriteChip}>
+                  <Ionicons name="location" size={12} color={Colors.primary} />
+                  <Text style={styles.favoriteText}>{place.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
         <View style={styles.stats}>
-          {stats.map(({ n, l, icon }) => (
-            <TouchableOpacity
-              key={l}
-              onPress={() => Toast.show({ type: 'info', text1: l, text2: `${n} ${l.toLowerCase()}` })}
-              style={styles.statBox}
-            >
-              <View style={styles.statIconWrap}>
-                <Ionicons name={icon as any} size={15} color={Colors.primary} />
-              </View>
+          {stats.map(({ n, l }, index) => (
+            <View key={l} style={styles.statBox}>
               <Text style={styles.statN}>{n}</Text>
               <Text style={styles.statL}>{l}</Text>
-            </TouchableOpacity>
+              {index < stats.length - 1 ? <View style={styles.statDivider} /> : null}
+            </View>
           ))}
         </View>
       </View>
+
+      <ActivityStatsSheet
+        visible={statsOpen}
+        loading={statsLoading}
+        stats={activityStats}
+        onClose={() => setStatsOpen(false)}
+      />
 
       <ProfileMomentsGrid
         posts={myPosts}
@@ -731,7 +774,29 @@ export default function ProfileScreen({
         </View>
       </Modal>
 
-      {/* Privacy group */}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setPremiumOpen(true);
+        }}
+        style={styles.plusCard}
+      >
+        <LinearGradient colors={['#F8E9FF', '#FFF7FD']} style={styles.plusCardGrad}>
+          <View style={styles.plusIcon}>
+            <Ionicons name="sparkles" size={18} color={Colors.primary} />
+          </View>
+          <View style={styles.plusCopy}>
+            <Text style={styles.plusTitle}>
+              {isPremiumActive(premiumPlan) ? t('profile.plusActive') : t('profile.getPlus')}
+            </Text>
+            <Text style={styles.plusSub}>{t('profile.plusHint')}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+        </LinearGradient>
+      </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>{t('profile.sectionPrivacy')}</Text>
       <View style={styles.group}>
         <SettingRow
           icon="location"
@@ -766,6 +831,7 @@ export default function ProfileScreen({
         />
       </View>
 
+      <Text style={styles.sectionTitle}>{t('profile.sectionAccount')}</Text>
       <View style={styles.group}>
         <SettingRow
           icon="image"
@@ -787,7 +853,7 @@ export default function ProfileScreen({
         />
       </View>
 
-      {/* Language Toggle pills */}
+      <Text style={styles.sectionTitle}>{t('profile.sectionMore')}</Text>
       <View style={styles.group}>
         <View style={styles.row}>
           <View style={styles.rowIcon}>
@@ -815,10 +881,6 @@ export default function ProfileScreen({
             ))}
           </View>
         </View>
-      </View>
-
-      {/* General Settings */}
-      <View style={styles.group}>
         <SettingRow
           icon="notifications"
           label={t('profile.notifications')}
@@ -886,24 +948,32 @@ export default function ProfileScreen({
           </>
         ) : null}
         <SettingRow
-          icon="sparkles"
-          label={isPremiumActive(premiumPlan) ? t('profile.plusActive') : t('profile.getPlus')}
-          right={
-            isPremiumActive(premiumPlan) ? (
-              <View style={styles.plusActiveBadge}>
-                <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
-              </View>
-            ) : (
-              <View style={styles.tryBadge}>
-                <LinearGradient colors={Gradients.primary as any} style={styles.tryBadgeGrad}>
-                  <Text style={styles.tryBadgeText}>{t('common.try')}</Text>
-                </LinearGradient>
-              </View>
-            )
-          }
+          icon="color-palette-outline"
+          label={t('style.row')}
+          hint={t('style.rowHint')}
+          right={<Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setPremiumOpen(true);
+            if (!isPremiumActive(premiumPlan)) {
+              Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.style') });
+              setPremiumOpen(true);
+              return;
+            }
+            setStyleOpen(true);
+          }}
+        />
+        <SettingRow
+          icon="happy-outline"
+          label={t('mapMarker.row')}
+          hint={profile?.mapMarker ? t('mapMarker.rowOn') : t('mapMarker.rowOff')}
+          right={<Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (!isPremiumActive(premiumPlan)) {
+              Toast.show({ type: 'info', text1: t('premium.benefitLocked'), text2: t('premium.feat.mapMarker') });
+              return;
+            }
+            setMapMarkerOpen(true);
           }}
         />
       </View>
@@ -921,6 +991,25 @@ export default function ProfileScreen({
       </TouchableOpacity>
 
       <View style={{ height: 60 }} />
+
+      <ProfileStyleSheet
+        visible={styleOpen}
+        avatarFrame={profile?.avatarFrame ?? null}
+        profileTheme={profile?.profileTheme ?? null}
+        profileTitle={profile?.profileTitle ?? null}
+        favoritePlaces={profile?.favoritePlaces ?? []}
+        onClose={() => setStyleOpen(false)}
+        onSaved={loadProfile}
+      />
+      <MapMarkerSheet
+        visible={mapMarkerOpen}
+        current={profile?.mapMarker ?? null}
+        onClose={() => setMapMarkerOpen(false)}
+        onSaved={marker => {
+          setProfile(prev => prev ? { ...prev, mapMarker: marker } : prev);
+          DeviceEventEmitter.emit('map-marker:updated', marker);
+        }}
+      />
 
       <Modal visible={premiumOpen} animationType="slide" statusBarTranslucent onRequestClose={() => setPremiumOpen(false)}>
         <PremiumScreen
@@ -1117,14 +1206,57 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   handle: {
-    fontSize: 16,
-    fontWeight: '900',
+    fontSize: 20,
+    fontWeight: '800',
     color: Colors.textDark,
   },
   username: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textMuted,
-    marginTop: 1,
+    marginTop: 2,
+  },
+  titlePill: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    backgroundColor: '#F8E9FF',
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  favorites: {
+    marginTop: 14,
+  },
+  favoritesLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    marginBottom: 8,
+  },
+  favoriteRow: {
+    gap: 8,
+  },
+  favoriteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  favoriteText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  metaText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.textMid,
   },
   joined: {
     fontSize: 10,
@@ -1292,24 +1424,17 @@ const styles = StyleSheet.create({
   },
   linkBox: {
     marginTop: 14,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F8F7FF',
-    borderRadius: 14,
+    gap: 6,
+    backgroundColor: '#F8F5FC',
+    borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#EFE9FF',
+    paddingVertical: 8,
   },
   linkText: {
-    flex: 1,
     fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textDark,
-  },
-  linkCopy: {
-    fontSize: 11,
     fontWeight: '800',
     color: Colors.primary,
   },
@@ -1329,14 +1454,16 @@ const styles = StyleSheet.create({
   },
   moodRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   moodTab: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
+    minWidth: 58,
+    paddingVertical: 8,
     paddingHorizontal: 8,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: '#FAF9FF',
     borderWidth: 1,
     borderColor: '#F0EEFC',
@@ -1349,48 +1476,107 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   moodLabel: {
-    fontSize: 9,
+    fontSize: 11,
     color: Colors.textMuted,
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 2,
+  },
+  moodLabelActive: {
+    color: Colors.primary,
   },
 
   // ── Stats ──
+  statsTag: {
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F8E9FF',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  statsTagText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
   stats: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
+    marginTop: 12,
+    backgroundColor: '#FAF8FD',
+    borderRadius: 18,
+    paddingVertical: 12,
   },
   statBox: {
     flex: 1,
-    backgroundColor: '#FAF9FF',
-    borderRadius: 16,
-    paddingVertical: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F2EEFF',
+    position: 'relative',
   },
-  statIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F2EEFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 6,
+  statDivider: {
+    position: 'absolute',
+    right: 0,
+    top: 6,
+    bottom: 6,
+    width: 1,
+    backgroundColor: '#EFE8F6',
   },
   statN: {
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: '800',
     color: Colors.textDark,
   },
   statL: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: Colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textMuted,
     marginTop: 2,
+  },
+  plusCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  plusCardGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#F3D7F6',
+  },
+  plusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusCopy: {
+    flex: 1,
+  },
+  plusTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.textDark,
+  },
+  plusSub: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.textMid,
+  },
+  sectionTitle: {
+    marginTop: 18,
+    marginBottom: -4,
+    marginHorizontal: 22,
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textMuted,
   },
 
   // ── List groups ──
@@ -1409,9 +1595,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F2FF',
+    paddingVertical: 14,
   },
   rowDisabled: {
     opacity: 0.5,
@@ -1482,20 +1666,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: '#D80035',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  metaText: {
-    fontSize: 10,
-    color: Colors.textMuted,
-  },
-  metaDot: {
-    fontSize: 10,
-    color: Colors.textMuted,
   },
   tryBadge: {
     borderRadius: 14,

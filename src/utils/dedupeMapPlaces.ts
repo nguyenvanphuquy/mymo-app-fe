@@ -1,3 +1,5 @@
+import { adPackageRank } from './mapPlacePromotion';
+
 interface MapPlaceLike {
   placeId: string;
   name: string;
@@ -6,6 +8,7 @@ interface MapPlaceLike {
   model3DUrl?: string | null;
   vibes: string[];
   isOwnedByCurrentUser?: boolean;
+  adPackageId?: string | null;
 }
 
 const SAME_PLACE_THRESHOLD = 0.00012;
@@ -33,9 +36,14 @@ export function dedupeMapPlaces<T extends MapPlaceLike>(places: T[]): T[] {
     const preferred = place.model3DUrl && !existing.model3DUrl ? place : existing;
     const other = preferred === place ? existing : place;
 
+    const preferredPackage = adPackageRank(place.adPackageId) >= adPackageRank(existing.adPackageId)
+      ? place.adPackageId
+      : existing.adPackageId;
+
     result[duplicateIndex] = {
       ...other,
       ...preferred,
+      adPackageId: preferredPackage ?? null,
       isOwnedByCurrentUser: Boolean(
         existing.isOwnedByCurrentUser || place.isOwnedByCurrentUser,
       ),

@@ -11,6 +11,7 @@ import { Colors, Shadows } from '../constants/colors';
 import { useAppContentWidth } from '../constants/layout';
 import { useI18n } from '../i18n';
 import { avatarUri } from '../constants/defaultAvatar';
+import MomentMedia, { isVideoMedia } from './MomentMedia';
 import {
   getPostById,
   likePost,
@@ -31,6 +32,8 @@ import { getStoredAuthSession } from '../services/authApi';
 import ContentRejectedBanner from './ContentRejectedBanner';
 import { isContentRejected } from '../utils/contentRejected';
 import { isRealUserId, openUserProfile } from '../utils/openUserProfile';
+import MomentViewers from './MomentViewers';
+import PremiumBadge from './PremiumBadge';
 
 interface PostSheetProps {
   post: PostView;
@@ -429,11 +432,16 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
   const owner = detail?.owner;
   const isAnonymous = detail?.visibility === 'Anonymous' || Boolean(post.isAnonymous);
   const displayName = owner?.displayName || owner?.username || post.displayName;
+  const showPremium = !isAnonymous && Boolean(owner?.isPremium || post.authorIsPremium);
   const avatarUrl = owner?.avatarUrl ?? post.avatarUrl;
   const showUsername = owner?.username && owner.username !== 'anonymous';
   const caption = formatCaption(detail?.caption ?? post.caption, t);
   const primaryMedia = detail?.media?.[0];
-  const imageUrl = primaryMedia?.url || primaryMedia?.thumbnailUrl || post.thumbnailUrl;
+  const video = isVideoMedia(primaryMedia?.mediaType, primaryMedia?.url);
+  const stillUrl = video
+    ? (primaryMedia?.thumbnailUrl || post.thumbnailUrl)
+    : (primaryMedia?.url || primaryMedia?.thumbnailUrl || post.thumbnailUrl);
+  const playUrl = video ? (primaryMedia?.url || stillUrl) : stillUrl;
   const viewCount = detail?.viewCount ?? 0;
   const shareCount = detail?.shareCount ?? 0;
   const createdAt = detail?.createdAt || post.createdAt;
@@ -484,7 +492,10 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                 disabled={!canOpenAuthor}
                 activeOpacity={canOpenAuthor ? 0.75 : 1}
               >
-                <Text style={styles.name}>{displayName}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.name}>{displayName}</Text>
+                  {showPremium ? <PremiumBadge compact /> : null}
+                </View>
                 {isAnonymous ? (
                   <Text style={styles.username}>{t('post.anonymous')}</Text>
                 ) : showUsername ? (
@@ -515,13 +526,17 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
               <Text style={styles.errorText}>{error}</Text>
             )}
 
-            {imageUrl && !loading && (
+            {(playUrl || stillUrl) && !loading && (
               <View style={[styles.mediaWrap, { width: mediaSize, height: mediaSize }]}>
-                <Image
-                  source={{ uri: imageUrl }}
-                  style={{ width: mediaSize, height: mediaSize }}
-                  resizeMode="cover"
-                />
+                {video && Platform.OS === 'web' && playUrl ? (
+                  <MomentMedia uri={playUrl} mediaType="Video" style={{ width: mediaSize, height: mediaSize }} />
+                ) : stillUrl ? (
+                  <Image
+                    source={{ uri: stillUrl }}
+                    style={{ width: mediaSize, height: mediaSize }}
+                    resizeMode="cover"
+                  />
+                ) : null}
               </View>
             )}
 
@@ -580,6 +595,8 @@ export default function PostSheet({ post, onClose, isOwnPost = false }: PostShee
                     </View>
                   )}
                 </View>
+
+                {isPostOwner ? <MomentViewers postId={post.postId} variant="light" /> : null}
 
                 {isPostOwner && (
                   <TouchableOpacity
@@ -836,6 +853,11 @@ const styles = StyleSheet.create({
   },
   headerInfo: {
     flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   name: {
     fontSize: 15,

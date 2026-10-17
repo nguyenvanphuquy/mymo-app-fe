@@ -266,7 +266,10 @@ export default function BusinessAdvertisingScreen({
     let cancelled = false;
     setDashboardAnalyticsLoading(true);
     setDashboardAnalyticsError(false);
-    getPlaceAnalytics(dashboardCampaign.placeId)
+    getPlaceAnalytics(dashboardCampaign.placeId, {
+      from: dashboardCampaign.startDate,
+      to: dashboardCampaign.endDate,
+    })
       .then(data => {
         if (!cancelled) setDashboardAnalytics(data);
       })
@@ -280,7 +283,7 @@ export default function BusinessAdvertisingScreen({
         if (!cancelled) setDashboardAnalyticsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [dashboardCampaign?.placeId, dashboardCampaign?.campaignId]);
+  }, [dashboardCampaign?.placeId, dashboardCampaign?.campaignId, dashboardCampaign?.startDate, dashboardCampaign?.endDate]);
 
   const days = useMemo(() => campaignDays(startDate, endDate), [startDate, endDate]);
   const total = useMemo(() => {

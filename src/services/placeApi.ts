@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API_URL } from '../config/apiConfig';
+import { rejectIfUnauthorized } from './sessionGuard';
 import { parseVibeIds, type VibeId } from '../constants/vibes';
 
 const BASE_URL = API_URL;
@@ -47,6 +48,7 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
   }
 
   if (!response.ok) {
+    rejectIfUnauthorized(response.status);
     const message = typeof data === 'object' && data !== null && 'message' in data
       ? String((data as { message?: unknown }).message)
       : 'Unable to complete request';
@@ -71,6 +73,7 @@ export interface PlaceSummary {
   city?: string | null;
   vibes: VibeId[];
   isOwnedByCurrentUser: boolean;
+  adPackageId?: string | null;
   model3DKey?: string | null;
   model3DUrl?: string | null;
 }
@@ -189,6 +192,7 @@ function normalizePlaceSummary(raw: Record<string, unknown>): PlaceSummary {
     isOwnedByCurrentUser: Boolean(
       raw.isOwnedByCurrentUser ?? raw.IsOwnedByCurrentUser ?? false,
     ),
+    adPackageId: (raw.adPackageId ?? raw.AdPackageId ?? null) as string | null,
     model3DKey: (raw.model3DKey ?? raw.Model3DKey ?? null) as string | null,
     model3DUrl: absoluteModelUrl(
       (raw.model3DUrl ?? raw.Model3DUrl ?? null) as string | null,
@@ -436,7 +440,7 @@ export async function getPlacePromotions(placeId: string): Promise<PublicPromoti
 }
 
 export function formatMenuPriceVnd(price: number): string {
-  return `${Math.round(price).toLocaleString('vi-VN')}₫`;
+  return `${Math.round(price).toLocaleString('vi-VN')}đ`;
 }
 
 export async function getPlaceDetail(placeId: string): Promise<PlaceDetail> {
@@ -495,6 +499,14 @@ export async function deleteReview(reviewId: string): Promise<void> {
 export function pickClosestPlace(places: PlaceSummary[]): PlaceSummary | null {
   if (!places || places.length === 0) return null;
   return places[0];
+}
+
+export async function recordMapImpressions(placeIds: string[]): Promise<void> {
+  const ids = [...new Set(placeIds.filter(Boolean))].slice(0, 40);
+  if (ids.length === 0) return;
+  const token = await getAuthToken();
+  if (!token) return;
+  await requestJson(`/places/map-impressions`, 'POST', { placeIds: ids });
 }
 
 export function recentPostToPostView(post: PlaceRecentPost) {

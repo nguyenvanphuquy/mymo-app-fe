@@ -23,7 +23,9 @@ import {
   type FriendStatusResponse,
 } from '../services/friendsApi';
 
-const FALLBACK_COVER = 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=600&fit=crop';
+import { openUserProfile } from '../utils/openUserProfile';
+import PremiumBadge from '../components/PremiumBadge';
+import { frameColor, themeBackground } from '../constants/profileStyle';
 
 export interface FriendProfileParams {
   userId: string;
@@ -87,7 +89,6 @@ export default function FriendProfileScreen({
         : profile?.gender;
   const name = profile?.displayName || initialName || t('friends.someone');
   const avatar = avatarUri(profile?.avatarUrl || initialAvatar);
-  const cover = profile?.coverUrl || FALLBACK_COVER;
   const status = friendStatus?.status.toLowerCase() ?? 'none';
   const isFriend = status === 'accepted';
   const isIncomingRequest = status === 'pending' && friendStatus?.isIncoming;
@@ -132,7 +133,11 @@ export default function FriendProfileScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.heroWrap}>
-          <Image source={{ uri: cover }} style={styles.heroBg} />
+          {profile?.coverUrl ? (
+            <Image source={{ uri: profile.coverUrl }} style={styles.heroBg} />
+          ) : (
+            <LinearGradient colors={['#F4C4F1', '#DA70D6', '#7C3AED']} style={styles.heroBg} />
+          )}
           <LinearGradient
             colors={['rgba(42,23,88,0.15)', 'rgba(42,23,88,0.55)']}
             style={StyleSheet.absoluteFillObject}
@@ -146,7 +151,7 @@ export default function FriendProfileScreen({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, profile?.isPremium && themeBackground(profile.profileTheme) ? { backgroundColor: themeBackground(profile.profileTheme)! } : null]}>
           {loading && (
             <View style={styles.loadingRow}>
               <ActivityIndicator color={Colors.primary} size="small" />
@@ -161,9 +166,23 @@ export default function FriendProfileScreen({
           )}
 
           <View style={styles.avatarRow}>
-            <Image source={{ uri: avatar }} style={styles.avatar} />
+            <Image
+              source={{ uri: avatar }}
+              style={[
+                styles.avatar,
+                profile?.isPremium && frameColor(profile.avatarFrame)
+                  ? { borderWidth: 3, borderColor: frameColor(profile.avatarFrame)! }
+                  : null,
+              ]}
+            />
             <View style={styles.info}>
-              <Text style={styles.name}>{name}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.name}>{name}</Text>
+                {profile?.isPremium ? <PremiumBadge /> : null}
+              </View>
+              {profile?.isPremium && profile.profileTitle ? (
+                <Text style={styles.titlePill}>{t(`style.title.${profile.profileTitle}`)}</Text>
+              ) : null}
               {profile?.username ? (
                 <Text style={styles.username}>@{profile.username}</Text>
               ) : null}
@@ -190,6 +209,17 @@ export default function FriendProfileScreen({
               ) : null}
             </View>
           </View>
+
+          {profile?.isPremium && (profile.favoritePlaces?.length ?? 0) > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.favoriteRow}>
+              {profile.favoritePlaces?.map(place => (
+                <View key={place.placeId} style={styles.favoriteChip}>
+                  <Ionicons name="location" size={12} color={Colors.primary} />
+                  <Text style={styles.favoriteText}>{place.name}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
 
           <View style={styles.statsRow}>
             {stats.map(stat => (
@@ -357,9 +387,45 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 4,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
   name: {
     fontSize: 18,
     fontWeight: '800',
+    color: Colors.textDark,
+  },
+  titlePill: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    backgroundColor: '#F8E9FF',
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  favoriteRow: {
+    gap: 8,
+    marginTop: 12,
+  },
+  favoriteChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  favoriteText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: Colors.textDark,
   },
   username: {

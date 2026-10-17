@@ -32,8 +32,6 @@ interface HomeScreenProps {
   onOpenChat?: (conversationId: string, title: string, avatarUrl?: string | null) => void;
 }
 
-const FALLBACK_PLACE = 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=400&fit=crop';
-
 function getGreetingKey(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'home.greeting.morning';
@@ -297,12 +295,18 @@ export default function HomeScreen({
               <Text style={styles.mymyLine}>{mymyLine}</Text>
             </View>
             <View style={styles.aiThumbWrap}>
-              <LinearGradient colors={['#FFFFFF', '#FBEAF9']} style={styles.aiThumbRing}>
-                <Image
-                  source={{ uri: vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl || FALLBACK_PLACE }}
-                  style={styles.aiThumb}
-                />
-              </LinearGradient>
+                <LinearGradient colors={['#FFFFFF', '#FBEAF9']} style={styles.aiThumbRing}>
+                  {vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl ? (
+                    <Image
+                      source={{ uri: vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl || '' }}
+                      style={styles.aiThumb}
+                    />
+                  ) : (
+                    <View style={[styles.aiThumb, styles.aiThumbEmpty]}>
+                      <Text style={styles.mymyEmoji}>{selectedVibeDef?.emoji ?? '✨'}</Text>
+                    </View>
+                  )}
+                </LinearGradient>
               <Text style={styles.aiThumbSparkle}>✦</Text>
             </View>
           </View>
@@ -642,6 +646,11 @@ const styles = StyleSheet.create({
     height: 82,
     borderRadius: 17,
     backgroundColor: Colors.white,
+  },
+  aiThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FBEAF9',
   },
   aiThumbSparkle: {
     position: 'absolute',

@@ -22,6 +22,7 @@ import { isPremiumActive, syncPremiumPlanFromServer } from '../utils/premiumStor
 import { postVisibleAtZoom } from '../utils/mapPostZoom';
 import { onMapPostCreated, onMapPostDeleted, updateMapArea } from '../services/mapHub';
 import { getNearbyPlaces, getPlacePromotions, recentPostToPostView, type PlaceSummary } from '../services/placeApi';
+import { useRecordMapImpressions } from '../hooks/useRecordMapImpressions';
 import { getFriendsLocations } from '../services/friendsApi';
 import { hideUserLocation, updateUserLocation } from '../services/userApi';
 import { friendLocationToMapPin, type MapFriendPin } from '../utils/mapFriendUtils';
@@ -43,11 +44,15 @@ import {
 } from '../constants/mapbox';
 import { vibeById, type VibeId } from '../constants/vibes';
 import { avatarUri } from '../constants/defaultAvatar';
+import { isMapImage, mapCharacterEmoji } from '../constants/mapCharacters';
+import { getUserProfile } from '../services/userApi';
+import { hasActivePremium } from '../utils/premiumStorage';
 import type { MapGeocodeResult } from '../services/mapGeocodingApi';
 import * as Haptics from 'expo-haptics';
 import { getStoredAuthSession, getAuthUserId } from '../services/authApi';
 import { getUserProfile } from '../services/userApi';
 import { dedupeMapPlaces } from '../utils/dedupeMapPlaces';
+import { placesForMarkerPaint, sortPlacesByPromotion } from '../utils/mapPlacePromotion';
 import {
   HEATMAP_LAYER_ID,
   HEATMAP_SOURCE_ID,
@@ -101,6 +106,7 @@ export default function MapScreen({
   const [contentFilter, setContentFilter] = useState<MapContentFilter>('all');
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [myMapMarker, setMyMapMarker] = useState<string | null>(null);
   const userCoordsRef = useRef(userCoords);
   userCoordsRef.current = userCoords;
   // ~110m grid — avoid refetch storms on every GPS tick
@@ -113,6 +119,21 @@ export default function MapScreen({
   const [selectedPost, setSelectedPost] = useState<PostView | null>(null);
   const [selectedPostIsOwn, setSelectedPostIsOwn] = useState(false);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [profile, premium] = await Promise.all([getUserProfile(), hasActivePremium()]);
+        setMyMapMarker(premium ? (profile.mapMarker ?? null) : null);
+      } catch {
+        setMyMapMarker(null);
+      }
+    })();
+    const sub = DeviceEventEmitter.addListener('map-marker:updated', (marker: string | null) => {
+      setMyMapMarker(marker);
+    });
+    return () => sub.remove();
+  }, []);
   const [selectedPlace, setSelectedPlace] = useState<PlaceSummary | null>(null);
   const [friendPins, setFriendPins] = useState<MapFriendPin[]>([]);
   const [eventPlaceIds, setEventPlaceIds] = useState<Set<string>>(new Set());
@@ -366,7 +387,7 @@ export default function MapScreen({
             (p.address || '').toLowerCase().includes(searchLower) ||
             (p.city || '').toLowerCase().includes(searchLower))
         : vibePlaces;
-      return dedupeMapPlaces(searchedPlaces);
+      return sortPlacesByPromotion(dedupeMapPlaces(searchedPlaces));
     },
     [nearbyPlaces, vibeId, searchLower, contentFilter, eventPlaceIds],
   );
@@ -388,6 +409,7 @@ export default function MapScreen({
       place.isOwnedByCurrentUser || showBusinessPins),
     [filteredPlaces, showBusinessPins],
   );
+  useRecordMapImpressions(visiblePlaces, isActive);
   const showFreshPosts = shownZoom >= MAP_FRESH_POST_MIN_ZOOM;
   const showPosts = shownZoom >= MAP_POST_MIN_ZOOM;
 
@@ -400,19 +422,10 @@ export default function MapScreen({
     () => spreadOverlappingMarkers(visiblePosts),
     [visiblePosts],
   );
-  const heatGeoJSON = useMemo(() => {
-    const merged = new Map<string, { latitude: number; longitude: number; userId?: string }>();
-    [...heatPoints, ...nearbyPosts].forEach(point => {
-      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
-      const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)},${(point.userId || '').toLowerCase()}`;
-      merged.set(key, point);
-    });
-    const source = [...merged.values()];
-    const posts = contentFilter === 'friends'
-      ? source.filter(point => friendIds.has((point.userId || '').toLowerCase()))
-      : source;
-    return buildHeatGeoJSON(posts);
-  }, [contentFilter, friendIds, heatPoints, nearbyPosts]);
+  const heatGeoJSON = useMemo(
+    () => buildHeatGeoJSON(heatPoints),
+    [heatPoints],
+  );
 
   const displayedMapPosts = useMemo(
     () => separatePostsFrom3DPlaces(
@@ -547,8 +560,24 @@ export default function MapScreen({
           </ShapeSource>
         ) : null}
 
+        {visibleOnMap && userCoords && (isMapImage(myMapMarker) || mapCharacterEmoji(myMapMarker)) ? (
+          <MarkerView
+            key="self-marker"
+            coordinate={[userCoords.lng, userCoords.lat]}
+            anchor={{ x: 0.5, y: 0.5 }}
+          >
+            <View style={styles.selfPin}>
+              {mapCharacterEmoji(myMapMarker) ? (
+                <Text style={styles.pinEmoji}>{mapCharacterEmoji(myMapMarker)}</Text>
+              ) : (
+                <Image source={{ uri: myMapMarker! }} style={styles.pinAvatarImg} />
+              )}
+            </View>
+          </MarkerView>
+        ) : null}
+
         {/* User location dot */}
-        {visibleOnMap && (
+        {visibleOnMap && !(isMapImage(myMapMarker) || mapCharacterEmoji(myMapMarker)) && (
           <UserLocation
             visible
             renderMode={"normal" as any}
@@ -578,7 +607,7 @@ export default function MapScreen({
         )}
 
         {/* Nearby place pins — only when zoomed in */}
-        {visiblePlaces.map(place => (
+        {placesForMarkerPaint(visiblePlaces).map(place => (
           <MarkerView
             key={`place-${place.placeId}`}
             coordinate={[place.longitude, place.latitude]}
@@ -590,7 +619,11 @@ export default function MapScreen({
                 setSelectedPost(null);
                 setSelectedPlace(place);
               }}
-              style={[styles.placePin, place.isOwnedByCurrentUser && styles.placePinMine]}
+              style={[
+                styles.placePin,
+                place.isOwnedByCurrentUser && styles.placePinMine,
+                place.adPackageId === 'featured_venue' && styles.placePinFeatured,
+              ]}
               activeOpacity={0.88}
             >
               {place.vibes.length > 0 ? (
@@ -604,7 +637,21 @@ export default function MapScreen({
                   ))}
                 </View>
               ) : null}
-              {place.model3DUrl && show3DModels ? (
+              {place.adPackageId === 'featured_venue' ? (
+                <>
+                  <LinearGradient
+                    colors={['#F6C445', '#E39B1A']}
+                    style={styles.placePinBubble}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.placePinInner}>
+                      <Ionicons name="star" size={16} color="#E39B1A" />
+                    </View>
+                  </LinearGradient>
+                  <View style={[styles.placePinTip, styles.placePinTipFeatured]} />
+                </>
+              ) : place.model3DUrl && show3DModels ? (
                 <>
                   <LinearGradient
                     colors={Gradients.primary}
@@ -622,6 +669,8 @@ export default function MapScreen({
               <View style={[
                 styles.placeChip,
                 place.model3DUrl && show3DModels && styles.placeChipModel,
+                place.adPackageId === 'featured_venue' && styles.placeChipFeatured,
+                place.adPackageId && place.adPackageId !== 'featured_venue' && styles.placeChipSponsored,
               ]}>
                 <Text style={styles.placeChipName} numberOfLines={1}>{place.name}</Text>
                 {place.isOwnedByCurrentUser ? (
@@ -678,7 +727,9 @@ export default function MapScreen({
                 )}
               </View>
               <View style={styles.postNameTag}>
-                <Text style={styles.postName} numberOfLines={1}>{post.displayName}</Text>
+                <Text style={styles.postName} numberOfLines={1}>
+                  {post.authorIsPremium && !post.isAnonymous ? '💎 ' : ''}{post.displayName}
+                </Text>
               </View>
             </TouchableOpacity>
           </MarkerView>
@@ -700,7 +751,14 @@ export default function MapScreen({
               style={styles.pin}
             >
               <View style={[styles.pinAvatar, { backgroundColor: f.color }, Shadows.glow as any]}>
-                <Image source={{ uri: avatarUri(f.avatarUrl) }} style={styles.pinAvatarImg} />
+                {mapCharacterEmoji(f.mapMarker) ? (
+                  <Text style={styles.pinEmoji}>{mapCharacterEmoji(f.mapMarker)}</Text>
+                ) : (
+                  <Image
+                    source={{ uri: isMapImage(f.mapMarker) ? f.mapMarker! : avatarUri(f.avatarUrl) }}
+                    style={styles.pinAvatarImg}
+                  />
+                )}
                 {f.status === 'active' && <View style={styles.pinActiveDot} />}
               </View>
               <View style={styles.pinNameTag}>
@@ -1051,9 +1109,20 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   pinAvatarImg: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  selfPin: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: '#F472B6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   pinActiveDot: {
     position: 'absolute',
@@ -1153,6 +1222,18 @@ const styles = StyleSheet.create({
   placePinMine: {
     transform: [{ scale: 1.15 }],
     zIndex: 9,
+  },
+  placePinFeatured: {
+    zIndex: 24,
+  },
+  placePinTipFeatured: {
+    borderTopColor: '#E39B1A',
+  },
+  placeChipFeatured: {
+    borderColor: '#F6C445',
+  },
+  placeChipSponsored: {
+    borderColor: '#E39BDE',
   },
   placeModelVibes: {
     flexDirection: 'row',

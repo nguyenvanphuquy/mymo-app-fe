@@ -3,31 +3,34 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } 
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BusinessScreenHeader from '../../components/business/BusinessScreenHeader';
-import DemoBadge from '../../components/business/DemoBadge';
 import BusinessEmptyState from '../../components/business/BusinessEmptyState';
 import { Colors, Shadows } from '../../constants/colors';
 import { useI18n } from '../../i18n';
 import {
-  listBusinessNotifications,
-  markAllNotificationsRead,
-  type BizNotificationItem,
-} from '../../mocks/businessNotificationsDemo';
+  getNotifications,
+  markAllRead,
+  type NotificationItem,
+} from '../../services/notificationsApi';
 
-function iconFor(kind: BizNotificationItem['kind']) {
-  if (kind === 'place') return 'location-outline';
-  if (kind === 'campaign') return 'megaphone-outline';
-  if (kind === 'review') return 'star-outline';
-  return 'information-circle-outline';
+function iconFor(type: NotificationItem['type']) {
+  if (type === 'like' || type === 'comment') return 'star-outline' as const;
+  if (type === 'chat') return 'chatbubble-outline' as const;
+  if (type === 'request' || type === 'friend_accepted' || type === 'friend_rejected') return 'people-outline' as const;
+  return 'information-circle-outline' as const;
 }
 
 export default function BusinessNotificationsScreen({ onBack }: { onBack: () => void }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const [items, setItems] = useState<BizNotificationItem[]>([]);
+  const [items, setItems] = useState<NotificationItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    setItems(await listBusinessNotifications());
+    try {
+      setItems(await getNotifications());
+    } catch {
+      setItems([]);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -39,7 +42,7 @@ export default function BusinessNotificationsScreen({ onBack }: { onBack: () => 
   };
 
   const markRead = async () => {
-    await markAllNotificationsRead();
+    await markAllRead();
     await load();
   };
 
@@ -54,10 +57,6 @@ export default function BusinessNotificationsScreen({ onBack }: { onBack: () => 
           </TouchableOpacity>
         )}
       />
-      <View style={styles.demoRow}>
-        <DemoBadge />
-        <Text style={styles.demoHint}>{t('biz.notif.demoHint')}</Text>
-      </View>
       <ScrollView
         contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
@@ -70,14 +69,14 @@ export default function BusinessNotificationsScreen({ onBack }: { onBack: () => 
           />
         ) : (
           items.map(n => (
-            <View key={n.id} style={[styles.card, !n.read && styles.unread]}>
+            <View key={n.id} style={[styles.card, !n.isRead && styles.unread]}>
               <View style={styles.icon}>
-                <Ionicons name={iconFor(n.kind)} size={20} color={Colors.primary} />
+                <Ionicons name={iconFor(n.type)} size={20} color={Colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{n.title}</Text>
-                <Text style={styles.cardBody}>{n.body}</Text>
-                <Text style={styles.time}>{new Date(n.createdAt).toLocaleString()}</Text>
+                <Text style={styles.cardTitle}>{n.title || n.senderName || t('biz.notif.title')}</Text>
+                <Text style={styles.cardBody}>{n.body || ''}</Text>
+                <Text style={styles.time}>{n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}</Text>
               </View>
             </View>
           ))
@@ -90,8 +89,6 @@ export default function BusinessNotificationsScreen({ onBack }: { onBack: () => 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#FFF9FF' },
   mark: { fontSize: 11, fontWeight: '800', color: Colors.primary },
-  demoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, marginBottom: 4 },
-  demoHint: { fontSize: 11, color: Colors.textMuted, flex: 1 },
   card: {
     flexDirection: 'row',
     gap: 12,

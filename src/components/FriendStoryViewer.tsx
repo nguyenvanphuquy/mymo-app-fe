@@ -9,13 +9,17 @@ import { Colors } from '../constants/colors';
 import { APP_MAX_WIDTH, useAppContentWidth } from '../constants/layout';
 import PostSheet from './PostSheet';
 import { getPostThumbnail, toPostView } from '../services/postApi';
+import MomentMedia, { isVideoMedia } from './MomentMedia';
 import type { UserMomentGroup } from '../utils/friendMomentsGrouping';
 import { avatarUri } from '../constants/defaultAvatar';
 import { openUserProfile } from '../utils/openUserProfile';
+import { recordStoryView } from '../services/postApi';
+import MomentViewers from './MomentViewers';
 
 interface FriendStoryViewerProps {
   groups: UserMomentGroup[];
   initialGroupIndex: number | null;
+  viewerUserId?: string | null;
   onStoryViewed?: (postId: string) => void;
   onClose: () => void;
 }
@@ -23,6 +27,7 @@ interface FriendStoryViewerProps {
 export default function FriendStoryViewer({
   groups,
   initialGroupIndex,
+  viewerUserId = null,
   onStoryViewed,
   onClose,
 }: FriendStoryViewerProps) {
@@ -32,6 +37,7 @@ export default function FriendStoryViewer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [detailPostId, setDetailPostId] = useState<string | null>(null);
+  const [viewersOpen, setViewersOpen] = useState(false);
 
   const group = groups[groupIndex] ?? null;
   const posts = group?.posts ?? [];
@@ -45,9 +51,13 @@ export default function FriendStoryViewer({
     setDetailPostId(null);
   }, [initialGroupIndex]);
 
+  const isOwnStory = !!viewerUserId && group?.userId === viewerUserId.toLowerCase();
+
   useEffect(() => {
-    if (currentPost) onStoryViewed?.(currentPost.postId);
-  }, [currentPost?.postId, onStoryViewed]);
+    if (!currentPost) return;
+    onStoryViewed?.(currentPost.postId);
+    if (!isOwnStory) void recordStoryView(currentPost.postId).catch(() => {});
+  }, [currentPost?.postId, onStoryViewed, isOwnStory]);
 
   const goNext = useCallback(() => {
     if (activeIndex < posts.length - 1) {
@@ -85,7 +95,7 @@ export default function FriendStoryViewer({
   }), [goNext, goPrev]);
 
   useEffect(() => {
-    if (!group || posts.length === 0) return;
+    if (!group || posts.length === 0 || viewersOpen) return;
 
     setProgress(0);
     const startedAt = Date.now();
@@ -102,7 +112,7 @@ export default function FriendStoryViewer({
     }, 50);
 
     return () => clearInterval(timer);
-  }, [group, activeIndex, posts.length, goNext]);
+  }, [group, activeIndex, posts.length, goNext, viewersOpen]);
 
   const detailPost = useMemo(() => {
     if (!detailPostId || !group) return null;
@@ -114,6 +124,9 @@ export default function FriendStoryViewer({
   if (!group || !currentPost) return null;
 
   const thumb = getPostThumbnail(currentPost);
+  const clip = currentPost.media?.[0];
+  const video = isVideoMedia(clip?.mediaType, clip?.url);
+  const playUri = video && Platform.OS === 'web' ? (clip?.url || thumb) : thumb;
   return (
     <>
       <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -123,12 +136,16 @@ export default function FriendStoryViewer({
             {...swipeResponder.panHandlers}
           >
             <View style={styles.mediaStage}>
-              {thumb ? (
-                <Image
-                  source={{ uri: thumb }}
-                  style={styles.fullImage}
-                  resizeMode="contain"
-                />
+              {playUri ? (
+                video ? (
+                  <MomentMedia uri={playUri} mediaType="Video" style={styles.fullImage} resizeMode="contain" />
+                ) : (
+                  <Image
+                    source={{ uri: playUri }}
+                    style={styles.fullImage}
+                    resizeMode="contain"
+                  />
+                )
               ) : (
                 <View style={styles.fullFallback}>
                   <Ionicons name="image-outline" size={48} color={Colors.primary} />
@@ -203,6 +220,9 @@ export default function FriendStoryViewer({
             </View>
 
             <View style={styles.footer}>
+              {isOwnStory ? (
+                <MomentViewers postId={currentPost.postId} onOpenChange={setViewersOpen} />
+              ) : null}
               {currentPost.caption ? (
                 <Text style={styles.caption} numberOfLines={3}>{currentPost.caption}</Text>
               ) : null}

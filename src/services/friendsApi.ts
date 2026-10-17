@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizeFriendLocations, type FriendLocation } from '../utils/mapFriendUtils';
 
 import { API_URL } from '../config/apiConfig';
+import { rejectIfUnauthorized } from './sessionGuard';
 
 const BASE_URL = API_URL;
 
@@ -129,6 +130,7 @@ async function requestJson<T>(path: string, method: string, body?: unknown, isMu
   }
 
   if (!response.ok) {
+    rejectIfUnauthorized(response.status);
     const message = typeof data === 'object' && data !== null && 'message' in data
       ? String((data as { message?: unknown }).message)
       : 'Unable to complete request';

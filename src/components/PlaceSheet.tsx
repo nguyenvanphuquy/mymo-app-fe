@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  View, Text, Modal, TouchableOpacity, StyleSheet, Animated,
-  Platform, Image, ActivityIndicator, ScrollView, TextInput,
+  View, Modal, TouchableOpacity, StyleSheet, Animated,
+  Platform, Image, ActivityIndicator, ScrollView,
   KeyboardAvoidingView,
 } from 'react-native';
+import { Text, TextInput } from '../ui/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Colors, Shadows } from '../constants/colors';
@@ -535,16 +536,16 @@ export default function PlaceSheet({ placeId, placeName, onClose, onPostTap }: P
                               <Image source={{ uri: item.imageUrl }} style={styles.menuItemImg} />
                             ) : (
                               <View style={styles.menuItemImgPlaceholder}>
-                                <Ionicons name="cafe-outline" size={20} color={Colors.primary} />
+                                <Ionicons name="cafe-outline" size={18} color={Colors.primary} />
                               </View>
                             )}
                             <View style={styles.menuItemText}>
-                              <Text style={styles.menuItemName}>{item.name}</Text>
-                              <Text style={styles.menuItemPrice}>{formatMenuPriceVnd(item.price)}</Text>
+                              <Text style={styles.menuItemName} numberOfLines={2}>{item.name}</Text>
                               {item.description ? (
                                 <Text style={styles.menuItemDesc} numberOfLines={2}>{item.description}</Text>
                               ) : null}
                             </View>
+                            <Text style={styles.menuItemPrice}>{formatMenuPriceVnd(item.price)}</Text>
                           </View>
                         ))}
                       </View>
@@ -824,7 +825,7 @@ const styles = StyleSheet.create({
   },
   vibeChipText: {
     color: '#5B3FD1',
-    fontFamily: 'Nunito_700Bold',
+    fontWeight: '700',
     fontSize: 12,
   },
   modelSection: {
@@ -843,7 +844,7 @@ const styles = StyleSheet.create({
   },
   modelTitle: {
     color: Colors.textDark,
-    fontFamily: 'Nunito_800ExtraBold',
+    fontWeight: '800',
     fontSize: 15,
   },
   modelViewer: {
@@ -855,7 +856,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
     textAlign: 'center',
     color: Colors.textMuted,
-    fontFamily: 'Nunito_600SemiBold',
+    fontWeight: '600',
     fontSize: 11,
   },
   placeName: {
@@ -970,27 +971,35 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.primarySoft,
   },
   menuBlockHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  menuHeading: { fontSize: 11, fontWeight: '900', color: Colors.textMuted, letterSpacing: 0.8 },
-  menuTitle: { fontSize: 16, fontWeight: '900', color: Colors.textDark, marginTop: 2 },
+  menuHeading: { fontSize: 12, fontWeight: '700', color: Colors.textMuted },
+  menuTitle: { fontSize: 16, fontWeight: '800', color: Colors.textDark, marginTop: 1 },
   menuCount: {
-    fontSize: 12, fontWeight: '900', color: Colors.primary,
-    backgroundColor: Colors.white, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
+    minWidth: 28,
+    textAlign: 'center',
+    fontSize: 12, fontWeight: '800', color: Colors.primary,
+    backgroundColor: Colors.white, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, overflow: 'hidden',
   },
-  menuCategory: { marginBottom: 8 },
-  menuCategoryTitle: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginBottom: 8 },
+  menuCategory: { marginBottom: 4 },
+  menuCategoryTitle: { fontSize: 13, fontWeight: '700', color: Colors.primary, marginBottom: 8, marginTop: 4 },
   menuItemCard: {
-    flexDirection: 'row', gap: 12, marginBottom: 8, padding: 10,
-    backgroundColor: Colors.white, borderRadius: 14, ...Shadows.soft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+    padding: 10,
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    ...Shadows.soft,
   },
-  menuItemImg: { width: 56, height: 56, borderRadius: 12, backgroundColor: Colors.primarySoft },
+  menuItemImg: { width: 48, height: 48, borderRadius: 12, backgroundColor: Colors.primarySoft, flexShrink: 0 },
   menuItemImgPlaceholder: {
-    width: 56, height: 56, borderRadius: 12, backgroundColor: Colors.primaryTint,
-    alignItems: 'center', justifyContent: 'center',
+    width: 48, height: 48, borderRadius: 12, backgroundColor: Colors.primaryTint,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  menuItemText: { flex: 1 },
-  menuItemName: { fontSize: 14, fontWeight: '800', color: Colors.textDark },
-  menuItemPrice: { fontSize: 13, fontWeight: '800', color: Colors.primary, marginTop: 2 },
-  menuItemDesc: { fontSize: 11, color: Colors.textMuted, marginTop: 2, lineHeight: 15 },
+  menuItemText: { flex: 1, minWidth: 0 },
+  menuItemName: { fontSize: 14, fontWeight: '700', color: Colors.textDark },
+  menuItemPrice: { fontSize: 14, fontWeight: '800', color: Colors.primary, flexShrink: 0 },
+  menuItemDesc: { fontSize: 12, color: Colors.textMuted, marginTop: 2, lineHeight: 16 },
   promoCard: { backgroundColor: Colors.white, borderRadius: 12, padding: 12, marginBottom: 10 },
   promoImg: { width: '100%', height: 100, borderRadius: 10, marginBottom: 8, backgroundColor: Colors.primarySoft },
   promoTitle: { fontSize: 15, fontWeight: '900', color: Colors.textDark },

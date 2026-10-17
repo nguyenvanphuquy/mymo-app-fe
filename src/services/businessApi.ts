@@ -151,11 +151,19 @@ export interface BusinessPlaceDto {
   checkInCount: number;
 }
 
+export interface DailyCheckInPoint {
+  date: string;
+  count: number;
+}
+
 export interface PlaceAnalyticsDto {
   totalCheckIns: number;
   todayCheckIns: number;
   weeklyCheckIns: number;
   monthlyCheckIns: number;
+  totalMapViews: number;
+  dailyCheckIns: DailyCheckInPoint[];
+  dailyMapViews: DailyCheckInPoint[];
 }
 
 function normalizeBusiness(raw: Record<string, unknown>): BusinessDto {
@@ -334,14 +342,36 @@ export async function updatePlace(
   return normalizePlace(res.data);
 }
 
-export async function getPlaceAnalytics(placeId: string): Promise<PlaceAnalyticsDto> {
-  const res = await requestJson<Record<string, unknown>>(`/business/places/${placeId}/analytics`, 'GET');
+export async function getPlaceAnalytics(
+  placeId: string,
+  range?: { from?: string; to?: string },
+): Promise<PlaceAnalyticsDto> {
+  const params = new URLSearchParams();
+  if (range?.from) params.set('from', range.from.slice(0, 10));
+  if (range?.to) params.set('to', range.to.slice(0, 10));
+  const query = params.toString();
+  const res = await requestJson<Record<string, unknown>>(
+    `/business/places/${placeId}/analytics${query ? `?${query}` : ''}`,
+    'GET',
+  );
   const raw = res.data;
+  const parseDaily = (value: unknown): DailyCheckInPoint[] => Array.isArray(value)
+    ? value.map(item => {
+        const row = item as Record<string, unknown>;
+        return {
+          date: String(row.date ?? row.Date ?? '').slice(0, 10),
+          count: Number(row.count ?? row.Count ?? 0),
+        };
+      }).filter(point => point.date.length === 10)
+    : [];
   return {
     totalCheckIns: Number(raw.totalCheckIns ?? raw.TotalCheckIns ?? 0),
     todayCheckIns: Number(raw.todayCheckIns ?? raw.TodayCheckIns ?? 0),
     weeklyCheckIns: Number(raw.weeklyCheckIns ?? raw.WeeklyCheckIns ?? 0),
     monthlyCheckIns: Number(raw.monthlyCheckIns ?? raw.MonthlyCheckIns ?? 0),
+    totalMapViews: Number(raw.totalMapViews ?? raw.TotalMapViews ?? 0),
+    dailyCheckIns: parseDaily(raw.dailyCheckIns ?? raw.DailyCheckIns),
+    dailyMapViews: parseDaily(raw.dailyMapViews ?? raw.DailyMapViews),
   };
 }
 

@@ -38,6 +38,11 @@ type PlanConfig = {
 
 const FEATURE_KEYS = [
   'premium.feat.moments',
+  'premium.feat.library',
+  'premium.feat.viewers',
+  'premium.feat.mapMarker',
+  'premium.feat.style',
+  'premium.feat.badge',
   'premium.feat.anonymous',
   'premium.feat.themes',
   'premium.feat.feed',
@@ -101,19 +106,32 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
     return [free, ...paid];
   }, [catalog, t]);
 
+  const planFloor = useMemo(() => {
+    const current = plansToShow.find(plan => plan.id === currentPlan);
+    return current ? current.price : (currentPlan !== 'free' ? 1 : 0);
+  }, [plansToShow, currentPlan]);
+
+  const isLowerPlan = (plan: PlanConfig) => plan.price < planFloor;
+
   useEffect(() => {
     if (loading) return;
-    if (plansToShow.some(p => p.id === selectedPlan)) return;
-    const paid = plansToShow.find(p => p.id !== 'free');
-    if (paid) setSelectedPlan(paid.id);
-  }, [loading, plansToShow, selectedPlan]);
+    const selected = plansToShow.find(plan => plan.id === selectedPlan);
+    if (selected && !isLowerPlan(selected)) return;
+    const next = plansToShow.find(plan => plan.id === currentPlan)
+      ?? plansToShow.find(plan => plan.price >= planFloor);
+    if (next) setSelectedPlan(next.id);
+  }, [loading, plansToShow, selectedPlan, currentPlan, planFloor]);
 
   const handleSelect = (planId: string) => {
+    const plan = plansToShow.find(item => item.id === planId);
+    if (!plan || isLowerPlan(plan)) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedPlan(planId);
   };
 
   const handleSubscribe = async () => {
+    if (plansToShow.some(plan => plan.id === selectedPlan && isLowerPlan(plan))) return;
+
     if (selectedPlan === 'free') {
       setSubmitting(true);
       try {
@@ -234,12 +252,14 @@ export default function PremiumScreen({ onClose, onPlanChanged }: PremiumScreenP
             {plansToShow.map(plan => {
               const isSelected = selectedPlan === plan.id;
               const isCurrent = currentPlan === plan.id;
+              const locked = isLowerPlan(plan);
               return (
                 <TouchableOpacity
                   key={plan.id}
-                  activeOpacity={0.9}
+                  activeOpacity={locked ? 1 : 0.9}
+                  disabled={locked}
                   onPress={() => handleSelect(plan.id)}
-                  style={[styles.planCard, isSelected && styles.planCardSelected]}
+                  style={[styles.planCard, isSelected && styles.planCardSelected, locked && styles.planCardLocked]}
                 >
                   {plan.popular && (
                     <View style={styles.popularBadge}>
@@ -452,6 +472,9 @@ const styles = StyleSheet.create({
   planCardSelected: {
     borderColor: Colors.primary,
     backgroundColor: '#FDFBFF',
+  },
+  planCardLocked: {
+    opacity: 0.4,
   },
   popularBadge: {
     position: 'absolute',

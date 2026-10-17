@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API_URL } from '../config/apiConfig';
+import { rejectIfUnauthorized } from './sessionGuard';
 
 const BASE_URL = API_URL;
 
@@ -38,6 +39,7 @@ async function requestJson<T>(path: string, method: string, body?: unknown): Pro
   }
 
   if (!res.ok) {
+    rejectIfUnauthorized(res.status);
     const msg = typeof data === 'object' && data && 'message' in data ? String((data as any).message) : 'Request failed';
     throw new Error(msg);
   }

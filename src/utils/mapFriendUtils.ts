@@ -7,6 +7,7 @@ export interface FriendLocation {
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
+  mapMarker?: string | null;
   latitude: number;
   longitude: number;
   isOnline: boolean;
@@ -18,6 +19,7 @@ export type MapFriendPin = Friend & {
   lng: number;
   lat: number;
   avatarUrl?: string | null;
+  mapMarker?: string | null;
 };
 
 function colorForId(id: string): string {
@@ -53,6 +55,7 @@ function normalizeFriendLocation(raw: Record<string, unknown>): FriendLocation {
     username: String(raw.username || raw.Username || ''),
     displayName: (raw.displayName ?? raw.DisplayName ?? null) as string | null,
     avatarUrl: (raw.avatarUrl ?? raw.AvatarUrl ?? null) as string | null,
+    mapMarker: (raw.mapMarker ?? raw.MapMarker ?? null) as string | null,
     latitude: Number(raw.latitude ?? raw.Latitude ?? 0),
     longitude: Number(raw.longitude ?? raw.Longitude ?? 0),
     isOnline: Boolean(raw.isOnline ?? raw.IsOnline),
@@ -85,6 +88,7 @@ export function friendLocationToMapPin(
     lng: loc.longitude,
     lat: loc.latitude,
     avatarUrl: loc.avatarUrl,
+    mapMarker: loc.mapMarker,
   };
 }
 

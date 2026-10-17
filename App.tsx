@@ -59,6 +59,7 @@ import {
 import { syncCurrentLocationToServer, enableSharingAndSync } from './src/utils/syncUserLocation';
 import { disconnectMapHub, startPresenceHeartbeat, stopPresenceHeartbeat } from './src/services/mapHub';
 import { OPEN_USER_PROFILE } from './src/utils/openUserProfile';
+import { AUTH_EXPIRED, isAccessTokenExpired } from './src/services/sessionGuard';
 import { webPermissionState } from './src/utils/ensureLocation';
 import type { AdminSession } from './src/services/adminApi';
 import type { BusinessSession } from './src/services/businessApi';
@@ -153,15 +154,21 @@ function AppInner() {
   const [businessSession, setBusinessSession] = useState<BusinessSession | null>(null);
   useEffect(() => {
     (async () => {
-      const { getStoredAuthSession } = await import('./src/services/authApi');
+      const { getStoredAuthSession, clearAuthSession } = await import('./src/services/authApi');
       const { getAdminSession } = await import('./src/services/adminApi');
       const { getBusinessSession } = await import('./src/services/businessApi');
       try {
-        const [session, admin, business] = await Promise.all([
+        const [storedSession, admin, business] = await Promise.all([
           getStoredAuthSession(),
           getAdminSession(),
           getBusinessSession(),
         ]);
+        const session = storedSession && !isAccessTokenExpired(storedSession.accessToken)
+          ? storedSession
+          : null;
+        if (storedSession && !session) {
+          await clearAuthSession();
+        }
         const prefs = await getLocationPrivacyPrefs();
         const { status } = await Location.getForegroundPermissionsAsync();
         let osGranted = status === 'granted';
@@ -239,6 +246,24 @@ function AppInner() {
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [notifPost, setNotifPost] = useState<PostView | null>(null);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(AUTH_EXPIRED, () => {
+      void hideUserLocation().catch(() => {});
+      void disconnectMapHub().catch(() => {});
+      void clearLocationPrivacyPrefs();
+      setScreen('auth');
+      setTab('home');
+      setChatSession(null);
+      setFriendProfile(null);
+      setSelectedFriend(null);
+      setCameraOpen(false);
+      setAdminSession(null);
+      setBusinessSession(null);
+      Toast.show({ type: 'info', text1: t('auth.sessionExpired') });
+    });
+    return () => sub.remove();
+  }, [t]);
 
   useEffect(() => {
     if (screen !== 'app') {
@@ -707,6 +732,7 @@ function AppInner() {
               void hideUserLocation().catch(() => {});
               void disconnectMapHub().catch(() => {});
               void clearLocationPrivacyPrefs();
+              void import('./src/services/authApi').then(({ clearAuthSession }) => clearAuthSession());
               setScreen('auth');
               setTab('home');
               setLocationGranted(null);
