@@ -403,7 +403,7 @@ export default function MapScreen({
   const shownZoom = shownMapZoom(mapZoom);
   const showDetailPins = shownZoom >= MAP_DETAIL_MIN_ZOOM;
   const showBusinessPins = shownZoom >= MAP_BUSINESS_MIN_ZOOM;
-  const show3DModels = shownZoom >= MAP_3D_MODEL_MIN_ZOOM;
+  const show3DModels = isActive && shownZoom >= MAP_3D_MODEL_MIN_ZOOM;
   const visiblePlaces = useMemo(
     () => filteredPlaces.filter(place =>
       place.isOwnedByCurrentUser || showBusinessPins),
@@ -1409,7 +1409,7 @@ const styles = StyleSheet.create({
   filterChipActiveText: {
     fontSize: 12,
     fontWeight: '800',
-    color: Colors.white,
+    color: Colors.textDark,
   },
   filterChip: {
     paddingHorizontal: 14,
@@ -1420,7 +1420,7 @@ const styles = StyleSheet.create({
   filterChipText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.textMid,
+    color: Colors.textDark,
   },
   searchBlock: {
     gap: 0,

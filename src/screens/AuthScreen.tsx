@@ -8,7 +8,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Gradients, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
-import AuthAtmosphere from '../components/AuthAtmosphere';
 import DateOfBirthPicker from '../components/DateOfBirthPicker';
 import MymoLogo from '../components/MymoLogo';
 import Toast from 'react-native-toast-message';
@@ -317,7 +316,6 @@ export default function AuthScreen({
       style={styles.kav}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <AuthAtmosphere />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.heroGrad}>
           {/* Top bar */}
@@ -769,7 +767,7 @@ function SocialBtn({
 const styles = StyleSheet.create({
   kav: {
     flex: 1,
-    backgroundColor: '#F3E3F2',
+    backgroundColor: Colors.background,
     position: 'relative',
     overflow: 'hidden',
     ...Platform.select({
@@ -779,19 +777,17 @@ const styles = StyleSheet.create({
         marginHorizontal: 'auto',
         borderLeftWidth: 1,
         borderRightWidth: 1,
-        borderColor: '#F2DAF0',
-        boxShadow: '0 18px 50px rgba(218, 112, 214, 0.2)',
+        borderColor: Colors.border,
+        boxShadow: '0 18px 50px rgba(208, 139, 196, 0.18)',
       },
       default: {},
     }),
   },
   scroll: { flexGrow: 1 },
   heroGrad: {
-    paddingTop: 60,
+    paddingTop: 52,
     paddingHorizontal: 24,
-    paddingBottom: 40,
-    minHeight: 360,
-    overflow: 'hidden',
+    paddingBottom: 28,
     zIndex: 1,
   },
   topBar: {

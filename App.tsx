@@ -953,6 +953,7 @@ const styles = StyleSheet.create({
   tabPaneHidden: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
+    overflow: 'hidden',
     ...Platform.select({
       web: { visibility: 'hidden' as any },
       default: { opacity: 0 },

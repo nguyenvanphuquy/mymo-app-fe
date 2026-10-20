@@ -15,7 +15,6 @@ import { getFriends, getFriendRequests, getFriendSuggestions } from '../services
 import { getNearbyPlaces, type PlaceSummary } from '../services/placeApi';
 import FriendMomentsSection from '../components/FriendMomentsSection';
 import NotificationDropdown from '../components/NotificationDropdown';
-import HomeAtmosphere from '../components/HomeAtmosphere';
 import MymoLogo from '../components/MymoLogo';
 import { avatarUri } from '../constants/defaultAvatar';
 import { hasActivePremium } from '../utils/premiumStorage';
@@ -203,8 +202,6 @@ export default function HomeScreen({
 
   return (
     <View style={styles.root}>
-      <HomeAtmosphere />
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
@@ -214,7 +211,7 @@ export default function HomeScreen({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoWrap}>
-            <MymoLogo width={108} />
+            <MymoLogo width={132} />
             <Text style={styles.logoSparkle}>✨</Text>
           </View>
           <View style={styles.headerActions}>
@@ -224,7 +221,7 @@ export default function HomeScreen({
               style={styles.notifBtnOuter}
             >
               <LinearGradient
-                colors={notifOpen ? ['#F4C4F1', '#DA70D6'] : ['#FFFFFF', '#FFF7FD']}
+                colors={notifOpen ? [...Gradients.primary] : [Colors.white, Colors.primaryTint]}
                 style={[styles.notifBtn, notifOpen && styles.notifBtnActive]}
               >
                 <Ionicons
@@ -243,7 +240,7 @@ export default function HomeScreen({
             </TouchableOpacity>
 
             <TouchableOpacity onPress={onGoProfile} activeOpacity={0.85}>
-              <LinearGradient colors={['#FBEAF9', '#FFD6EC', '#F4C4F1']} style={styles.avatarRing}>
+              <LinearGradient colors={[...Gradients.logo]} style={styles.avatarRing}>
                 <Image
                   source={{ uri: avatarUri(avatarUrl) }}
                   style={styles.avatar}
@@ -260,7 +257,7 @@ export default function HomeScreen({
             <Text style={styles.greetingEmoji}>✨</Text>
           </View>
           <View style={styles.vibeQuestionWrap}>
-            <PulsingDot color="#F4C4F1" />
+            <PulsingDot color={Colors.primaryLight} />
             <Text style={styles.greetingSub}>{t('home.vibeQuestion')}</Text>
             <Text style={styles.vibeQuestionEmoji}>💫</Text>
           </View>
@@ -276,7 +273,7 @@ export default function HomeScreen({
 
         {/* AI suggestion card */}
         <LinearGradient
-          colors={['#FFF9FF', '#FFF5FE', '#FFF4FA', '#F4F8FF']}
+          colors={[Colors.white, Colors.primaryTint, '#F3E8F6', '#EEE8F8']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.aiCardOuter}
@@ -295,7 +292,7 @@ export default function HomeScreen({
               <Text style={styles.mymyLine}>{mymyLine}</Text>
             </View>
             <View style={styles.aiThumbWrap}>
-                <LinearGradient colors={['#FFFFFF', '#FBEAF9']} style={styles.aiThumbRing}>
+                <LinearGradient colors={[Colors.white, Colors.primarySoft]} style={styles.aiThumbRing}>
                   {vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl ? (
                     <Image
                       source={{ uri: vibePlaces[0]?.thumbnailUrl || nearbyPlace?.thumbnailUrl || '' }}
@@ -337,7 +334,7 @@ export default function HomeScreen({
             )}
             <TouchableOpacity onPress={() => onGoMap(selectedVibe)} activeOpacity={0.88}>
               <LinearGradient
-                colors={['#F4C4F1', '#DA70D6', '#E7A9E4']}
+                colors={[...Gradients.logo]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.mapBtn}
@@ -385,12 +382,12 @@ export default function HomeScreen({
         {pendingRequests > 0 && (
           <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
             <LinearGradient
-              colors={['#FFF0F8', '#FFE4F0', '#FFF5FA']}
+              colors={['#FBEAF4', '#F8D4EA', '#F8EEF6']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={[styles.signalCard, styles.signalPink]}
             >
-              <LinearGradient colors={['#FFD6EC', '#FFB8D9']} style={styles.signalIconWrap}>
+              <LinearGradient colors={['#F8D4EA', '#E8A8D8']} style={styles.signalIconWrap}>
                 <Ionicons name="heart" size={20} color="#E11D48" />
               </LinearGradient>
               <View style={styles.signalCopy}>
@@ -406,13 +403,13 @@ export default function HomeScreen({
 
         <TouchableOpacity onPress={onGoFriends} activeOpacity={0.9}>
           <LinearGradient
-            colors={['#FFF9FF', '#FFF5FE', '#FFF9FF']}
+            colors={[Colors.white, Colors.primaryTint, '#EEE8F8']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.signalCard, styles.signalPurple]}
           >
-            <LinearGradient colors={['#FFF5FE', '#F3D4F1']} style={[styles.signalIconWrap, styles.signalIconPurple]}>
-              <Image source={require('../../assets/logo.png')} style={styles.signalLogo} resizeMode="contain" tintColor={Colors.sakuraPetal} />
+            <LinearGradient colors={[Colors.primarySoft, Colors.crystalLavender]} style={[styles.signalIconWrap, styles.signalIconPurple]}>
+              <Image source={require('../../assets/logo-pink.png')} style={styles.signalLogo} resizeMode="contain" />
             </LinearGradient>
             <View style={styles.signalCopy}>
               <Text style={styles.signalTitle}>{t('home.vibeMatch')} ✦</Text>
@@ -443,7 +440,7 @@ export default function HomeScreen({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F6EAF4',
+    backgroundColor: Colors.background,
     position: 'relative',
   },
   scrollView: {
@@ -462,6 +459,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: 'transparent',
   },
   logoSparkle: {
     fontSize: 14,
@@ -650,14 +648,14 @@ const styles = StyleSheet.create({
   aiThumbEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FBEAF9',
+    backgroundColor: Colors.primarySoft,
   },
   aiThumbSparkle: {
     position: 'absolute',
     top: -4,
     right: -4,
     fontSize: 14,
-    color: '#F4C4F1',
+    color: Colors.primaryLight,
   },
   placeCard: {
     backgroundColor: 'rgba(255,255,255,0.88)',

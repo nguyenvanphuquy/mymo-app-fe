@@ -1,68 +1,68 @@
 import { Platform } from 'react-native';
 
-// MYMO Design Tokens — glossy orchid (tím lan) palette
+// MYMO Design Tokens — pastel pink → orchid → lavender, matching the 3D logo
 export const Colors = {
   // Brand primaries
-  primary: '#DA70D6',
-  primaryDark: '#C04BB8',
-  primaryLight: '#F4C4F1',
-  primarySoft: '#FBEAF9',
-  primaryTint: '#FFF7FD',
+  primary: '#D08BC4',
+  primaryDark: '#B56AA8',
+  primaryLight: '#F0C4E4',
+  primarySoft: '#F8EEF6',
+  primaryTint: '#F6EEF8',
 
-  // Logo — icy crystal glass (white + ice blue + blush)
-  sakuraPetal: '#C8E8FF',
-  sakuraPetalDeep: '#B8A8E8',
-  sakuraPetalEye: '#A898D8',
+  // Logo — bubblegum pink to periwinkle
+  sakuraPetal: '#EBB8DC',
+  sakuraPetalDeep: '#C4B4E0',
+  sakuraPetalEye: '#D494C8',
   crystalWhite: '#FFFFFF',
-  crystalPink: '#F8EBFF',
-  crystalSakura: '#F5A9DF',
-  crystalLavender: '#D8B9FF',
-  crystalIce: '#A8DFFF',
-  crystalAmethyst: '#970DD9',
-  crystalPlum: '#51204F',
+  crystalPink: '#F8D4EA',
+  crystalSakura: '#E8A8D8',
+  crystalLavender: '#C4B4E8',
+  crystalIce: '#D8D0F0',
+  crystalAmethyst: '#B8A8DC',
+  crystalPlum: '#5A3D5E',
 
   // Gradient stops
-  gradientStart: '#F4C4F1',
-  gradientEnd: '#DA70D6',
-  gradientHero1: '#FFF9FF',
-  gradientHero2: '#FBEAF9',
-  gradientHero3: '#F3D4F1',
+  gradientStart: '#F3C4E4',
+  gradientEnd: '#B8A8DC',
+  gradientHero1: '#FBF6FB',
+  gradientHero2: '#F8EEF6',
+  gradientHero3: '#EFE4F4',
 
   // Text
-  textDark: '#4F2852',
-  textMid: '#7D4E80',
-  textMuted: '#B48EB5',
+  textDark: '#5A3D5E',
+  textMid: '#7A5A7E',
+  textMuted: '#B89AB8',
   textWhite: '#FFFFFF',
 
   // UI
   white: '#FFFFFF',
   black: '#000000',
-  background: '#FFF9FF',
+  background: '#F6EEF8',
   surface: '#FFFFFF',
-  border: '#F2DAF0',
+  border: '#EAD8EC',
 
   // Status
   activeGreen: '#10B981',
   movingYellow: '#FBBF24',
-  idlePurple: '#E8A8E4',
+  idlePurple: '#D4A8DC',
 
   // Overlays
   overlay: 'rgba(0,0,0,0.45)',
   overlayLight: 'rgba(255,255,255,0.85)',
-  glassDark: 'rgba(106,52,108,0.45)',
+  glassDark: 'rgba(90,61,94,0.42)',
   glassLight: 'rgba(255,255,255,0.62)',
   glassLightStrong: 'rgba(255,255,255,0.86)',
 
   // Map
-  mapBase1: '#FFF9FF',
-  mapBase2: '#F9EBF7',
+  mapBase1: '#FBF6FB',
+  mapBase2: '#F3E8F6',
   mapWater: '#D7EBFA',
   mapPark: '#E7F3EA',
   mapRoad: '#FFFFFF',
 
   // Heat
-  heatHot: '#FF3D6E',
-  heatCalm: '#DA70D6',
+  heatHot: '#E890C0',
+  heatCalm: '#D08BC4',
 
   // Friend colors (kept same as web)
   friend1: '#FF8FB8',
@@ -73,18 +73,19 @@ export const Colors = {
 };
 
 export const Gradients = {
-  primary: ['#F0B8ED', '#DA70D6'] as const,
-  hero: ['#FFFFFF', '#FFF5FE', '#F8E3F6'] as const,
-  dark: ['#C04BB8', '#E39BDE', '#FFF8FE'] as const,
-  warm: ['#FFE8F4', '#F6DDF4', '#F3D4F1'] as const,
+  primary: ['#F0C4E4', '#D08BC4'] as const,
+  hero: ['#FFFFFF', '#F8EEF6', '#EFE4F4'] as const,
+  dark: ['#B56AA8', '#C4B4E8', '#F8EEF6'] as const,
+  warm: ['#F8D4EA', '#EFE4F4', '#E4D8F0'] as const,
   sheen: ['rgba(255,255,255,0.92)', 'rgba(255,255,255,0)'] as const,
+  logo: ['#F3C4E4', '#D494C8', '#B8A8DC'] as const,
 };
 
 export const Shadows = {
   soft: Platform.select({
-    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.98) inset, 0 10px 26px rgba(218,112,214,0.18)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.98) inset, 0 10px 26px rgba(208,139,196,0.16)' },
     default: {
-      shadowColor: '#DA70D6',
+      shadowColor: '#D08BC4',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.12,
       shadowRadius: 8,
@@ -92,9 +93,9 @@ export const Shadows = {
     },
   }),
   float: Platform.select({
-    web: { boxShadow: '0 1px 0 rgba(255,255,255,1) inset, 0 16px 42px rgba(218,112,214,0.22)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,1) inset, 0 16px 42px rgba(184,168,220,0.22)' },
     default: {
-      shadowColor: '#DA70D6',
+      shadowColor: '#B8A8DC',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.2,
       shadowRadius: 20,
@@ -102,11 +103,11 @@ export const Shadows = {
     },
   }),
   glow: Platform.select({
-    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.95) inset, 0 8px 24px rgba(218,112,214,0.38), 0 0 20px rgba(244,196,241,0.5)' },
+    web: { boxShadow: '0 1px 0 rgba(255,255,255,0.95) inset, 0 8px 24px rgba(208,139,196,0.32), 0 0 20px rgba(240,196,228,0.45)' },
     default: {
-      shadowColor: '#DA70D6',
+      shadowColor: '#D08BC4',
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.4,
+      shadowOpacity: 0.35,
       shadowRadius: 16,
       elevation: 10,
     },
