@@ -22,6 +22,10 @@ interface ChatData {
   Reply?: string;
 }
 
+export function ensureHanaName(text: string) {
+  return text.replace(/\b(?:MyMy|Mymy|MYMY|mymy)\b/g, 'Hana');
+}
+
 export async function chatWithMymy(
   message: string,
   history: MymyTurn[],
@@ -39,7 +43,10 @@ export async function chatWithMymy(
     headers,
     body: JSON.stringify({
       message,
-      history,
+      history: history.map(turn => ({
+        role: turn.role,
+        text: ensureHanaName(turn.text),
+      })),
       latitude: location?.latitude,
       longitude: location?.longitude,
     }),
@@ -67,5 +74,5 @@ export async function chatWithMymy(
     throw new Error(msg || 'Trợ lý Hana chưa trả lời được. Thử lại nhé.');
   }
 
-  return reply.trim();
+  return ensureHanaName(reply.trim());
 }

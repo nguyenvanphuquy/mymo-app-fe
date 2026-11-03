@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Platform, Animated,
+  View, ScrollView, TouchableOpacity, StyleSheet, Image, Platform, Animated,
 } from 'react-native';
+import { Text } from '../ui/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';

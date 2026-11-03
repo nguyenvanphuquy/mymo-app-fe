@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   FlatList,
@@ -12,12 +10,13 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
+import { Text, TextInput } from '../ui/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Shadows } from '../constants/colors';
 import { useI18n } from '../i18n';
-import { chatWithMymy, type MymyTurn } from '../services/mymyApi';
+import { chatWithMymy, ensureHanaName, type MymyTurn } from '../services/mymyApi';
 
 type ChatTurn = MymyTurn & { id: string; error?: boolean };
 
@@ -43,13 +42,12 @@ export default function MymyChat({ visible, onClose }: Props) {
   ]);
 
   useEffect(() => {
-    setMessages(prev => {
-      if (prev.length === 1 && prev[0].id === 'greeting' && prev[0].text !== greeting) {
-        return [{ id: 'greeting', role: 'model', text: greeting }];
-      }
-      return prev;
-    });
-  }, [greeting]);
+    if (!visible) return;
+    setMessages([{ id: 'greeting', role: 'model', text: greeting }]);
+    setText('');
+    setSending(false);
+    sendingRef.current = false;
+  }, [visible, greeting]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -86,7 +84,7 @@ export default function MymyChat({ visible, onClose }: Props) {
         // Thủ Đức fallback keeps map-grounded suggestions available.
       }
       const reply = await chatWithMymy(value, history, coords);
-      setMessages(prev => [...prev, { id: nextId(), role: 'model', text: reply }]);
+      setMessages(prev => [...prev, { id: nextId(), role: 'model', text: ensureHanaName(reply) }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : t('bot.failed');
       setMessages(prev => [...prev, { id: nextId(), role: 'model', text: message, error: true }]);

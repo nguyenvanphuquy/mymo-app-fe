@@ -1073,7 +1073,7 @@ const vi: Dict = {
   'place.mood.angry': 'Giận',
 
   'bot.name': 'Trợ lý Hana',
-  'bot.greeting': 'Chào bạn, mình là Trợ lý Hana! Mình ở đây để tám chuyện và giúp bạn dùng MYMO. Bạn muốn nói gì nào?',
+  'bot.greeting': 'Chào bạn, mình là Hana — trợ lý của MYMO! Mình ở đây để tám chuyện và giúp bạn dùng app. Bạn muốn nói gì nào?',
   'bot.subtitle': 'luôn ở đây với bạn',
   'bot.placeholder': 'Nhắn cho Trợ lý Hana...',
   'bot.thinking': 'Trợ lý Hana đang nghĩ...',
@@ -2557,7 +2557,7 @@ const en: Dict = {
   'place.mood.angry': 'Angry',
 
   'bot.name': 'Hana Assistant',
-  'bot.greeting': 'Hi, I am Hana Assistant! I am here to chat and help you use MYMO. What do you want to talk about?',
+  'bot.greeting': 'Hi, I am Hana — MYMO’s assistant! I am here to chat and help you use the app. What do you want to talk about?',
   'bot.subtitle': 'right here with you',
   'bot.placeholder': 'Message Hana Assistant...',
   'bot.thinking': 'Hana Assistant is thinking...',
