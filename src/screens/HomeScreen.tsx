@@ -157,7 +157,7 @@ export default function HomeScreen({
           lat = position.coords.latitude;
           lng = position.coords.longitude;
         } catch {
-          // Keep the Thủ Đức fallback so MyMy can still suggest venues.
+          // Keep the Thủ Đức fallback so Hana can still suggest venues.
         }
       }
       try {
@@ -281,7 +281,7 @@ export default function HomeScreen({
           <View style={styles.aiCardShine} />
           <View style={styles.aiBadge}>
             <LinearGradient colors={[...Gradients.primary]} style={styles.aiBadgeGrad}>
-              <Text style={styles.aiBadgeText}>MyMy</Text>
+              <Text style={styles.aiBadgeText}>Hana</Text>
             </LinearGradient>
           </View>
 

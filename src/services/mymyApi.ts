@@ -61,10 +61,10 @@ export async function chatWithMymy(
 
   if (!res.ok || !success || !reply.trim()) {
     if (res.status === 401) {
-      throw new Error('Đăng nhập để nói chuyện với Trợ lý MyMy nhé.');
+      throw new Error('Đăng nhập để nói chuyện với Trợ lý Hana nhé.');
     }
     const msg = data.message ?? data.Message;
-    throw new Error(msg || 'Trợ lý MyMy chưa trả lời được. Thử lại nhé.');
+    throw new Error(msg || 'Trợ lý Hana chưa trả lời được. Thử lại nhé.');
   }
 
   return reply.trim();

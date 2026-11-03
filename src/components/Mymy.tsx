@@ -578,9 +578,9 @@ export default function Mymy({ visible = true }: Props) {
           zIndex: dragging ? 80 : 40,
         },
       ]}
-      accessibilityLabel="Trợ lý MyMy"
+      accessibilityLabel="Trợ lý Hana"
       accessibilityRole="button"
-      accessibilityHint="Mở chat với Trợ lý MyMy"
+      accessibilityHint="Mở chat với Trợ lý Hana"
     >
       <Animated.View
         style={[
